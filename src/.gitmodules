@@ -1,0 +1,9 @@
+[submodule "libwuya"]
+	path = libwuya
+	url = https://github.com/WuBingzheng/libwuya.git
+[submodule "libloop"]
+	path = libloop
+	url = https://github.com/WuBingzheng/libloop.git
+[submodule "libhttp2"]
+	path = libhttp2
+	url = https://github.com/h2tpd/libhttp2.git
