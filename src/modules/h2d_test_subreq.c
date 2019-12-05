@@ -13,30 +13,38 @@ static int h2d_test_subreq_filter_response_headers(struct h2d_request *r)
 		return H2D_OK;
 	}
 
-	r->resp.content_length = H2D_CONTENT_LENGTH_CHUNKED;
+	r->resp.is_body_filtered = true;
 	return H2D_OK;
 }
-static int h2d_test_subreq_filter_response_body(struct h2d_request *r, uint8_t *buffer, int buf_len)
+static int h2d_test_subreq_filter_response_body(struct h2d_request *r, uint8_t *data, int data_len, int buf_len)
 {
 	struct h2d_test_subreq_conf *conf = r->conf_path->module_confs[h2d_test_subreq_module.index];
 	if (!conf->enable) {
-		return buf_len;
+		return data_len;
 	}
 
 	struct h2d_request *subr = r->module_ctxs[h2d_test_subreq_module.request_ctx.index];
 	if (subr == NULL) {
 		subr = h2d_request_subreq_new(r);
 		subr->req.url = subr->req.buffer;
-		subr->req.next = h2d_header_add(subr->req.next, ":url", 4, (char *)buffer, buf_len-1);
+		subr->req.next = h2d_header_add(subr->req.next, ":url", 4, (char *)data, data_len-1);
 		printf("subr: %s\n", h2d_header_value(subr->req.url));
 
 		r->module_ctxs[h2d_test_subreq_module.request_ctx.index] = subr;
 		return H2D_AGAIN;
-	} else {
-		int data_len = subr->c->send_buf_pos - subr->c->send_buffer;
-		memcpy(buffer, subr->c->send_buffer, data_len);
+	} else if (subr != (void *)1) {
+		int new_data_len = subr->c->send_buf_pos - subr->c->send_buffer;
+		memcpy(data, subr->c->send_buffer, new_data_len);
 		subr->c->send_buf_pos = subr->c->send_buffer;
-		return data_len;
+		r->module_ctxs[h2d_test_subreq_module.request_ctx.index] = (void *)1;
+
+		r->subr = NULL;
+		subr->father = NULL;
+		h2d_request_close(subr);
+
+		return new_data_len;
+	} else {
+		return H2D_OK;
 	}
 }
 

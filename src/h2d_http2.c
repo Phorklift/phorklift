@@ -25,7 +25,9 @@ static bool h2d_http2_hook_stream_header(http2_stream_t *h2s, const char *name_s
 	/* end of headers */
 	if (name_str == NULL) {
 		// TODO bool end_request = name_len;
-		return h2d_request_process_headers(r);
+		r->state = H2D_REQUEST_STATE_PROCESS_HEADERS;
+		h2d_request_run(r, 0);
+		return true; //  return what ??
 	}
 
 	/* parse this one header */
@@ -120,7 +122,7 @@ int h2d_http2_response_body_pack(struct h2d_request *r, uint8_t *payload,
 
 static bool h2d_http2_hook_stream_response(http2_stream_t *h2s, int window)
 {
-	h2d_request_response(http2_stream_get_app_data(h2s));
+	h2d_request_run(http2_stream_get_app_data(h2s), -1);
 	return true; // TODO check closed?
 }
 

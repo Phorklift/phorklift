@@ -17,17 +17,16 @@ struct h2d_module {
 	struct {
 		bool	(*is_enable)(void *conf);
 		int	(*process_headers)(struct h2d_request *);
-		int	(*process_body)(struct h2d_request *, uint8_t *buf, int len);
+		int	(*process_body)(struct h2d_request *);
 		int	(*response_headers)(struct h2d_request *);
 		int	(*response_body)(struct h2d_request *, uint8_t *buf, int len);
-		bool	(*is_body_finished)(struct h2d_request *);
 	} content;
 
 	struct {
 		int	(*process_headers)(struct h2d_request *);
-		int	(*process_body)(struct h2d_request *, uint8_t *buf, int len);
+		int	(*process_body)(struct h2d_request *);
 		int	(*response_headers)(struct h2d_request *);
-		int	(*response_body)(struct h2d_request *, uint8_t *buf, int len);
+		int	(*response_body)(struct h2d_request *, uint8_t *data, int data_len, int buf_len);
 	} filters;
 
 	struct {
@@ -53,7 +52,8 @@ struct wuy_cflua_command *h2d_module_next_path_command(struct wuy_cflua_command 
 struct h2d_module *h2d_module_content_is_enable(int i, void *conf);
 void h2d_module_request_ctx_free(struct h2d_request *r);
 int h2d_module_filter_process_headers(struct h2d_request *r);
+int h2d_module_filter_process_body(struct h2d_request *r);
 int h2d_module_filter_response_headers(struct h2d_request *r);
-int h2d_module_filter_response_body(struct h2d_request *r, uint8_t *buffer, int buf_len);
+int h2d_module_filter_response_body(struct h2d_request *r, uint8_t *data, int data_len, int buf_len);
 
 #endif

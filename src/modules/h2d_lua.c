@@ -30,11 +30,11 @@ static int h2d_lua_process_request_headers(struct h2d_request *r)
 
 	h2d_lua_thread_new(conf->content, 1, h2d_lua_post, r);
 
-	return 0;
+	return H2D_OK;
 }
-static int h2d_lua_process_request_body(struct h2d_request *r, uint8_t *buf, int len)
+static int h2d_lua_process_request_body(struct h2d_request *r)
 {
-	return 0;
+	return H2D_OK;
 }
 static int h2d_lua_generate_response_headers(struct h2d_request *r)
 {

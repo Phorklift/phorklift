@@ -11,7 +11,8 @@ struct h2d_request;
 #define H2D_CONTENT_LENGTH_CHUNKED	(SIZE_MAX-3)
 
 enum h2d_request_state {
-	H2D_REQUEST_STATE_PROCESS_HEADERS = 0,
+	H2D_REQUEST_STATE_PARSE_HEADERS = 0,
+	H2D_REQUEST_STATE_PROCESS_HEADERS,
 	H2D_REQUEST_STATE_PROCESS_BODY,
 	H2D_REQUEST_STATE_RESPONSE_HEADERS,
 	H2D_REQUEST_STATE_RESPONSE_BODY,
@@ -21,6 +22,7 @@ enum h2d_request_state {
 struct h2d_request {
 	struct {
 		int			method;
+		int			version;
 		struct h2d_header	*url;
 		struct h2d_header	*host;
 		size_t			content_length;
@@ -29,19 +31,23 @@ struct h2d_request {
 		struct h2d_header	*next;
 
 		wuy_http_chunked_t	chunked;
+
+		uint8_t			*body_buf;
+		int			body_len;
+		bool			body_finished;
 	} req;
 
 	struct {
 		int			status_code;
 		int			version;
-		size_t			content_length;
-		size_t			sent_length;
 
 		struct h2d_header	*buffer;
 		struct h2d_header	*next;
 
-		uint8_t			*body_buffer;
-		int			body_buf_len;
+		size_t			content_length;
+		size_t			content_generate_length;
+		size_t			sent_length;
+		bool			is_body_filtered;
 	} resp;
 
 	enum h2d_request_state	state;
@@ -73,8 +79,7 @@ static inline bool h2d_request_is_subreq(struct h2d_request *r)
 	return r->father != NULL;
 }
 
-int h2d_request_process_headers(struct h2d_request *r);
-void h2d_request_response(struct h2d_request *r);
+void h2d_request_run(struct h2d_request *r, int window);
 
 void h2d_request_active(struct h2d_request *r);
 

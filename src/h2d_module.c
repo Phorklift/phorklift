@@ -103,6 +103,21 @@ int h2d_module_filter_process_headers(struct h2d_request *r)
 
 	return H2D_OK;
 }
+int h2d_module_filter_process_body(struct h2d_request *r)
+{
+	int i;
+	for (i = 0; i < H2D_MODULE_NUMBER; i++) {
+		struct h2d_module *m = h2d_modules[i];
+		if (m->filters.process_body != NULL) {
+			int ret = m->filters.process_body(r);
+			if (ret != H2D_OK) {
+				return ret;
+			}
+		}
+	}
+
+	return H2D_OK;
+}
 int h2d_module_filter_response_headers(struct h2d_request *r)
 {
 	int i;
@@ -118,13 +133,13 @@ int h2d_module_filter_response_headers(struct h2d_request *r)
 
 	return H2D_OK;
 }
-int h2d_module_filter_response_body(struct h2d_request *r, uint8_t *buffer, int buf_len)
+int h2d_module_filter_response_body(struct h2d_request *r, uint8_t *data, int data_len, int buf_len)
 {
 	int i;
 	for (i = 0; i < H2D_MODULE_NUMBER; i++) {
 		struct h2d_module *m = h2d_modules[i];
 		if (m->filters.response_body != NULL) {
-			int ret = m->filters.response_body(r, buffer, buf_len);
+			int ret = m->filters.response_body(r, data, data_len, buf_len);
 			if (ret != H2D_OK) {
 				return ret;
 			}

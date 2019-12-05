@@ -12,7 +12,6 @@ struct h2d_upstream {
 	int			idle_timeout;
 	bool			ssl_enable;
 
-	bool			(*on_response)(struct h2d_request *);
 	int			refers;
 
 	/* run time */
@@ -20,19 +19,6 @@ struct h2d_upstream {
 	int			idle_num;
 	wuy_list_t		idle_head;
 	wuy_list_t		active_head;
-};
-
-struct h2d_upstream_connection {
-	struct h2d_upstream	*upstream;
-
-	loop_stream_t		*loop_stream;
-
-	struct h2d_request	*request; /* NULL if in idle state */
-
-	uint8_t			*send_buffer;
-	int			send_buf_len;
-
-	wuy_list_node_t		list_node;
 };
 
 
@@ -46,31 +32,9 @@ static WUY_LIST(h2d_upstream_connection_defer_list);
 static void h2d_upstream_on_readable(loop_stream_t *s)
 {
 	struct h2d_upstream_connection *upc = loop_stream_get_app_data(s);
-	struct h2d_request *r = upc->request;
-
-	int recv_buffer_size = upc->upstream->recv_buffer_size;
-	if (r->resp.body_buffer == NULL) {
-		r->resp.body_buffer = malloc(recv_buffer_size);
-		r->resp.body_buf_len = 0;
-	} else if (r->resp.body_buf_len == recv_buffer_size) {
-		// loop_stream_disable_read(s);
-		printf("!!!!!!!loop_stream_disable_read\n");
-		return;
+	if (upc->request != NULL) {
+		h2d_request_active(upc->request);
 	}
-
-	while (r->resp.body_buf_len < recv_buffer_size) {
-		int len = loop_stream_read(s, r->resp.body_buffer + r->resp.body_buf_len,
-				recv_buffer_size - r->resp.body_buf_len);
-		if (len <= 0) {
-			break;
-		}
-
-		r->resp.body_buf_len += len;
-		if (!upc->upstream->on_response(r)) {
-			return;
-		}
-	}
-	h2d_request_active(r);
 }
 
 /* XXX different with h2d_connection_write(), which need caller put data into c->send_buffer, and call flush.
@@ -152,8 +116,7 @@ static loop_stream_ops_t h2d_upstream_ops = {
 	.on_close = h2d_upstream_on_close,
 };
 
-struct h2d_upstream_connection *h2d_upstream_get_connection(struct h2d_upstream *upstream,
-		struct h2d_request *r)
+struct h2d_upstream_connection *h2d_upstream_get_connection(struct h2d_upstream *upstream)
 {
 	printf(" === get_conn: %d %p %d\n", wuy_list_empty(&upstream->idle_head), upstream, upstream->idle_num);
 	if (!wuy_list_empty(&upstream->idle_head)) {
@@ -161,10 +124,7 @@ struct h2d_upstream_connection *h2d_upstream_get_connection(struct h2d_upstream 
 		wuy_list_delete(node);
 		wuy_list_append(&upstream->active_head, node);
 		upstream->idle_num--;
-
-		struct h2d_upstream_connection *upc = wuy_containerof(node, struct h2d_upstream_connection, list_node);
-		upc->request = r;
-		return upc;
+		return wuy_containerof(node, struct h2d_upstream_connection, list_node);
 	}
 
 	int fd = wuy_tcp_connect(&upstream->sockaddr);
@@ -187,7 +147,6 @@ struct h2d_upstream_connection *h2d_upstream_get_connection(struct h2d_upstream 
 	struct h2d_upstream_connection *upc = wuy_pool_alloc(h2d_upstream_connection_pool);
 	upc->upstream = upstream;
 	upc->loop_stream = s;
-	upc->request = r;
 	wuy_list_append(&upstream->active_head, &upc->list_node);
 	loop_stream_set_app_data(s, upc);
 
@@ -252,15 +211,6 @@ void h2d_upstream_init(void)
 bool h2d_upstream_conf_is_enable(struct h2d_upstream *conf)
 {
 	return conf && conf->address && conf->address[0] != '\0';
-}
-
-bool h2d_upstream_conf_on_response(struct h2d_upstream *conf, bool (*on_response)(struct h2d_request *))
-{
-	if (conf->on_response != NULL && conf->on_response != on_response) {
-		return false;
-	}
-	conf->on_response = on_response;
-	return true;
 }
 
 static bool h2d_upstream_conf_post(void *data)

@@ -29,9 +29,9 @@ static int h2d_static_process_request_headers(struct h2d_request *r)
 		return 404;
 	}
 	r->module_ctxs[h2d_static_module.request_ctx.index] = (void *)(uintptr_t)fd;
-	return 0;
+	return H2D_OK;
 }
-static int h2d_static_process_request_body(struct h2d_request *r, uint8_t *buf, int len)
+static int h2d_static_process_request_body(struct h2d_request *r)
 {
 	return 0;
 }
@@ -51,7 +51,6 @@ static int h2d_static_generate_response_body(struct h2d_request *r, uint8_t *buf
 {
 	int fd = H2D_STATIC_CTX_FD(r);
 	int ret = read(fd, buf, len);
-	printf("h2d_static_generate_response_body %d\n", ret);
 	if (ret < 0) {
 		perror("read file fail");
 		return -1;

@@ -86,14 +86,6 @@ int h2d_connection_make_space(struct h2d_connection *c, int size)
 	return h2d_connection_flush(c);
 }
 
-bool h2d_connection_flush_if_full(struct h2d_connection *c)
-{
-	if (c->send_buf_pos - c->send_buffer != H2D_CONNECTION_SENDBUF_SIZE) {
-		return false;
-	}
-	return h2d_connection_flush(c) == H2D_OK;
-}
-
 static int h2d_connection_on_read(loop_stream_t *s, void *data, int len)
 {
 	struct h2d_connection *c = loop_stream_get_app_data(s);

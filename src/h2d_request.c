@@ -34,6 +34,13 @@ struct h2d_request *h2d_request_new(struct h2d_connection *c)
 
 void h2d_request_close(struct h2d_request *r)
 {
+	if (h2d_request_is_subreq(r) && !h2d_request_is_closed(r->father)) {
+		/* father should close me */
+		printf("sub wake up father: %p -> %p\n", r, r->father);
+		h2d_request_active(r->father);
+		return;
+	}
+
 	if (r->state == H2D_REQUEST_STATE_CLOSED) {
 		return;
 	}
@@ -41,9 +48,8 @@ void h2d_request_close(struct h2d_request *r)
 
 	printf("request done: %s\n", h2d_header_value(r->req.url));
 
-	if (h2d_request_is_subreq(r)) {
-		printf("sub wake up father: %p -> %p\n", r, r->father);
-		h2d_request_active(r->father);
+	if (r->subr != NULL) {
+		printf("!!!!!!!!! subrequest %p subr:%p\n", r, r->subr);
 	}
 
 	h2d_module_request_ctx_free(r);
@@ -56,17 +62,15 @@ void h2d_request_close(struct h2d_request *r)
 	}
 
 	free(r->req.buffer);
+	free(r->req.body_buf);
 	free(r->resp.buffer);
-	free(r->resp.body_buffer);
 
 	wuy_list_delete(&r->list_node);
 	wuy_list_append(&h2d_request_defer_free_list, &r->list_node);
 }
 
-int h2d_request_process_headers(struct h2d_request *r)
+static int h2d_request_process_headers(struct h2d_request *r)
 {
-	assert(r->state == H2D_REQUEST_STATE_PROCESS_HEADERS);
-
 	/* locate host */
 	if (r->conf_host == NULL) { /* already set if subrequest */
 		r->conf_host = h2d_conf_listen_search_hostname(r->c->conf_listen,
@@ -94,19 +98,32 @@ int h2d_request_process_headers(struct h2d_request *r)
 
 	/* done */
 	int ret = h2d_module_filter_process_headers(r);
-	if (ret == H2D_AGAIN || ret == H2D_ERROR) {
-		return ret;
-	} else if (ret != H2D_OK) { /* status codes */
-		// TODO special response
-		r->state = H2D_REQUEST_STATE_RESPONSE_HEADERS;
+	if (ret != H2D_OK) {
 		return ret;
 	}
 
-	ret = r->conf_path->content->content.process_headers(r);
-	if (ret == H2D_OK && r->state == H2D_REQUEST_STATE_PROCESS_HEADERS) {
-		r->state = H2D_REQUEST_STATE_PROCESS_BODY;
+	return r->conf_path->content->content.process_headers(r);
+}
+
+static int h2d_request_process_body(struct h2d_request *r)
+{
+	if (r->req.content_length == H2D_CONTENT_LENGTH_INIT && !wuy_http_chunked_is_enabled(&r->req.chunked)) {
+		return H2D_OK;
 	}
-	return ret;
+	if (r->req.content_length == 0) {
+		return H2D_OK;
+	}
+
+	if (!r->req.body_finished) {
+		return H2D_AGAIN;
+	}
+
+	int ret = h2d_module_filter_process_body(r);
+	if (ret != H2D_OK) {
+		return ret;
+	}
+
+	return r->conf_path->content->content.process_body(r);
 }
 
 static int h2d_request_response_headers(struct h2d_request *r)
@@ -132,17 +149,7 @@ static int h2d_request_response_headers(struct h2d_request *r)
 		return h2d_http1_response_headers(r);
 	}
 }
-static bool h2d_request_is_body_finished(struct h2d_request *r)
-{
-	if (r->subr != NULL) {
-		return false;
-	}
-	if (r->resp.content_length != H2D_CONTENT_LENGTH_INIT) {
-		return r->resp.sent_length >= r->resp.content_length;
-		//return r->resp.sent_length == r->resp.content_length;
-	}
-	return r->conf_path->content->content.is_body_finished(r);
-}
+
 static int h2d_request_response_body(struct h2d_request *r)
 {
 	struct h2d_connection *c = r->c;
@@ -158,71 +165,100 @@ static int h2d_request_response_body(struct h2d_request *r)
 
 	if (c->is_http2) {
 		h2d_http2_response_body_packfix(r, &buf_pos, &buf_len);
-	} else if (r->resp.content_length == H2D_CONTENT_LENGTH_CHUNKED) {
+	} else {
 		h2d_http1_response_body_packfix(r, &buf_pos, &buf_len);
 	}
 
-	buf_len = r->conf_path->content->content.response_body(r, buf_pos, buf_len);
-	if (buf_len < 0) {
-		return buf_len;
+	int body_len = 0;
+
+	/* generate */
+	if (r->resp.content_generate_length < r->resp.content_length) {
+		body_len = r->conf_path->content->content.response_body(r, buf_pos, buf_len);
+		if (body_len < 0) {
+			return body_len;
+		}
+
+		r->resp.content_generate_length += body_len;
 	}
 
-	buf_len = h2d_module_filter_response_body(r, buf_pos, buf_len);
-	if (buf_len <= 0) {
-		return buf_len;
+	bool is_body_finished = (r->resp.content_generate_length >= r->resp.content_length);
+
+	/* filter */
+	if (r->resp.is_body_filtered) {
+		body_len = h2d_module_filter_response_body(r, buf_pos, body_len, buf_len);
+		if (body_len < 0) {
+			return body_len;
+		}
+
+		is_body_finished = false;
 	}
 
-	r->resp.sent_length += buf_len;
+	if (body_len == H2D_OK) {
+		is_body_finished = true;
+	}
 
-	bool is_body_finished = h2d_request_is_body_finished(r);
-
+	/* pack, HTTP2 frame or HTTP1 chunked */
 	if (c->is_http2) {
-		buf_len = h2d_http2_response_body_pack(r, buf_pos, buf_len, is_body_finished);
-	} else if (r->resp.content_length == H2D_CONTENT_LENGTH_CHUNKED) {
-		buf_len = h2d_http1_response_body_pack(r, buf_pos, buf_len, is_body_finished);
+		body_len = h2d_http2_response_body_pack(r, buf_pos, body_len, is_body_finished);
+	} else {
+		body_len = h2d_http1_response_body_pack(r, buf_pos, body_len, is_body_finished);
 	}
 
-	c->send_buf_pos += buf_len;
+	r->resp.sent_length += body_len;
+	c->send_buf_pos += body_len;
 
 	if (is_body_finished) {
 		h2d_request_close(r);
+		return H2D_OK;
 	}
 
-	return H2D_OK;
+	/* run again */
+	return h2d_request_response_body(r);
 }
-void h2d_request_response(struct h2d_request *r)
+
+void h2d_request_run(struct h2d_request *r, int window)
 {
-	if (r->state == H2D_REQUEST_STATE_CLOSED) {
+	int ret;
+	switch (r->state) {
+	case H2D_REQUEST_STATE_PARSE_HEADERS:
+		return;
+	case H2D_REQUEST_STATE_PROCESS_HEADERS:
+		ret = h2d_request_process_headers(r);
+		break;
+	case H2D_REQUEST_STATE_PROCESS_BODY:
+		ret = h2d_request_process_body(r);
+		break;
+	case H2D_REQUEST_STATE_RESPONSE_HEADERS:
+		ret = h2d_request_response_headers(r);
+		break;
+	case H2D_REQUEST_STATE_RESPONSE_BODY:
+		ret = h2d_request_response_body(r);
+		/* fall through */
+	case H2D_REQUEST_STATE_CLOSED:
 		return;
 	}
 
-	/* response headers */
-	// if (r->state == H2D_REQUEST_STATE_RESPONSE_HEADERS) { // TODO
-	if (r->state <= H2D_REQUEST_STATE_RESPONSE_HEADERS) { // FIXME
-		int ret = h2d_request_response_headers(r);
-		if (ret == H2D_AGAIN) {
-			return;
-		} else if (ret == H2D_ERROR) {
-			h2d_request_close(r);
-			return;
-		} else if (ret != H2D_OK) {
-			// TODO special response
-		}
+	printf("run: %d %d\n", r->state, ret);
 
-		r->state = H2D_REQUEST_STATE_RESPONSE_BODY;
+	if (ret == H2D_AGAIN) {
+		return;
+	}
+	if (ret == H2D_ERROR) {
+		h2d_request_close(r);
+		return;
+	}
+	if (ret != H2D_OK) {
+		printf("TODO: special response\n");
+		return;
+		// TODO special response
 	}
 
-	/* response body */
-	do {
-		int ret = h2d_request_response_body(r);
-		if (ret == H2D_AGAIN) {
-			return;
-		} else if (ret == H2D_ERROR) {
-			h2d_request_close(r);
-			return;
-		}
+	r->state++;
+	if (window == 0 && r->state >= H2D_REQUEST_STATE_RESPONSE_HEADERS) {
+		return;
+	}
 
-	} while (h2d_connection_flush_if_full(r->c));
+	return h2d_request_run(r, window);
 }
 
 void http2_stream_active_tmp(http2_stream_t *s);
@@ -256,6 +292,7 @@ struct h2d_request *h2d_request_subreq_new(struct h2d_request *father)
 	/* subrequest */
 	struct h2d_request *subreq = h2d_request_new(c);
 	subreq->conf_host = father->conf_host;
+	subreq->state = H2D_REQUEST_STATE_PROCESS_HEADERS;
 	subreq->father = father;
 	father->subr = subreq;
 	c->u.request = subreq;
@@ -272,14 +309,8 @@ static void h2d_request_defer_routine(void *data)
 	while ((node = wuy_list_first(&h2d_request_defer_run_list)) != NULL) {
 		wuy_list_del_init(node);
 
-		// TODO new function: h2d_request_run() ?
 		struct h2d_request *r = wuy_containerof(node, struct h2d_request, list_node);
-		if (r->state == H2D_REQUEST_STATE_PROCESS_HEADERS) {
-			if (h2d_request_process_headers(r) != H2D_OK) {
-				continue;
-			}
-		}
-		h2d_request_response(r);
+		h2d_request_run(r, -1);
 		h2d_connection_flush(r->c);
 	}
 

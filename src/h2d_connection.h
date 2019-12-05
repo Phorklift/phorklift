@@ -36,7 +36,6 @@ static inline bool h2d_connection_write_blocked(struct h2d_connection *c)
 }
 
 int h2d_connection_flush(struct h2d_connection *c);
-bool h2d_connection_flush_if_full(struct h2d_connection *c);
 
 int h2d_connection_make_space(struct h2d_connection *c, int size);
 

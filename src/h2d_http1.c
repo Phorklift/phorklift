@@ -9,7 +9,7 @@ static int h2d_http1_request_headers(struct h2d_request *r, const char *buffer, 
 		int url_len;
 		const char *url_str;
 		int proc_len = wuy_http_request_line(buf_pos, buf_len,
-				&r->req.method, &url_str, &url_len, &r->req.method);
+				&r->req.method, &url_str, &url_len, &r->req.version);
 		if (proc_len < 0) {
 			printf("invalid request line !!!!\n");
 			return H2D_ERROR;
@@ -37,7 +37,7 @@ static int h2d_http1_request_headers(struct h2d_request *r, const char *buffer, 
 		}
 		buf_pos += proc_len;
 		if (proc_len == 2) { /* end of headers */
-			h2d_request_process_headers(r);
+			r->state = H2D_REQUEST_STATE_PROCESS_HEADERS;
 			break;
 		}
 
@@ -64,6 +64,13 @@ static int h2d_http1_request_headers(struct h2d_request *r, const char *buffer, 
 	return buf_pos - buffer;
 }
 
+static bool h2d_http1_response_is_chunked(struct h2d_request *r)
+{
+	if (r->req.version == 0) {
+		return false;
+	}
+	return r->resp.is_body_filtered || (r->resp.content_length == H2D_CONTENT_LENGTH_INIT);
+}
 int h2d_http1_response_headers(struct h2d_request *r)
 {
 	int estimate_size = (char *)r->resp.next - (char *)r->resp.buffer + 100; // TODO
@@ -76,7 +83,7 @@ int h2d_http1_response_headers(struct h2d_request *r)
 	char *p = (char *)r->c->send_buf_pos;
 	p += sprintf(p, "HTTP/1.1 %d xxx\r\n", r->resp.status_code);
 
-	if (r->resp.content_length == H2D_CONTENT_LENGTH_CHUNKED) {
+	if (h2d_http1_response_is_chunked(r)) {
 		p += sprintf(p, "Transfer-Encoding: chunked\r\n");
 	} else if (r->resp.content_length != H2D_CONTENT_LENGTH_INIT) {
 		p += sprintf(p, "Content-Length: %ld\r\n", r->resp.content_length);
@@ -84,7 +91,7 @@ int h2d_http1_response_headers(struct h2d_request *r)
 
 	struct h2d_header *h;
 	for (h = r->resp.buffer; h->name_len != 0; h = h2d_header_next(h)) {
-		p += sprintf("%s: %s\r\n", h->str, h2d_header_value(h));
+		p += sprintf(p, "%s: %s\r\n", h->str, h2d_header_value(h));
 	}
 	p += sprintf(p, "\r\n");
 
@@ -97,7 +104,7 @@ int h2d_http1_response_headers(struct h2d_request *r)
 void h2d_http1_response_body_packfix(struct h2d_request *r,
 		uint8_t **p_buf_pos, int *p_buf_len)
 {
-	if (r->resp.content_length != H2D_CONTENT_LENGTH_CHUNKED) {
+	if (!h2d_http1_response_is_chunked(r)) {
 		return;
 	}
 	*p_buf_pos += H2D_CHUNKED_PREFIX_LENGTH;
@@ -106,14 +113,14 @@ void h2d_http1_response_body_packfix(struct h2d_request *r,
 int h2d_http1_response_body_pack(struct h2d_request *r, uint8_t *payload,
 		int length, bool is_body_finished)
 {
-	if (r->resp.content_length != H2D_CONTENT_LENGTH_CHUNKED) {
-		return 0;
+	if (!h2d_http1_response_is_chunked(r)) {
+		return length;
 	}
 
 	sprintf((char *)payload - H2D_CHUNKED_PREFIX_LENGTH, "%-8x\r", length);
 	payload[-1] = '\n';
 
-	if (is_body_finished) {
+	if (length != 0 && is_body_finished) {
 		memcpy(payload + length, "\r\n0\r\n", 5);
 		return length + H2D_CHUNKED_PREFIX_LENGTH + 5;
 	} else {
@@ -128,8 +135,7 @@ void h2d_http1_on_writable(struct h2d_connection *c)
 	if (r == NULL) {
 		return;
 	}
-
-	h2d_request_response(r);
+	h2d_request_run(r, -1);
 }
 
 int h2d_http1_on_read(struct h2d_connection *c, void *data, int buf_len)
@@ -140,19 +146,40 @@ int h2d_http1_on_read(struct h2d_connection *c, void *data, int buf_len)
 
 	struct h2d_request *r = c->u.request;
 
-	if (r->state == H2D_REQUEST_STATE_PROCESS_HEADERS) {
+	uint8_t *body_buf = data;
+	int body_len = buf_len;
+
+	/* parse request headers */
+	if (r->state == H2D_REQUEST_STATE_PARSE_HEADERS) {
 		int proc_len = h2d_http1_request_headers(r, data, buf_len);
 		if (proc_len < 0) {
 			return proc_len;
 		}
+		if (r->state == H2D_REQUEST_STATE_PARSE_HEADERS) {
+			return proc_len;
+		}
+
+		body_buf += proc_len;
+		body_len -= proc_len;
 	}
 
-	if (r->state == H2D_REQUEST_STATE_RESPONSE_HEADERS) { // TODO
-		return buf_len;
+	/* save request body */
+	if (body_len > 0) {
+		if (r->req.body_buf == NULL) {
+			r->req.body_buf = malloc(4096); // TODO
+		}
+		memcpy(r->req.body_buf + r->req.body_len, body_buf, body_len);
+		r->req.body_len += body_len;
+
+		if (r->req.content_length != H2D_CONTENT_LENGTH_INIT) {
+			r->req.body_finished = r->req.body_len >= r->req.content_length;
+		} else {
+			r->req.body_finished = wuy_http_chunked_is_finished(&r->req.chunked);
+		}
 	}
 
-	h2d_request_response(r);
+	/* run */
+	h2d_request_run(r, -1);
 
-	//printf("TODO request %d %d\n", proc_len, buf_len);
 	return buf_len;
 }
