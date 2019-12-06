@@ -238,7 +238,7 @@ void h2d_request_run(struct h2d_request *r, int window)
 		return;
 	}
 
-	printf("run: %d %d\n", r->state, ret);
+	printf("run %s: state:%d ret:%d\n", h2d_header_value(r->req.url), r->state, ret);
 
 	if (ret == H2D_AGAIN) {
 		return;

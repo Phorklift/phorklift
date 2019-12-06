@@ -7,8 +7,7 @@ struct h2d_request;
 #include "h2d_conf.h"
 #include "h2d_connection.h"
 
-#define H2D_CONTENT_LENGTH_INIT		(SIZE_MAX-1)
-#define H2D_CONTENT_LENGTH_CHUNKED	(SIZE_MAX-3)
+#define H2D_CONTENT_LENGTH_INIT	(SIZE_MAX-1)
 
 enum h2d_request_state {
 	H2D_REQUEST_STATE_PARSE_HEADERS = 0,
@@ -51,6 +50,8 @@ struct h2d_request {
 	} resp;
 
 	enum h2d_request_state	state;
+
+	int			filter_step_process_headers;
 
 	struct h2d_request	*father; /* only for subreq */
 	struct h2d_request	*subr; /* only for subreq */

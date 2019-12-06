@@ -61,9 +61,7 @@ static int h2d_static_generate_response_body(struct h2d_request *r, uint8_t *buf
 static void h2d_static_ctx_free(struct h2d_request *r)
 {
 	int fd = H2D_STATIC_CTX_FD(r);
-	if (fd != 0) {
-		close(fd);
-	}
+	close(fd);
 }
 
 

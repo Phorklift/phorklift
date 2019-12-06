@@ -56,6 +56,18 @@ void h2d_module_master_init(void)
 		}
 	}
 }
+void h2d_module_master_post(void)
+{
+	int i;
+	for (i = 0; i < H2D_MODULE_NUMBER; i++) {
+		struct h2d_module *m = h2d_modules[i];
+		if (m->master_post != NULL) {
+			if (!m->master_post()) {
+				exit(1);
+			}
+		}
+	}
+}
 
 void h2d_module_worker_init(void)
 {
@@ -82,7 +94,7 @@ void h2d_module_request_ctx_free(struct h2d_request *r)
 	int i;
 	for (i = 0; i < H2D_MODULE_NUMBER; i++) {
 		struct h2d_module *m = h2d_modules[i];
-		if (m->request_ctx.free != NULL) {
+		if (m->request_ctx.free != NULL && r->module_ctxs[m->request_ctx.index] != NULL) {
 			m->request_ctx.free(r);
 		}
 	}
@@ -90,15 +102,15 @@ void h2d_module_request_ctx_free(struct h2d_request *r)
 
 int h2d_module_filter_process_headers(struct h2d_request *r)
 {
-	int i;
-	for (i = 0; i < H2D_MODULE_NUMBER; i++) {
-		struct h2d_module *m = h2d_modules[i];
+	while (r->filter_step_process_headers < H2D_MODULE_NUMBER) {
+		struct h2d_module *m = h2d_modules[r->filter_step_process_headers];
 		if (m->filters.process_headers != NULL) {
 			int ret = m->filters.process_headers(r);
 			if (ret != H2D_OK) {
 				return ret;
 			}
 		}
+		r->filter_step_process_headers++;
 	}
 
 	return H2D_OK;

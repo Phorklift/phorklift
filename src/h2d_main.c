@@ -90,8 +90,7 @@ int main(int argc, char * const *argv)
 		return -1;
 	}
 
-	/* init after configuration */
-	h2d_lua_api_init();
+	h2d_module_master_post();
 
 	/* listen */
 	if (!h2d_connection_listen(listens)) {

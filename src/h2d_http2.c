@@ -24,7 +24,18 @@ static bool h2d_http2_hook_stream_header(http2_stream_t *h2s, const char *name_s
 
 	/* end of headers */
 	if (name_str == NULL) {
-		// TODO bool end_request = name_len;
+
+		if (name_len != 0) { /* end of request */
+			if (r->req.content_length != H2D_CONTENT_LENGTH_INIT && r->req.content_length != 0) {
+				return false;
+			}
+		} else { /* request body follows */
+			if (r->req.content_length == H2D_CONTENT_LENGTH_INIT) {
+				/* just to tell h2d_request_process_body() that there is body */
+				wuy_http_chunked_enable(&r->req.chunked);
+			}
+		}
+
 		r->state = H2D_REQUEST_STATE_PROCESS_HEADERS;
 		h2d_request_run(r, 0);
 		return true; //  return what ??
@@ -49,6 +60,11 @@ static bool h2d_http2_hook_stream_header(http2_stream_t *h2s, const char *name_s
 		} else {
 			return false;
 		}
+	} else {
+		if (h2d_litestr_equal(name_str, name_len, "content-length")) {
+			r->req.content_length = atoi(value_str);
+			return true;
+		}
 	}
 
 	r->req.next = h2d_header_add(r->req.next, name_str, name_len, value_str, value_len);
@@ -57,7 +73,20 @@ static bool h2d_http2_hook_stream_header(http2_stream_t *h2s, const char *name_s
 
 static bool h2d_http2_hook_stream_body(http2_stream_t *h2s, const uint8_t *buf, int len)
 {
-	/* ignore request body */
+	struct h2d_request *r = http2_stream_get_app_data(h2s);
+
+	if (buf == NULL) {
+		printf("set r->req.body_finished\n");
+		r->req.body_finished = true;
+		h2d_request_run(r, 0);
+		return true;
+	}
+
+	if (r->req.body_buf == NULL) {
+		r->req.body_buf = malloc(4096); // TODO
+	}
+	memcpy(r->req.body_buf + r->req.body_len, buf, len);
+	r->req.body_len += len;
 	return true;
 }
 

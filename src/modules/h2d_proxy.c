@@ -22,7 +22,13 @@ static int build_headers(struct h2d_request *r, char *buffer)
 {
 	char *pos = buffer;
 
-	pos += sprintf(pos, "GET %s HTTP/1.1\r\n", h2d_header_value(r->req.url));
+	pos += sprintf(pos, "%s %s HTTP/1.1\r\n", wuy_http_string_method(r->req.method),
+			h2d_header_value(r->req.url));
+
+	if (r->req.content_length != H2D_CONTENT_LENGTH_INIT) {
+		pos += sprintf(pos, "Content-Length: %ld\r\n", r->req.content_length);
+	}
+
 	struct h2d_header *h;
 	for (h = r->req.buffer; h->name_len != 0; h = h2d_header_next(h)) {
 		const char *name = h->str;
@@ -126,6 +132,11 @@ static int h2d_proxy_process_request_headers(struct h2d_request *r)
 }
 static int h2d_proxy_process_request_body(struct h2d_request *r)
 {
+	struct h2d_proxy_ctx *ctx = r->module_ctxs[h2d_proxy_module.request_ctx.index];
+	int len = h2d_upstream_connection_write(ctx->upc, r->req.body_buf, r->req.body_len);
+	if (len < 0) {
+		return H2D_ERROR;
+	}
 	return H2D_OK;
 }
 static int h2d_proxy_generate_response_headers(struct h2d_request *r)
@@ -261,9 +272,6 @@ static int h2d_proxy_generate_response_body(struct h2d_request *r,
 static void h2d_proxy_ctx_free(struct h2d_request *r)
 {
 	struct h2d_proxy_ctx *ctx = r->module_ctxs[h2d_proxy_module.request_ctx.index];
-	if (ctx == NULL) {
-		return;
-	}
 
 	if (ctx->upc != NULL) {
 		h2d_upstream_release_connection(ctx->upc);

@@ -42,10 +42,7 @@ static void h2d_upstream_on_readable(loop_stream_t *s)
  * */
 int h2d_upstream_connection_write(struct h2d_upstream_connection *upc, void *data, int data_len)
 {
-	if (upc->send_buffer != NULL) { // TODO
-		printf("!!!!!!!!!!!!!! errrrrrrrrrrrrrrrror\n");
-		return -1;
-		/*
+	if (upc->send_buffer != NULL) {
 		if (upc->send_buf_len + data_len > upc->upstream->send_buffer_size) {
 			printf("!!!!!!!!!!!!!! errrrrrrrrrrrrrrrror\n");
 			return -1;
@@ -53,7 +50,9 @@ int h2d_upstream_connection_write(struct h2d_upstream_connection *upc, void *dat
 
 		memcpy(upc->send_buffer + upc->send_buf_len, data, data_len);
 		upc->send_buf_len += data_len;
-		*/
+
+		data = upc->send_buffer;
+		data_len = upc->send_buf_len;
 	}
 
 	int write_len = loop_stream_write(upc->loop_stream, data, data_len);
