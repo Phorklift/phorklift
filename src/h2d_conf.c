@@ -37,8 +37,7 @@ wuy_array_t *h2d_conf_parse(const char *defaults_file, const char *conf_file)
 	int ret = luaL_loadfile(h2d_L, "conf/parse/parse.lua");
 	if (ret != 0) {
 		printf("load h2d_conf.lua fail: %d\n", ret);
-		lua_close(h2d_L);
-		return NULL;
+		exit(H2D_EXIT_CONF);
 	}
 
 	/* 3 arguments */
@@ -50,8 +49,7 @@ wuy_array_t *h2d_conf_parse(const char *defaults_file, const char *conf_file)
 	if (ret != 0) {
 		const char *errmsg = lua_tostring(h2d_L, -1);
 		printf("load config fail: %d. %s\n", ret, errmsg);
-		lua_close(h2d_L);
-		return NULL;
+		exit(H2D_EXIT_CONF);
 	}
 
 	/* There are 2 return values.
@@ -75,8 +73,7 @@ wuy_array_t *h2d_conf_parse(const char *defaults_file, const char *conf_file)
 	int br = wuy_cflua_parse(h2d_L, &global, &h2d_conf_listens);
 	if (br < 0) {
 		printf("parse: %d\n", br);
-		lua_close(h2d_L);
-		return NULL;
+		exit(H2D_EXIT_CONF);
 	}
 
 	return &h2d_conf_listens;

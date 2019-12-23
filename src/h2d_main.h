@@ -37,6 +37,14 @@
 #define H2D_ERROR		-1
 #define H2D_AGAIN		-2
 
+/* exit status */
+#define H2D_EXIT_OK		0
+#define H2D_EXIT_GETOPT		1
+#define H2D_EXIT_CONF		2
+#define H2D_EXIT_MODULE_INIT	3
+#define H2D_EXIT_FORK_WORKER	4
+#define H2D_EXIT_LISTEN		5
+
 /* global event-driven loop */
 extern loop_t *h2d_loop;
 

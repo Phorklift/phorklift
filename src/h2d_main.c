@@ -1,5 +1,7 @@
 #include <signal.h>
 #include <errno.h>
+#include <sys/types.h>
+#include <sys/wait.h>
 
 #include "h2d_main.h"
 
@@ -35,13 +37,13 @@ static void h2d_getopt(int argc, char *const *argv)
 			opt_worker_num = strtol(optarg, &endptr, 0);
 			if (endptr[0] != '\0') {
 				fprintf(stderr, "Invalid option worker number: %s\n", optarg);
-				exit(-1);
+				exit(H2D_EXIT_GETOPT);
 			}
 			break;
 		case 'p':
 			if (chdir(optarg) != 0) {
 				fprintf(stderr, "Fail to chdir to %s : %s\n", optarg, strerror(errno));
-				exit(-1);
+				exit(H2D_EXIT_GETOPT);
 			}
 			break;
 		case 'i':
@@ -61,45 +63,116 @@ static void h2d_getopt(int argc, char *const *argv)
 			exit(0);
 		default:
 			printf("%s", help);
-			exit(-1);
+			exit(H2D_EXIT_GETOPT);
 		}
 	}
 }
 
-loop_t *h2d_loop;
-int main(int argc, char * const *argv)
+loop_t *h2d_loop = NULL;
+static void h2d_signal_worker_quit(int signo)
 {
-	/* command line options */
-	h2d_getopt(argc, argv);
+	loop_kill(h2d_loop);
+}
+static void h2d_worker_entry(wuy_array_t *listens)
+{
+	printf("start worker: %d\n", getpid());
 
-	/* initialization */
-	signal(SIGPIPE, SIG_IGN); /* for network */
+	signal(SIGQUIT, h2d_signal_worker_quit);
+	signal(SIGUSR1, h2d_signal_worker_quit);
 
 	h2d_loop = loop_new();
 
-	h2d_module_master_init();
+	h2d_upstream_init();
+	h2d_request_init();
+	h2d_module_worker_init();
+
+	h2d_connection_listen(listens);
+
+	loop_run(h2d_loop);
+	printf("!!!!! worker quit\n");
+}
+
+static void h2d_signal_dispatch(int signo)
+{
+	/* Since kill(0, signo) sends signal to this process self too.
+	 * we check time here to avoid loop. */
+	static time_t last = 0;
+	time_t now = time(NULL);
+	if (now - last <= 1) {
+		return;
+	}
+	last = now;
+
+	kill(0, signo);
+}
+
+int main(int argc, char * const *argv)
+{
+	h2d_getopt(argc, argv);
+
+	signal(SIGPIPE, SIG_IGN);
+	signal(SIGQUIT, h2d_signal_dispatch);
+	signal(SIGUSR1, h2d_signal_dispatch);
 
 	h2d_ssl_init();
 	h2d_http2_init();
-	h2d_upstream_init();
-	h2d_request_init();
 
-	/* configuration */
+	h2d_module_master_init();
+
 	wuy_array_t *listens = h2d_conf_parse(opt_defaults_file, opt_conf_file);
-	if (listens == NULL) {
-		return -1;
-	}
 
 	h2d_module_master_post();
 
-	/* listen */
-	if (!h2d_connection_listen(listens)) {
-		return -1;
+	if (opt_worker_num == 0) {
+		h2d_worker_entry(listens);
+		return 0;
 	}
 
-	/* run */
-	printf("start working loop\n");
-	loop_run(h2d_loop);
+	/* start workers */
+	for (int i = 0; i < opt_worker_num; i++) {
+		pid_t pid = fork();
+		if (pid < 0) {
+			perror("fail in fork");
+			return H2D_EXIT_FORK_WORKER;
+		}
+		if (pid == 0) {
+			h2d_worker_entry(listens);
+			exit(0);
+		}
+	}
+
+	/* master */
+	while (1) {
+		int status;
+		pid_t pid = wait(&status);
+		if (pid < 0) {
+			if (errno == EINTR) {
+				continue;
+			}
+			break; /* errno == ECHILD */
+		}
+
+		if (WIFEXITED(status)) {
+			printf("worker %d exit with %d\n", pid, WEXITSTATUS(status));
+			continue;
+		} else if (WIFSIGNALED(status)) {
+			printf("worker %d signal with %d\n", pid, WTERMSIG(status));
+		} else {
+			printf("worker %d quit!\n", pid);
+			continue;
+		}
+
+		/* create new worker */
+		pid = fork();
+		if (pid < 0) {
+			perror("fail in fork");
+			continue;
+		}
+		if (pid == 0) {
+			h2d_worker_entry(listens);
+			exit(0);
+		}
+	}
 
 	return 0;
 }

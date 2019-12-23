@@ -90,6 +90,7 @@ for f in p:lines() do
 	h2d_current_module = f
 	dofile(f)
 end
+p:close()
 
 
 -- 3. Merge user-defined default values

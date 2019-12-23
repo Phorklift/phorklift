@@ -63,7 +63,7 @@ void h2d_module_master_post(void)
 		struct h2d_module *m = h2d_modules[i];
 		if (m->master_post != NULL) {
 			if (!m->master_post()) {
-				exit(1);
+				exit(H2D_EXIT_MODULE_INIT);
 			}
 		}
 	}

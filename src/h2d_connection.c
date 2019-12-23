@@ -166,7 +166,7 @@ static loop_stream_ops_t h2d_connection_stream_ops = {
 	.on_writable = h2d_connection_on_writable,
 };
 
-bool h2d_connection_listen(wuy_array_t *listens)
+void h2d_connection_listen(wuy_array_t *listens)
 {
 	/* init */
 	h2d_connection_pool = wuy_pool_new_type(struct h2d_connection);
@@ -185,12 +185,10 @@ bool h2d_connection_listen(wuy_array_t *listens)
 
 			if (loop_listen == NULL) {
 				perror("listen fail");
-				return false;
+				exit(H2D_EXIT_LISTEN);
 			}
 
 			loop_tcp_listen_set_app_data(loop_listen, conf_listen);
 		}
 	}
-
-	return true;
 }
