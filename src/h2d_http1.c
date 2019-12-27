@@ -183,6 +183,7 @@ int h2d_http1_on_read(struct h2d_connection *c, void *data, int buf_len)
 	h2d_request_run(r, -1);
 
 	if (r->state == H2D_REQUEST_STATE_CLOSED && r->req.version == 0) {
+		// TODO check Connection header
 		return -1;
 	}
 

@@ -14,6 +14,10 @@ struct h2d_module {
 	struct wuy_cflua_command	command_host;
 	struct wuy_cflua_command	command_path;
 
+	int		(*stats_listen)(void *conf, char *buf, int len);
+	int		(*stats_path)(void *conf, char *buf, int len);
+	int		(*stats_host)(void *conf, char *buf, int len);
+
 	struct {
 		bool	(*is_enable)(void *conf);
 		int	(*process_headers)(struct h2d_request *);
@@ -30,8 +34,8 @@ struct h2d_module {
 	} filters;
 
 	struct {
-		int		index;
-		void		(*free)(struct h2d_request *);
+		int	index;
+		void	(*free)(struct h2d_request *);
 	} request_ctx;
 
 	void	(*master_init)(void);
@@ -48,6 +52,8 @@ void h2d_module_worker_init(void);
 struct wuy_cflua_command *h2d_module_next_listen_command(struct wuy_cflua_command *cmd);
 struct wuy_cflua_command *h2d_module_next_host_command(struct wuy_cflua_command *cmd);
 struct wuy_cflua_command *h2d_module_next_path_command(struct wuy_cflua_command *cmd);
+
+int h2d_module_path_stats(void **confs, char *buf, int len);
 
 struct h2d_module *h2d_module_content_is_enable(int i, void *conf);
 void h2d_module_request_ctx_free(struct h2d_request *r);

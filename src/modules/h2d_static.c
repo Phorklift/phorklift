@@ -5,11 +5,17 @@
 
 #include "h2d_main.h"
 
+struct h2d_static_stats {
+	atomic_int	total;
+	atomic_int	fail;
+};
 struct h2d_static_conf {
 	const char	*dir_name;
 	int		dirfd;
 
 	const char	*index;
+
+	struct h2d_static_stats	*stats;
 };
 
 extern struct h2d_module h2d_static_module;
@@ -21,12 +27,14 @@ extern struct h2d_module h2d_static_module;
 static int h2d_static_process_request_headers(struct h2d_request *r)
 {
 	struct h2d_static_conf *conf = r->conf_path->module_confs[h2d_static_module.index];
+	atomic_fetch_add(&conf->stats->total, 1);
 
 	const char *url = h2d_header_value(r->req.url);
 	int fd = openat(conf->dirfd, url + 1, O_RDONLY);
 	if (fd < 0) {
+		atomic_fetch_add(&conf->stats->fail, 1);
 		printf("error to open file: %s\n", url);
-		return 404;
+		return H2D_HTTP_404;
 	}
 	r->module_ctxs[h2d_static_module.request_ctx.index] = (void *)(uintptr_t)fd;
 	return H2D_OK;
@@ -86,7 +94,9 @@ static bool h2d_static_conf_post(void *data)
 		printf("static: fail to open dir\n");
 		return false;
 	}
-	printf("debug: open %s\n", conf->dir_name);
+	// printf("debug: open %s\n", conf->dir_name);
+
+	conf->stats = wuy_shmem_alloc(sizeof(struct h2d_static_stats));
 
 	return true;
 }
@@ -96,6 +106,16 @@ static void h2d_static_conf_cleanup(void *data)
 	if (conf->dirfd != 0) {
 		close(conf->dirfd);
 	}
+}
+
+static int h2d_static_conf_stats(void *data, char *buf, int len)
+{
+	struct h2d_static_conf *conf = data;
+	struct h2d_static_stats *stats = conf->stats;
+	if (stats == NULL) {
+		return 0;
+	}
+	return snprintf(buf, len, "static: %d %d\n", atomic_load(&stats->total), atomic_load(&stats->fail));
 }
 
 static struct wuy_cflua_command h2d_static_conf_commands[] = {
@@ -123,6 +143,7 @@ struct h2d_module h2d_static_module = {
 			.cleanup = h2d_static_conf_cleanup,
 		}
 	},
+	.stats_path = h2d_static_conf_stats,
 
 	.content = {
 		.is_enable = h2d_static_conf_is_enable,
@@ -135,4 +156,10 @@ struct h2d_module h2d_static_module = {
 	.request_ctx = {
 		.free = h2d_static_ctx_free,
 	},
+
+	/* TODO stats in module angle. do we need path,host,listen, or a single one?
+	.stats = {
+		.size = sizeof(struct h2d_static_stats),
+	},
+	*/
 };

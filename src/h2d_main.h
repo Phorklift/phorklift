@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <stdbool.h>
+#include <stdatomic.h>
 #include <assert.h>
 
 #include "libwuya/wuy_array.h"
@@ -15,6 +16,7 @@
 #include "libwuya/wuy_tcp.h"
 #include "libwuya/wuy_sockaddr.h"
 #include "libwuya/wuy_http.h"
+#include "libwuya/wuy_shmem.h"
 
 #include "libloop/loop.h"
 

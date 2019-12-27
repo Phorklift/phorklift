@@ -1,7 +1,7 @@
 CFLAGS = -g -Wall -O2
 CFLAGS += -I../ -I/usr/include/lua5.1
 
-all: h2d_static.o h2d_proxy.o h2d_lua.o h2d_acl.o h2d_test_subreq.o
+all: h2d_static.o h2d_proxy.o h2d_lua.o h2d_acl.o h2d_test_subreq.o h2d_stats.o
 
 clean:
 	rm -f *.o

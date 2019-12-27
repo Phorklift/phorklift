@@ -34,6 +34,19 @@ struct wuy_cflua_command *h2d_module_next_path_command(struct wuy_cflua_command 
 	return h2d_module_next_command(cmd, offsetof(struct h2d_module, command_path));
 }
 
+int h2d_module_path_stats(void **confs, char *buf, int len)
+{
+	char *pos = buf;
+	char *end = buf + len;
+	for (int i = 0; i < H2D_MODULE_NUMBER; i++) {
+		struct h2d_module *m = h2d_modules[i];
+		if (m->stats_path != NULL) {
+			pos += m->stats_path(confs[i], pos, end - pos);
+		}
+	}
+	return pos - buf;
+}
+
 int h2d_module_ctx_number = 0;
 void h2d_module_master_init(void)
 {
