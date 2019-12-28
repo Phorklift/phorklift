@@ -36,7 +36,7 @@ wuy_array_t *h2d_conf_parse(const char *defaults_file, const char *conf_file)
 
 	int ret = luaL_loadfile(h2d_L, "conf/parse/parse.lua");
 	if (ret != 0) {
-		printf("load h2d_conf.lua fail: %d\n", ret);
+		printf("load conf/parse/parse.lua fail: %d\n", ret);
 		exit(H2D_EXIT_CONF);
 	}
 

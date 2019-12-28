@@ -1,6 +1,4 @@
--- Load configuration file.
---
--- Part of BlackSesami project.
+-- Load h2tpd configuration file.
 --
 -- Author: Wu Bingzheng
 --   Date: 2019-09-20
@@ -8,9 +6,9 @@
 --
 -- Configuration rules:
 --
--- + Array members and key-value options are both allowed;
+-- + Array members and key-value options are allowed;
 --
--- + There are 3 levels and created by Listen(), Host() and Path();
+-- + There are 3 levels which are created by Listen(), Host() and Path();
 --
 -- + Options defined in lower level can be set in higher level as default value.
 --   E.g. `ssl` is defined in level Host, while it can be set in level Listen,
@@ -24,18 +22,17 @@
 --
 -- Load steps:
 --
--- 1. Load core configuration definitions, including the command names,
---    types, and default values.
+-- 1. Load core configuration definitions from @h2d_conf_definitions_dir/core.lua
 --
--- 2. Load modules' configuration definitions.
+-- 2. Load modules' configuration definitions from @h2d_conf_definitions_dir/mod_*.lua
 --
--- 3. Merge user-defined default values.
+-- 3. Merge user-defined default values from @h2d_conf_defaults_file
 --
--- 4. Read the configuration file.
+-- 4. Read the configuration file from @h2d_conf_file
 --
 --
--- Returns:
---   The listen array.
+-- Return 2 values:
+--   The Listen array, H2D_ZERO_FUNC
 
 
 -- zero value of function
@@ -166,12 +163,17 @@ local function h2d_conf_merge_default(base, new, prefix, checkonly)
 	for k,v in pairs(new) do
 		if h2d_iter_key(k, prefix) then
 
-			-- target is just base if this option is at this level,
-			-- or it's _default_next if the option is at lower level
+			-- target:=base, if this option is at this level; or
+			-- target:=base._default_next, if the option is at lower level.
 			local target, vtype = h2d_value_type(base, k, new, v, prefix)
 
 			if type(v) ~= vtype then
-				error(prefix .. string.format(": mismatch type of key %s, get %s while expect %s", k, type(v), vtype))
+				if vtype == "table" and target[k]._array_type == type(v) then
+					new[k] = { v } -- grammar suger
+					v = new[k]
+				else
+					error(prefix .. string.format(": mismatch type of key %s, get %s while expect %s", k, type(v), vtype))
+				end
 			end
 
 			if type(v) == "table" then

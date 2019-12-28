@@ -9,15 +9,6 @@ struct h2d_request;
 
 #define H2D_CONTENT_LENGTH_INIT	(SIZE_MAX-1)
 
-enum h2d_request_state {
-	H2D_REQUEST_STATE_PARSE_HEADERS = 0,
-	H2D_REQUEST_STATE_PROCESS_HEADERS,
-	H2D_REQUEST_STATE_PROCESS_BODY,
-	H2D_REQUEST_STATE_RESPONSE_HEADERS,
-	H2D_REQUEST_STATE_RESPONSE_BODY,
-	H2D_REQUEST_STATE_CLOSED,
-};
-
 struct h2d_request {
 	struct {
 		int			method;
@@ -49,7 +40,16 @@ struct h2d_request {
 		bool			is_body_filtered;
 	} resp;
 
-	enum h2d_request_state	state;
+	enum {
+		H2D_REQUEST_STATE_PARSE_HEADERS = 0,
+		H2D_REQUEST_STATE_PROCESS_HEADERS,
+		H2D_REQUEST_STATE_PROCESS_BODY,
+		H2D_REQUEST_STATE_RESPONSE_HEADERS,
+		H2D_REQUEST_STATE_RESPONSE_BODY,
+		H2D_REQUEST_STATE_CLOSED,
+	} state;
+
+	bool			is_broken; //TODO may put in h2d_request_run()?
 
 	int			filter_step_process_headers;
 

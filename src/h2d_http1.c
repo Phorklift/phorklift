@@ -81,7 +81,8 @@ int h2d_http1_response_headers(struct h2d_request *r)
 
 	/* response status line */
 	char *p = (char *)r->c->send_buf_pos;
-	p += sprintf(p, "HTTP/1.1 %d xxx\r\n", r->resp.status_code);
+	p += sprintf(p, "HTTP/1.1 %d %s\r\n", r->resp.status_code,
+			h2d_status_code_string(r->resp.status_code));
 
 	if (h2d_http1_response_is_chunked(r)) {
 		p += sprintf(p, "Transfer-Encoding: chunked\r\n");
@@ -180,6 +181,10 @@ int h2d_http1_on_read(struct h2d_connection *c, void *data, int buf_len)
 
 	/* run */
 	h2d_request_run(r, -1);
+
+	if (r->state == H2D_REQUEST_STATE_CLOSED && r->req.version == 0) {
+		return -1;
+	}
 
 	return buf_len;
 }

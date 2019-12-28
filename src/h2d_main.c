@@ -2,6 +2,7 @@
 #include <errno.h>
 #include <sys/types.h>
 #include <sys/wait.h>
+#include <sys/prctl.h>
 
 #include "h2d_main.h"
 
@@ -80,6 +81,8 @@ static void h2d_worker_entry(wuy_array_t *listens)
 	signal(SIGQUIT, h2d_signal_worker_quit);
 	signal(SIGUSR1, h2d_signal_worker_quit);
 
+	prctl(PR_SET_NAME, (unsigned long)"h2tpd-worker", 0, 0, 0);
+
 	h2d_loop = loop_new();
 
 	h2d_upstream_init();
@@ -94,7 +97,8 @@ static void h2d_worker_entry(wuy_array_t *listens)
 
 static void h2d_signal_dispatch(int signo)
 {
-	/* Since kill(0, signo) sends signal to this process self too.
+	/* Dispatch signals to all worker processes.
+	 * Since kill(0, signo) sends signal to this process self too.
 	 * we check time here to avoid loop. */
 	static time_t last = 0;
 	time_t now = time(NULL);

@@ -12,6 +12,9 @@ static int h2d_test_subreq_filter_response_headers(struct h2d_request *r)
 	if (!conf->enable) {
 		return H2D_OK;
 	}
+	if (r->resp.status_code != H2D_HTTP_200) {
+		return H2D_OK;
+	}
 
 	r->resp.is_body_filtered = true;
 	return H2D_OK;

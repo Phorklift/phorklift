@@ -54,9 +54,9 @@ void h2d_request_close(struct h2d_request *r)
 
 	h2d_module_request_ctx_free(r);
 
-	if (r->h2s != NULL) {
+	if (r->h2s != NULL) { /* HTTP/2 */
 		http2_stream_close(r->h2s);
-	} else {
+	} else { /* HTTP/1.x */
 		assert(r->c->u.request == r);
 		r->c->u.request = NULL;
 	}
@@ -87,13 +87,13 @@ static int h2d_request_process_headers(struct h2d_request *r)
 	/* locate path */
 	if (r->req.url == NULL) {
 		printf("no path\n");
-		return false;
+		return H2D_ERROR;
 	}
 	r->conf_path = h2d_conf_host_search_pathname(r->conf_host,
 			h2d_header_value(r->req.url));
 	if (r->conf_path == NULL) {
 		printf("no path matched\n");
-		return false;
+		return H2D_ERROR;
 	}
 
 	/* done */
@@ -107,6 +107,9 @@ static int h2d_request_process_headers(struct h2d_request *r)
 
 static int h2d_request_process_body(struct h2d_request *r)
 {
+	if (r->is_broken) { // TODO discard request body
+		return H2D_OK;
+	}
 	if (r->req.content_length == H2D_CONTENT_LENGTH_INIT && !wuy_http_chunked_is_enabled(&r->req.chunked)) {
 		return H2D_OK;
 	}
@@ -128,12 +131,16 @@ static int h2d_request_process_body(struct h2d_request *r)
 
 static int h2d_request_response_headers(struct h2d_request *r)
 {
-	int ret = r->conf_path->content->content.response_headers(r);
-	if (ret != H2D_OK) {
-		return ret;
+	if (r->is_broken) {
+		r->resp.content_length = h2d_status_code_response_body(r->resp.status_code, NULL, 0);
+	} else {
+		int ret = r->conf_path->content->content.response_headers(r);
+		if (ret != H2D_OK) {
+			return ret;
+		}
 	}
 
-	ret = h2d_module_filter_response_headers(r);
+	int ret = h2d_module_filter_response_headers(r);
 	if (ret != H2D_OK) {
 		return ret;
 	}
@@ -170,30 +177,49 @@ static int h2d_request_response_body(struct h2d_request *r)
 	}
 
 	int body_len = 0;
+	bool is_body_finished = false;
 
 	/* generate */
-	if (r->resp.content_generate_length < r->resp.content_length) {
+	if (r->resp.content_generate_length >= r->resp.content_length) {
+		goto skip_generate;
+	}
+	if (r->is_broken) {
+		body_len = h2d_status_code_response_body(r->resp.status_code, (char *)buf_pos, buf_len);
+	} else {
 		body_len = r->conf_path->content->content.response_body(r, buf_pos, buf_len);
-		if (body_len < 0) {
-			return body_len;
-		}
-
-		r->resp.content_generate_length += body_len;
 	}
 
-	bool is_body_finished = (r->resp.content_generate_length >= r->resp.content_length);
+	if (body_len < 0) {
+		return body_len;
+	}
 
-	/* filter */
+	r->resp.content_generate_length += body_len;
+
+	/* This checking works only if @r->resp.content_length is set in
+	 * content.response_headers() when the response body's length is explicit.
+	 * Otherwise (e.g. in chunked encoding) this checking is always false
+	 * because @r->resp.content_length was inited as (SIZE_MAX-1). In this
+	 * case content.response_body() and h2d_module_filter_response_body()
+	 * need to return 0 to indicate @is_body_finished. */
+	if (r->resp.content_generate_length >= r->resp.content_length) {
+		is_body_finished = true;
+	}
+
+skip_generate:
+
+	/* filter
+	 * @is_body_filtered maybe set in h2d_request_response_headers() */
 	if (r->resp.is_body_filtered) {
 		body_len = h2d_module_filter_response_body(r, buf_pos, body_len, buf_len);
 		if (body_len < 0) {
 			return body_len;
 		}
 
+		/* body filters may suspend or generate more data, so ... TODO */
 		is_body_finished = false;
 	}
 
-	if (body_len == H2D_OK) {
+	if (body_len == 0) {
 		is_body_finished = true;
 	}
 
@@ -236,6 +262,8 @@ void h2d_request_run(struct h2d_request *r, int window)
 		/* fall through */
 	case H2D_REQUEST_STATE_CLOSED:
 		return;
+	default:
+		abort();
 	}
 
 	printf("run %s: state:%d ret:%d\n", h2d_header_value(r->req.url), r->state, ret);
@@ -244,13 +272,14 @@ void h2d_request_run(struct h2d_request *r, int window)
 		return;
 	}
 	if (ret == H2D_ERROR) {
+		// TODO
+		printf("should not here!!! %d\n", r->state);
 		h2d_request_close(r);
 		return;
 	}
-	if (ret != H2D_OK) {
-		printf("TODO: special response\n");
-		return;
-		// TODO special response
+	if (ret != H2D_OK) { /* returns status code and breaks the normal process */
+		r->resp.status_code = ret;
+		r->is_broken = true;
 	}
 
 	r->state++;

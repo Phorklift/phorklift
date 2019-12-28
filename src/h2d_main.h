@@ -27,10 +27,9 @@
 #include "h2d_http1.h"
 #include "h2d_http2.h"
 #include "h2d_header.h"
-//#include "h2d_lua_api.h"
-//#include "h2d_lua_thread.h"
 #include "h2d_ssl.h"
 #include "h2d_upstream.h"
+#include "h2d_status_code.h"
 
 /* return values */
 #define H2D_OK			0
