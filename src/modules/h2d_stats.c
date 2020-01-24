@@ -21,10 +21,17 @@ static int h2d_stats_generate_response_body(struct h2d_request *r, uint8_t *buf,
 	char *pos = (char *)buf;
 	char *end = pos + len;
 
-	struct h2d_conf_path **pcp;
-	wuy_array_iter(&r->conf_host->paths, pcp) {
-		struct h2d_conf_path *conf_path = *pcp;
-		pos += h2d_module_path_stats(conf_path->module_confs, pos, end - pos);
+	struct h2d_conf_host *conf_host;
+	wuy_array_iter_ppval(&r->c->conf_listen->hosts, conf_host) {
+		const char *hostname = wuy_array_get_ppval(&conf_host->hostnames, 0);
+		pos += sprintf(pos, "== Host: %s\n", hostname);
+
+		struct h2d_conf_path *conf_path;
+		wuy_array_iter_ppval(&conf_host->paths, conf_path) {
+			const char *pathname = wuy_array_get_ppval(&conf_path->pathnames, 0);
+			pos += sprintf(pos, "= Path: %s\n", pathname);
+			pos += h2d_module_path_stats(conf_path->module_confs, pos, end - pos);
+		}
 	}
 
 	return pos - (char *)buf;

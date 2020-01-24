@@ -1,97 +1,18 @@
 #include "h2d_main.h"
 
-struct h2d_upstream {
-	/* configrations */
-	const char		*address;
-	int			recv_buffer_size;
-	int			send_buffer_size;
-	int			idle_max;
-	int			default_port;
-	int			read_timeout; // read or recv?
-	int			write_timeout;
-	int			idle_timeout;
-	bool			ssl_enable;
-
-	int			refers;
-
-	/* run time */
-	struct sockaddr		sockaddr;
-	int			idle_num;
-	wuy_list_t		idle_head;
-	wuy_list_t		active_head;
-};
-
+static SSL_CTX *h2d_upstream_ssl_ctx;
 
 static wuy_pool_t *h2d_upstream_connection_pool;
-static SSL_CTX *h2d_upstream_ssl_ctx;
 static WUY_LIST(h2d_upstream_connection_defer_list);
 
 
-/* loop_stream ops */
-
-static void h2d_upstream_on_readable(loop_stream_t *s)
+static void h2d_upstream_on_active(loop_stream_t *s)
 {
 	struct h2d_upstream_connection *upc = loop_stream_get_app_data(s);
 	if (upc->request != NULL) {
 		h2d_request_active(upc->request);
 	}
 }
-
-/* XXX different with h2d_connection_write(), which need caller put data into c->send_buffer, and call flush.
- * should make them same?
- * */
-int h2d_upstream_connection_write(struct h2d_upstream_connection *upc, void *data, int data_len)
-{
-	if (upc->send_buffer != NULL) {
-		if (upc->send_buf_len + data_len > upc->upstream->send_buffer_size) {
-			printf("!!!!!!!!!!!!!! errrrrrrrrrrrrrrrror\n");
-			return -1;
-		}
-
-		memcpy(upc->send_buffer + upc->send_buf_len, data, data_len);
-		upc->send_buf_len += data_len;
-
-		data = upc->send_buffer;
-		data_len = upc->send_buf_len;
-	}
-
-	int write_len = loop_stream_write(upc->loop_stream, data, data_len);
-	if (write_len < 0) {
-		return write_len;
-	}
-	if (write_len < data_len) {
-		if (upc->send_buffer == NULL) {
-			upc->send_buffer = malloc(upc->upstream->send_buffer_size);
-			upc->send_buf_len = 0;
-		}
-		memcpy(upc->send_buffer, (char *)data + write_len, data_len - write_len);
-		upc->send_buf_len = data_len - write_len;
-	}
-	return data_len;
-}
-
-static void h2d_upstream_on_writable(loop_stream_t *s)
-{
-	struct h2d_upstream_connection *upc = loop_stream_get_app_data(s);
-	if (upc->send_buffer == NULL) {
-		return;
-	}
-
-	int len = loop_stream_write(s, upc->send_buffer, upc->send_buf_len);
-	if (len <= 0) {
-		return;
-	}
-
-	if (len != upc->send_buf_len) { // TODO
-		printf("!!!!!!!!!!!!!! errrrrrrrrrrrrrrrror\n");
-		return;
-	}
-
-	free(upc->send_buffer);
-	upc->send_buffer = NULL;
-	upc->send_buf_len = 0;
-}
-
 static void h2d_upstream_on_close(loop_stream_t *s, const char *reason, int err)
 {
 	printf("upstream on close: %s\n", reason);
@@ -110,28 +31,38 @@ static void h2d_upstream_on_close(loop_stream_t *s, const char *reason, int err)
 	h2d_upstream_release_connection(upc);
 }
 static loop_stream_ops_t h2d_upstream_ops = {
-	.on_readable = h2d_upstream_on_readable,
-	.on_writable = h2d_upstream_on_writable,
+	.on_readable = h2d_upstream_on_active,
+	.on_writable = h2d_upstream_on_active,
 	.on_close = h2d_upstream_on_close,
 };
 
-struct h2d_upstream_connection *h2d_upstream_get_connection(struct h2d_upstream *upstream)
+
+struct h2d_upstream_connection *
+h2d_upstream_get_connection(struct h2d_upstream_conf *upstream)
 {
-	printf(" === get_conn: %d %p %d\n", wuy_list_empty(&upstream->idle_head), upstream, upstream->idle_num);
-	if (!wuy_list_empty(&upstream->idle_head)) {
-		wuy_list_node_t *node = wuy_list_first(&upstream->idle_head);
+	struct h2d_upstream_address *address = &upstream->rr_addresses[upstream->rr_index++];
+	if (upstream->rr_index == wuy_array_count(&upstream->addresses)) {
+		upstream->rr_index = 0;
+	}
+
+	atomic_fetch_add(&upstream->stats->total, 1);
+
+	if (!wuy_list_empty(&address->idle_head)) {
+		wuy_list_node_t *node = wuy_list_first(&address->idle_head);
 		wuy_list_delete(node);
-		wuy_list_append(&upstream->active_head, node);
-		upstream->idle_num--;
+		wuy_list_append(&address->active_head, node);
+		address->idle_num--;
+		atomic_fetch_add(&upstream->stats->reuse, 1);
 		return wuy_containerof(node, struct h2d_upstream_connection, list_node);
 	}
 
-	int fd = wuy_tcp_connect(&upstream->sockaddr);
+	errno = 0;
+	int fd = wuy_tcp_connect(&address->sockaddr);
 	if (fd < 0) {
 		return NULL;
 	}
 
-	loop_stream_t *s = loop_stream_new(h2d_loop, fd, &h2d_upstream_ops);
+	loop_stream_t *s = loop_stream_new(h2d_loop, fd, &h2d_upstream_ops, errno == EINPROGRESS);
 	if (s == NULL) {
 		return NULL;
 	}
@@ -144,9 +75,9 @@ struct h2d_upstream_connection *h2d_upstream_get_connection(struct h2d_upstream 
 	}
 
 	struct h2d_upstream_connection *upc = wuy_pool_alloc(h2d_upstream_connection_pool);
-	upc->upstream = upstream;
+	upc->address = address;
 	upc->loop_stream = s;
-	wuy_list_append(&upstream->active_head, &upc->list_node);
+	wuy_list_append(&address->active_head, &upc->list_node);
 	loop_stream_set_app_data(s, upc);
 
 	return upc;
@@ -154,36 +85,32 @@ struct h2d_upstream_connection *h2d_upstream_get_connection(struct h2d_upstream 
 
 void h2d_upstream_release_connection(struct h2d_upstream_connection *upc)
 {
-	struct h2d_upstream *upstream = upc->upstream;
+	struct h2d_upstream_address *address = upc->address;
 	loop_stream_t *s = upc->loop_stream;
 
 	if (s == NULL) { /* has been closed */
 		return;
 	}
 
-	if (upc->send_buffer != NULL) {
-		free(upc->send_buffer);
-		upc->send_buffer = NULL;
-		upc->send_buf_len = 0;
-	}
-
-	/* close it */
-	if (loop_stream_is_closed(s) || upstream->idle_num >= upstream->idle_max || upc->request == NULL) {
+	if (loop_stream_is_closed(s) || address->idle_num >= 10 || upc->request == NULL || upc->preread_buf != NULL) {
+		/* close it */
 		loop_stream_close(s);
 		upc->loop_stream = NULL;
+		free(upc->preread_buf);
+		upc->preread_buf = NULL;
 		wuy_list_delete(&upc->list_node);
 		wuy_list_append(&h2d_upstream_connection_defer_list, &upc->list_node);
 		if (upc->request == NULL) {
-			upstream->idle_num--;
+			address->idle_num--;
 		}
-		return;
-	}
 
-	/* put it to idle pool to reuse */
-	upstream->idle_num++;
-	upc->request = NULL;
-	wuy_list_delete(&upc->list_node);
-	wuy_list_append(&upstream->idle_head, &upc->list_node);
+	} else {
+		/* put it to idle pool to reuse */
+		address->idle_num++;
+		upc->request = NULL;
+		wuy_list_delete(&upc->list_node);
+		wuy_list_append(&address->idle_head, &upc->list_node);
+	}
 }
 static void h2d_upstream_connection_defer_free(void *data)
 {
@@ -192,6 +119,75 @@ static void h2d_upstream_connection_defer_free(void *data)
 		wuy_list_delete(node);
 		wuy_pool_free(wuy_containerof(node, struct h2d_upstream_connection, list_node));
 	}
+}
+
+int h2d_upstream_connection_read(struct h2d_upstream_connection *upc,
+		void *buffer, int buf_len)
+{
+	uint8_t *buf_pos = buffer;
+
+	/* upc->preread_buf was allocated in h2d_upstream_connection_read_notfinish() */
+	if (upc->preread_buf != NULL) {
+		if (buf_len < upc->preread_len) {
+			memcpy(buffer, upc->preread_buf, buf_len);
+			upc->preread_len -= buf_len;
+			memmove(upc->preread_buf, upc->preread_buf + buf_len, upc->preread_len);
+			return buf_len;
+		}
+
+		memcpy(buffer, upc->preread_buf, upc->preread_len);
+		buf_pos += upc->preread_len;
+		buf_len -= upc->preread_len;
+		free(upc->preread_buf);
+		upc->preread_buf = NULL;
+		upc->preread_len = 0;
+
+		if (buf_len == 0) {
+			return buf_pos - (uint8_t *)buffer;
+		}
+	}
+
+	int read_len = loop_stream_read(upc->loop_stream, buf_pos, buf_len);
+	if (read_len < 0) {
+		return H2D_ERROR;
+	}
+
+	int ret_len = buf_pos - (uint8_t *)buffer + read_len;
+	return ret_len == 0 ? H2D_AGAIN : ret_len;
+}
+void h2d_upstream_connection_read_notfinish(struct h2d_upstream_connection *upc,
+		void *buffer, int buf_len)
+{
+	if (buf_len == 0) {
+		return;
+	}
+	assert(upc->preread_buf == NULL);
+	upc->preread_buf = malloc(buf_len);
+	memcpy(upc->preread_buf, buffer, buf_len);
+	upc->preread_len = buf_len;
+}
+
+/* We assume that the writing would not lead to block here.
+ * If @data==NULL, we just check if in connecting. */
+int h2d_upstream_connection_write(struct h2d_upstream_connection *upc,
+		void *data, int data_len)
+{
+	if (loop_stream_is_write_blocked(upc->loop_stream)) {
+		return H2D_AGAIN;
+	}
+	if (data == NULL) {
+		return H2D_OK;
+	}
+
+	int write_len = loop_stream_write(upc->loop_stream, data, data_len);
+	if (write_len < 0) {
+		return H2D_ERROR;
+	}
+	if (write_len != data_len) { /* blocking happens */
+		loop_stream_close(upc->loop_stream);
+		return H2D_ERROR;
+	}
+	return H2D_OK;
 }
 
 void h2d_upstream_init(void)
@@ -207,69 +203,71 @@ void h2d_upstream_init(void)
 
 /* configration */
 
-bool h2d_upstream_conf_is_enable(struct h2d_upstream *conf)
-{
-	return conf && conf->address && conf->address[0] != '\0';
-}
-
 static bool h2d_upstream_conf_post(void *data)
 {
-	struct h2d_upstream *conf = data;
+	struct h2d_upstream_conf *conf = data;
 
-	if (!h2d_upstream_conf_is_enable(conf)) {
-		return true;
-	}
-	if (conf->refers > 0) {
+	if (!wuy_array_yet_init(&conf->addresses)) {
 		return true;
 	}
 
-	if (!wuy_sockaddr_pton(conf->address, &conf->sockaddr, conf->default_port)) {
-		printf("invalid upstream address: %s\n", conf->address);
-		return false;
+	conf->stats = wuy_shmem_alloc(sizeof(struct h2d_upstream_stats));
+
+	conf->rr_addresses = calloc(wuy_array_count(&conf->addresses),
+			sizeof(struct h2d_upstream_address));
+
+	struct h2d_upstream_address *address = conf->rr_addresses;
+	const char *addr;
+	wuy_array_iter_ppval(&conf->addresses, addr) {
+
+		if (!wuy_sockaddr_pton(addr, &address->sockaddr, conf->default_port)) {
+			printf("invalid upstream address: %s\n", addr);
+			return false;
+		}
+		address->idle_num = 0;
+		wuy_list_init(&address->idle_head);
+		wuy_list_init(&address->active_head);
+
+		address++;
 	}
-
-	wuy_list_init(&conf->idle_head);
-	wuy_list_init(&conf->active_head);
-
-	conf->refers++;
 	return true;
 }
 
-static void h2d_upstream_conf_cleanup(void *data)
+int h2d_upstream_conf_stats(void *data, char *buf, int len)
 {
+	struct h2d_upstream_conf *conf = data;
+	struct h2d_upstream_stats *stats = conf->stats;
+	if (stats == NULL) {
+		return 0;
+	}
+	return snprintf(buf, len, "upstream: %d %d\n", atomic_load(&stats->total), atomic_load(&stats->reuse));
 }
 
 static struct wuy_cflua_command h2d_upstream_conf_commands[] = {
-	{	.type = WUY_CFLUA_TYPE_STRING,
-		.offset = offsetof(struct h2d_upstream, address),
-		.flags = WUY_CFLUA_FLAG_UNIQ_MEMBER,
-	},
 	{	.name = "idle_max",
 		.type = WUY_CFLUA_TYPE_INTEGER,
-		.offset = offsetof(struct h2d_upstream, idle_max),
+		.offset = offsetof(struct h2d_upstream_conf, idle_max),
 	},
 	{	.name = "recv_buffer_size",
 		.type = WUY_CFLUA_TYPE_INTEGER,
-		.offset = offsetof(struct h2d_upstream, recv_buffer_size),
+		.offset = offsetof(struct h2d_upstream_conf, recv_buffer_size),
 	},
 	{	.name = "send_buffer_size",
 		.type = WUY_CFLUA_TYPE_INTEGER,
-		.offset = offsetof(struct h2d_upstream, send_buffer_size),
+		.offset = offsetof(struct h2d_upstream_conf, send_buffer_size),
 	},
 	{	.name = "default_port",
 		.type = WUY_CFLUA_TYPE_INTEGER,
-		.offset = offsetof(struct h2d_upstream, default_port),
+		.offset = offsetof(struct h2d_upstream_conf, default_port),
 	},
 	{	.name = "ssl_enable",
 		.type = WUY_CFLUA_TYPE_BOOLEAN,
-		.offset = offsetof(struct h2d_upstream, ssl_enable),
+		.offset = offsetof(struct h2d_upstream_conf, ssl_enable),
 	},
 	{ NULL }
 };
 
 struct wuy_cflua_table h2d_upstream_conf_table = {
 	.commands = h2d_upstream_conf_commands,
-	.size = sizeof(struct h2d_upstream),
 	.post = h2d_upstream_conf_post,
-	.cleanup = h2d_upstream_conf_cleanup,
 };

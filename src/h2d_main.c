@@ -18,11 +18,11 @@ static void h2d_getopt(int argc, char *const *argv)
 {
 	const char *help = "Usage: h2tpd [options]\n"
 		"Options:\n"
-		"    -u USER     set worker user, only for root []\n"
-		"    -w NUM      set worker number, 0 for no worker for debugging [4]\n"
+		"    -u USER     set worker processes user, only for root []\n"
+		"    -w NUM      set worker processes number, 0 means no worker [4]\n"
 		"    -p PREFIX   change directory []\n"
 		"    -i PID      set pid file [logs/h2tpd.pid]\n"
-		"    -d DEFAULT  set user defaults file [conf/user_defaults.lua]\n"
+		"    -d DEFAULT  set user defaults file [conf/defaults.lua]\n"
 		"    -c CONF     set configuration file [conf/h2tpd.lua]\n"
 		"    -v          show version and quit\n"
 		"    -h          show this help and quit\n";

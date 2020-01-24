@@ -173,14 +173,13 @@ void h2d_connection_listen(wuy_array_t *listens)
 	loop_idle_add(h2d_loop, h2d_connection_defer_free, NULL);
 
 	/* listen */
-	struct h2d_conf_listen **pcl;
-	wuy_array_iter(listens, pcl) {
-		struct h2d_conf_listen *conf_listen = *pcl;
+	struct h2d_conf_listen *conf_listen;
+	wuy_array_iter_ppval(listens, conf_listen) {
 
-		char **paddr;
-		wuy_array_iter(&conf_listen->addresses, paddr) {
+		const char *addr;
+		wuy_array_iter_ppval(&conf_listen->addresses, addr) {
 			loop_tcp_listen_t *loop_listen = loop_tcp_listen(h2d_loop,
-					*paddr, &h2d_connection_listen_ops,
+					addr, &h2d_connection_listen_ops,
 					&h2d_connection_stream_ops);
 
 			if (loop_listen == NULL) {

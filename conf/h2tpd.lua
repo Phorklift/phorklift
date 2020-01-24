@@ -21,7 +21,7 @@ Listen ("22345") {
 		keepalive_timeout = 13,
 	},
 }
-Listen ("443") {
+Listen "443" {
 	network = {
 		keepalive_timeout = 1,
 	},
@@ -34,12 +34,7 @@ Listen ("443") {
 	},
 	Host("www.baidu.com", "baidu.com") {
 		Path ("/3") {
-			acl = {
-				--"!1.2.3.4/24",
-			},
-			lua = {
-				content = require "conf/content",
-			},
+			lua = require "conf/content",
 		},
 		Path ("/") {
 			--static = { "libhttp2/examples/" },
@@ -51,25 +46,85 @@ Listen ("443") {
 			--}, -- www.baidu.com
 			lua = {
 				--content = require "conf/content",
-				content = function()
+				function()
 					h2d.sleep(3)
 					return (require "conf/content")()
 				end
 			},
 		},
 	},
-	Host("www.newsmth.net") {
-		Path ("/") {
-			proxy = { upstream = { "120.92.102.53:80" , recv_buffer_size = 1024*16 } }, -- www.newsmth.net
+	Host "www.newsmth.net" {
+		Path "/" {
+			proxy = { "120.92.34.37:80", "120.92.102.53:80"; -- www.newsmth.net
+				upstream = { recv_buffer_size = 1024*16 },
+			},
 		},
 	},
-	Host("*") {
-		Path ("/subreq") {
-			test_subreq = { true },
-			static = { "src/" },
+	Host "tmpnet" {
+		acl = {
+			"!1.2.3.4/24",
 		},
-		Path ("/") {
-			static = { "src/libhttp2/examples/" },
+		static = "src/",
+		--static = { "src" } ,
+		Path "/libloop2/" {
+			acl = {
+				"!5.5.5.5/24",
+				"!5.5.5.5/24",
+			},
+		},
+		Path "/libloop/" {
+			--[[
+			upstream = {
+				read_timeout = 10,
+				load_balance = "roundrobin",
+				load_balance = {
+					"hash",
+					size = 10
+				},
+			},
+			proxy = {
+				"1.2.3.4",
+				"2.3.4.4",
+				headers = {},
+			},
+			proxy = {
+				"1.2.3.4",
+				"2.3.4.4",
+				headers = {},
+				upstream = {
+					read_timeout = 10,
+					load_balance = "hash",
+				},
+			},
+			proxy = { { "1.2.3.4", "2.3.4.4",
+					read_timeout = 10,
+					load_balance = "hash",
+				},
+				headers = {},
+			},
+			--]]
+		},
+		Path "/" {
+			acl = {
+				H2D_ARRAY_APPEND,
+				"!5.5.5.5/24",
+				"!5.5.5.5/24",
+				"!5.5.5.5/24",
+				"!5.5.5.5/24",
+			},
+			static = "src/libwuya",
+		},
+	},
+	Host "*" {
+		Path "/subreq" {
+			lua = require "conf/content",
+		},
+		Path "/test_subreq" {
+			test_subreq = true,
+			static = "src/",
+		},
+		Path "/stats" {
+			stats = true,
 		},
 	},
 }

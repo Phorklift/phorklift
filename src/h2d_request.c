@@ -93,6 +93,7 @@ static int h2d_request_process_headers(struct h2d_request *r)
 			h2d_header_value(r->req.url));
 	if (r->conf_path == NULL) {
 		printf("no path matched\n");
+		// return WUY_HTTP_404;
 		return H2D_ERROR;
 	}
 

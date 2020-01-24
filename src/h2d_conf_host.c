@@ -3,12 +3,11 @@
 struct h2d_conf_path *h2d_conf_host_search_pathname(
 		struct h2d_conf_host *conf_host, const char *name)
 {
-	struct h2d_conf_path **pcp;
-	wuy_array_iter(&conf_host->paths, pcp) {
-		struct h2d_conf_path *conf_path = *pcp;
-		const char **pname;
-		wuy_array_iter(&conf_path->pathnames, pname) {
-			if (memcmp(*pname, name, strlen(*pname)) == 0) {
+	struct h2d_conf_path *conf_path;
+	wuy_array_iter_ppval(&conf_host->paths, conf_path) {
+		const char *pathname;
+		wuy_array_iter_ppval(&conf_path->pathnames, pathname) {
+			if (memcmp(pathname, name, strlen(pathname)) == 0) {
 				return conf_path;
 			}
 		}

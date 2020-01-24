@@ -104,13 +104,11 @@ static bool h2d_conf_listen_post(void *data)
 			offsetof(struct h2d_conf_listen_hostname, dict_node));
 
 	int ssl_count = 0;
-	struct h2d_conf_host **pch;
-	wuy_array_iter(&conf_listen->hosts, pch) {
-		struct h2d_conf_host *conf_host = *pch;
-
-		char **pname;
-		wuy_array_iter(&conf_host->hostnames, pname) {
-			if (!h2d_conf_listen_add_hostname(conf_listen, conf_host, *pname)) {
+	struct h2d_conf_host *conf_host;
+	wuy_array_iter_ppval(&conf_listen->hosts, conf_host) {
+		char *hostname;
+		wuy_array_iter_ppval(&conf_host->hostnames, hostname) {
+			if (!h2d_conf_listen_add_hostname(conf_listen, conf_host, hostname)) {
 				return false;
 			}
 		}
