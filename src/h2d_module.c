@@ -93,13 +93,65 @@ void h2d_module_worker_init(void)
 	}
 }
 
-struct h2d_module *h2d_module_content_is_enable(int i, void *conf)
+struct h2d_module *h2d_module_content_is_enabled(int i, void *conf)
 {
 	struct h2d_module *m = h2d_modules[i];
-	if (m->content.is_enable == NULL) {
+	bool is_enabled;
+
+	if (m->content.response_headers == NULL) {
 		return NULL;
 	}
-	return m->content.is_enable(conf) ? m : NULL;
+	if (m->command_path.type == WUY_CFLUA_TYPE_END) {
+		abort();
+	}
+
+	/* simple type, not table */
+	if (m->command_path.type != WUY_CFLUA_TYPE_TABLE) {
+		is_enabled = conf != NULL;
+		goto out;
+	}
+
+	/* table type, check the first command */
+	struct wuy_cflua_command *first = &m->command_path.u.table->commands[0];
+	if (first->name != NULL) {
+		/* must be array-member */
+		abort();
+	}
+
+	void *ptr = (char *)conf + first->offset;
+
+	/* it's multi-value array */
+	if ((first->flags & WUY_CFLUA_FLAG_UNIQ_MEMBER) == 0) {
+		is_enabled = wuy_array_yet_init(ptr);
+		goto out;
+	}
+
+	/* it's single value */
+	const char *pstr;
+	wuy_cflua_function_t func;
+	switch (first->type) {
+	case WUY_CFLUA_TYPE_BOOLEAN:
+		is_enabled = *(bool *)ptr;
+		break;
+	case WUY_CFLUA_TYPE_FLOAT:
+		is_enabled = *(double *)ptr != 0;
+		break;
+	case WUY_CFLUA_TYPE_INTEGER:
+		is_enabled = *(int *)ptr != 0;
+		break;
+	case WUY_CFLUA_TYPE_STRING:
+		pstr = *(char **)ptr;
+		is_enabled = pstr != NULL && pstr[0] != '\0';
+		break;
+	case WUY_CFLUA_TYPE_FUNCTION:
+		func = *(wuy_cflua_function_t *)ptr;
+		is_enabled = func != 0 && !h2d_conf_is_zero_function(func);
+		break;
+	default:
+		abort();
+	}
+out:
+	return is_enabled ? m : NULL;
 }
 
 void h2d_module_request_ctx_free(struct h2d_request *r)

@@ -11,7 +11,7 @@ struct h2d_request;
 
 struct h2d_request {
 	struct {
-		int			method;
+		enum wuy_http_method	method;
 		int			version;
 		struct h2d_header	*url;
 		struct h2d_header	*host;
@@ -28,7 +28,7 @@ struct h2d_request {
 	} req;
 
 	struct {
-		int			status_code;
+		enum wuy_http_status_code  status_code;
 		int			version;
 
 		struct h2d_header	*buffer;

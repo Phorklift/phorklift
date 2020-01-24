@@ -38,6 +38,9 @@
 -- zero value of function
 H2D_ZERO_FUNC = function() end
 
+-- 
+H2D_ARRAY_APPEND = {}
+
 -- input arguments
 local h2d_conf_definitions_dir, h2d_conf_defaults_file, h2d_conf_file = ...
 
@@ -91,6 +94,81 @@ p:close()
 
 
 -- 3. Merge user-defined default values
+local function h2d_assert_type(prefix, expect, value, key)
+	if type(value) ~= expect then
+		error(string.format("%s: mismatch type of %s, get %s while expect %s",
+				prefix, key and 'key '..key or 'array member', type(value), expect))
+	end
+end
+
+local function h2d_conf_merge_default(base, new, prefix)
+	-- array members
+	if new[1] ~= nil then
+		local array_type = base._array_type
+		if not array_type then
+			error(prefix .. ": array member is not allowed")
+		end
+
+		local is_append = false
+		if new[1] == H2D_ARRAY_APPEND then
+			is_append = true
+			table.remove(new, 1)
+		end
+
+		for i,v in ipairs(new) do
+			h2d_assert_type(prefix, array_type, v)
+
+			if is_append then
+				table.insert(base, v)
+			else
+				base[i] = v
+				base[i+1] = nil
+			end
+			table.remove(new, i)
+		end
+	end
+
+	-- key-value options
+	for k,v in pairs(new) do
+		-- TODO: arbitrary_key
+		h2d_assert_type(prefix, type(base[k]), v, k)
+
+		if type(v) == "table" then
+			h2d_conf_merge_default(base[k], v, prefix..'>'..k)
+		else
+			base[k] = v
+		end
+	end
+end
+
+function Listen()
+	return function(opts) h2d_conf_merge_default(h2d_listen_default, opts, "Listen*") end
+end
+function Host()
+	return function(opts) h2d_conf_merge_default(h2d_host_default, opts, "Host*") end
+end
+function Path()
+	return function(opts) h2d_conf_merge_default(h2d_path_default, opts, "Path*") end
+end
+
+dofile(h2d_conf_defaults_file)
+
+
+-- 4. Read the configuration file
+
+-- build metatable
+function h2d_build_metatable(t)
+	for k,v in pairs(t) do
+		if type(v) == "table" then
+			h2d_build_metatable(v)
+		end
+	end
+	t.__index = t
+end
+
+h2d_listen_default._default_next = h2d_host_default
+h2d_host_default._default_next = h2d_path_default
+h2d_build_metatable(h2d_listen_default)
 
 local function h2d_value_type(base, key, new, value, prefix)
 	-- normal case
@@ -133,8 +211,7 @@ local function h2d_iter_key(key, prefix)
 	error(prefix .. ": internal option is not allowed: " .. key)
 end
 
-local function h2d_conf_merge_default(base, new, prefix, checkonly)
-
+local function h2d_conf_set_metatable(base, new, prefix)
 	-- array members
 	if new[1] ~= nil then
 		local array_type = base._array_type
@@ -142,19 +219,19 @@ local function h2d_conf_merge_default(base, new, prefix, checkonly)
 			error(prefix .. ": array member is not allowed")
 		end
 
-		if not checkonly then
-			-- clear original array members in base first
-			for i in ipairs(base) do
-				base[i] = nil
-			end
+		local is_append = false
+		if new[1] == H2D_ARRAY_APPEND then
+			is_append = true
+			table.remove(new, 1)
+		end
 
-			-- set new members
-			for i,v in ipairs(new) do
-				if type(v) ~= array_type then
-					error(prefix .. string.format(": mismatch array member type, get %s while expect %s", type(v), array_type))
-				end
-				base[i] = v
-				new[i] = nil
+		for i,v in ipairs(new) do
+			h2d_assert_type(prefix, array_type, v)
+		end
+
+		if is_append then
+			for i = 1,#base do
+				table.insert(new, 1, nil)
 			end
 		end
 	end
@@ -167,56 +244,22 @@ local function h2d_conf_merge_default(base, new, prefix, checkonly)
 			-- target:=base._default_next, if the option is at lower level.
 			local target, vtype = h2d_value_type(base, k, new, v, prefix)
 
-			if type(v) ~= vtype then
-				if vtype == "table" and target[k]._array_type == type(v) then
-					new[k] = { v } -- grammar suger
-					v = new[k]
-				else
-					error(prefix .. string.format(": mismatch type of key %s, get %s while expect %s", k, type(v), vtype))
-				end
+			if type(v) ~= vtype and vtype == "table" and type(v) == target[k]._array_type then
+				-- grammar suger
+				new[k] = { v }
+				v = new[k]
+				h2d_value_type(base, k, new, v)
 			end
 
+			h2d_assert_type(prefix, vtype, v, k)
 			if type(v) == "table" then
-				h2d_conf_merge_default(target[k], v, prefix..'>'..k, checkonly)
-			elseif not checkonly then
-				target[k] = v
+				h2d_conf_set_metatable(target[k], v, prefix..'>'..k)
 			end
 		end
 	end
 
-	if checkonly then
-		setmetatable(new, base)
-	end
+	setmetatable(new, base)
 end
-
-function Listen()
-	return function(opts) h2d_conf_merge_default(h2d_listen_default, opts, "Listen*") end
-end
-function Host()
-	return function(opts) h2d_conf_merge_default(h2d_host_default, opts, "Host*") end
-end
-function Path()
-	return function(opts) h2d_conf_merge_default(h2d_path_default, opts, "Path*") end
-end
-
-dofile(h2d_conf_defaults_file)
-
--- build metatable
-function h2d_build_metatable(t)
-	for k,v in pairs(t) do
-		if type(v) == "table" then
-			h2d_build_metatable(v)
-		end
-	end
-	t.__index = t
-end
-
-h2d_listen_default._default_next = h2d_host_default
-h2d_host_default._default_next = h2d_path_default
-h2d_build_metatable(h2d_listen_default)
-
-
--- 4. Read the configuration file
 
 local h2d_conf_listens = {}
 
@@ -244,7 +287,7 @@ function Listen(...)
 		listen._default_next = {} -- default host
 		listen._default_next._default_next = {} -- default path
 
-		h2d_conf_merge_default(h2d_listen_default, listen, listen_prefix, true)
+		h2d_conf_set_metatable(h2d_listen_default, listen, listen_prefix)
 
 		h2d_build_metatable(listen._default_next)
 		setmetatable(listen._default_next, h2d_host_default)
@@ -256,7 +299,7 @@ function Listen(...)
 			host._default_next = {} -- default path
 
 			local host_prefix = listen_prefix .. string.format(">Host(%s)", host._hostnames[1])
-			h2d_conf_merge_default(listen._default_next, host, host_prefix, true)
+			h2d_conf_set_metatable(listen._default_next, host, host_prefix)
 
 			h2d_build_metatable(host._default_next)
 			setmetatable(host._default_next, listen._default_next._default_next)
@@ -265,7 +308,7 @@ function Listen(...)
 				h2d_check_names(path._pathnames, host_prefix)
 
 				local path_prefix = host_prefix .. string.format(">Path(%s)", path._pathnames[1])
-				h2d_conf_merge_default(host._default_next, path, path_prefix, true)
+				h2d_conf_set_metatable(host._default_next, path, path_prefix)
 			end
 		end
 

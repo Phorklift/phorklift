@@ -19,7 +19,7 @@ static int h2d_acl_process_headers(struct h2d_request *r)
 	struct h2d_acl_conf *conf = r->conf_path->module_confs[h2d_acl_module.index];
 	int count = wuy_array_count(&conf->strs);
 	if (count != 0) {
-		return H2D_HTTP_403;
+		return WUY_HTTP_403;
 	}
 	return H2D_OK;
 }

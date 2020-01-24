@@ -1,6 +1,6 @@
 Path () {
 	lua = {
-		content = H2D_ZERO_FUNC,
+		_array_type = "function",
 		before_host = H2D_ZERO_FUNC,
 		req_headers = H2D_ZERO_FUNC,
 		req_body = H2D_ZERO_FUNC,

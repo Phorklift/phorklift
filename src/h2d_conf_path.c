@@ -12,13 +12,13 @@ static bool h2d_conf_path_post(void *data)
 			continue;
 		}
 
-		struct h2d_module *m = h2d_module_content_is_enable(i, mod_conf);
+		struct h2d_module *m = h2d_module_content_is_enabled(i, mod_conf);
 		if (m == NULL) {
 			continue;
 		}
 
 		if (conf_path->content != NULL) {
-			printf("duplicate content\n");
+			printf("duplicate content %s %s\n", conf_path->content->name, m->name);
 			return false;
 		}
 

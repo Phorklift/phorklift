@@ -34,7 +34,7 @@ static int h2d_static_process_request_headers(struct h2d_request *r)
 	if (fd < 0) {
 		atomic_fetch_add(&conf->stats->fail, 1);
 		printf("error to open file: %s\n", url);
-		return H2D_HTTP_404;
+		return WUY_HTTP_404;
 	}
 	r->module_ctxs[h2d_static_module.request_ctx.index] = (void *)(uintptr_t)fd;
 	return H2D_OK;
@@ -74,12 +74,6 @@ static void h2d_static_ctx_free(struct h2d_request *r)
 
 
 /* configuration */
-
-static bool h2d_static_conf_is_enable(void *data)
-{
-	struct h2d_static_conf *conf = data;
-	return conf->dirfd != 0;
-}
 
 static bool h2d_static_conf_post(void *data)
 {
@@ -146,7 +140,6 @@ struct h2d_module h2d_static_module = {
 	.stats_path = h2d_static_conf_stats,
 
 	.content = {
-		.is_enable = h2d_static_conf_is_enable,
 		.process_headers = h2d_static_process_request_headers,
 		.process_body = h2d_static_process_request_body,
 		.response_headers = h2d_static_generate_response_headers,

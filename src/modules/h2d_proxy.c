@@ -1,6 +1,7 @@
 #include "h2d_main.h"
 
 struct h2d_proxy_conf {
+	bool			tmp;
 	struct h2d_upstream	*upstream;
 };
 
@@ -284,17 +285,15 @@ static void h2d_proxy_ctx_free(struct h2d_request *r)
 
 /* configuration */
 
-static bool h2d_proxy_conf_is_enable(void *data)
-{
-	struct h2d_proxy_conf *conf = data;
-	return h2d_upstream_conf_is_enable(conf->upstream);
-}
 static void h2d_proxy_master_init(void)
 {
 	h2d_proxy_ctx_pool = wuy_pool_new_type(struct h2d_proxy_ctx);
 }
 
 static struct wuy_cflua_command h2d_proxy_conf_commands[] = {
+	{	.type = WUY_CFLUA_TYPE_BOOLEAN,
+		.offset = offsetof(struct h2d_proxy_conf, tmp),
+	},
 	{	.name = "upstream",
 		.type = WUY_CFLUA_TYPE_TABLE,
 		.flags = WUY_CFLUA_FLAG_TABLE_REUSE,
@@ -317,7 +316,6 @@ struct h2d_module h2d_proxy_module = {
 	},
 
 	.content = {
-		.is_enable = h2d_proxy_conf_is_enable,
 		.process_headers = h2d_proxy_process_request_headers,
 		.process_body = h2d_proxy_process_request_body,
 		.response_headers = h2d_proxy_generate_response_headers,

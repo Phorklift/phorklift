@@ -19,7 +19,6 @@ struct h2d_module {
 	int		(*stats_host)(void *conf, char *buf, int len);
 
 	struct {
-		bool	(*is_enable)(void *conf);
 		int	(*process_headers)(struct h2d_request *);
 		int	(*process_body)(struct h2d_request *);
 		int	(*response_headers)(struct h2d_request *);
@@ -55,7 +54,7 @@ struct wuy_cflua_command *h2d_module_next_path_command(struct wuy_cflua_command 
 
 int h2d_module_path_stats(void **confs, char *buf, int len);
 
-struct h2d_module *h2d_module_content_is_enable(int i, void *conf);
+struct h2d_module *h2d_module_content_is_enabled(int i, void *conf);
 void h2d_module_request_ctx_free(struct h2d_request *r);
 int h2d_module_filter_process_headers(struct h2d_request *r);
 int h2d_module_filter_process_body(struct h2d_request *r);

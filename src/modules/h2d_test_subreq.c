@@ -12,7 +12,7 @@ static int h2d_test_subreq_filter_response_headers(struct h2d_request *r)
 	if (!conf->enable) {
 		return H2D_OK;
 	}
-	if (r->resp.status_code != H2D_HTTP_200) {
+	if (r->resp.status_code != WUY_HTTP_200) {
 		return H2D_OK;
 	}
 

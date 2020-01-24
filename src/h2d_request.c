@@ -129,10 +129,30 @@ static int h2d_request_process_body(struct h2d_request *r)
 	return r->conf_path->content->content.process_body(r);
 }
 
+static inline int h2d_request_simple_response_body(enum wuy_http_status_code code,
+		char *buf, int len)
+{
+#define H2D_STATUS_CODE_RESPONSE_BODY_FORMAT \
+	"<html>\n" \
+	"<head><title>%d %s</title></head>\n" \
+	"<body>\n" \
+	"<h1>%d %s</h1>\n" \
+	"<hr><p><em>by h2tpd</em></p>\n" \
+	"</body>\n" \
+	"</html>\n"
+
+	if (code < WUY_HTTP_400) {
+		return 0;
+	}
+	const char *str = wuy_http_string_status_code(code);
+	return snprintf(buf, len, H2D_STATUS_CODE_RESPONSE_BODY_FORMAT,
+			code, str, code, str);
+}
+
 static int h2d_request_response_headers(struct h2d_request *r)
 {
 	if (r->is_broken) {
-		r->resp.content_length = h2d_status_code_response_body(r->resp.status_code, NULL, 0);
+		r->resp.content_length = h2d_request_simple_response_body(r->resp.status_code, NULL, 0);
 	} else {
 		int ret = r->conf_path->content->content.response_headers(r);
 		if (ret != H2D_OK) {
@@ -184,7 +204,7 @@ static int h2d_request_response_body(struct h2d_request *r)
 		goto skip_generate;
 	}
 	if (r->is_broken) {
-		body_len = h2d_status_code_response_body(r->resp.status_code, (char *)buf_pos, buf_len);
+		body_len = h2d_request_simple_response_body(r->resp.status_code, (char *)buf_pos, buf_len);
 	} else {
 		body_len = r->conf_path->content->content.response_body(r, buf_pos, buf_len);
 	}

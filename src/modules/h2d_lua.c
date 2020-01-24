@@ -220,16 +220,10 @@ static void h2d_lua_ctx_free(struct h2d_request *r)
 
 /* configuration */
 
-static bool h2d_lua_conf_is_enable(void *data)
-{
-	struct h2d_lua_conf *conf = data;
-	return !h2d_conf_is_zero_function(conf->content);
-}
-
 static struct wuy_cflua_command h2d_lua_conf_commands[] = {
-	{	.name = "content",
-		.type = WUY_CFLUA_TYPE_FUNCTION,
+	{	.type = WUY_CFLUA_TYPE_FUNCTION,
 		.offset = offsetof(struct h2d_lua_conf, content),
+		.flags = WUY_CFLUA_FLAG_UNIQ_MEMBER,
 	},
 	{	.name = "before_host",
 		.type = WUY_CFLUA_TYPE_FUNCTION,
@@ -265,7 +259,6 @@ struct h2d_module h2d_lua_module = {
 	},
 
 	.content = {
-		.is_enable = h2d_lua_conf_is_enable,
 		.process_headers = h2d_lua_process_request_headers,
 		.process_body = h2d_lua_process_request_body,
 		.response_headers = h2d_lua_generate_response_headers,

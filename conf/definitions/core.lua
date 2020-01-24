@@ -1,7 +1,7 @@
 -- this could be used by other modules
 general = {
 	upstream = {
-		_array_type = "number",
+		_array_type = "string",
 		load_balance = "rr",
 		read_timeout = 10,
 		write_timeout = 10,

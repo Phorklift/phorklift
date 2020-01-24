@@ -82,7 +82,7 @@ int h2d_http1_response_headers(struct h2d_request *r)
 	/* response status line */
 	char *p = (char *)r->c->send_buf_pos;
 	p += sprintf(p, "HTTP/1.1 %d %s\r\n", r->resp.status_code,
-			h2d_status_code_string(r->resp.status_code));
+			wuy_http_string_status_code(r->resp.status_code));
 
 	if (h2d_http1_response_is_chunked(r)) {
 		p += sprintf(p, "Transfer-Encoding: chunked\r\n");

@@ -31,7 +31,6 @@
 #include "h2d_header.h"
 #include "h2d_ssl.h"
 #include "h2d_upstream.h"
-#include "h2d_status_code.h"
 
 /* return values */
 #define H2D_OK			0

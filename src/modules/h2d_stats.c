@@ -8,7 +8,7 @@ static int h2d_stats_process_request_headers(struct h2d_request *r)
 }
 static int h2d_stats_generate_response_headers(struct h2d_request *r)
 {
-	r->resp.status_code = H2D_HTTP_200;
+	r->resp.status_code = WUY_HTTP_200;
 	return H2D_OK;
 }
 static int h2d_stats_generate_response_body(struct h2d_request *r, uint8_t *buf, int len)
@@ -37,11 +37,6 @@ static void h2d_stats_ctx_free(struct h2d_request *r)
 
 /* configuration */
 
-static bool h2d_stats_conf_is_enable(void *data)
-{
-	return data != NULL;
-}
-
 struct h2d_module h2d_stats_module = {
 	.name = "stats",
 	.command_path = {
@@ -51,7 +46,6 @@ struct h2d_module h2d_stats_module = {
 	},
 
 	.content = {
-		.is_enable = h2d_stats_conf_is_enable,
 		.process_headers = h2d_stats_process_request_headers,
 		.response_headers = h2d_stats_generate_response_headers,
 		.response_body = h2d_stats_generate_response_body,
