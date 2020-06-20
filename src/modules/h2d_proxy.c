@@ -6,6 +6,7 @@ struct h2d_proxy_conf {
 };
 
 struct h2d_proxy_ctx {
+	bool				has_sent_request;
 	wuy_http_chunked_t		chunked;
 	struct h2d_upstream_connection	*upc;
 };
@@ -132,45 +133,35 @@ static int h2d_proxy_parse_response_headers(struct h2d_request *r,
 	return p - buffer;
 }
 
-static int h2d_proxy_process_request_headers(struct h2d_request *r)
+static int h2d_proxy_generate_response_headers(struct h2d_request *r)
 {
 	struct h2d_proxy_conf *conf = r->conf_path->module_confs[h2d_proxy_module.index];
 	struct h2d_proxy_ctx *ctx = r->module_ctxs[h2d_proxy_module.request_ctx.index];
 
 	if (ctx == NULL) {
-		/* get upstream connection */
-		struct h2d_upstream_connection *upc = h2d_upstream_get_connection(&conf->upstream);
-		if (upc == NULL) {
-			return H2D_ERROR;
-		}
-		upc->request = r;
-
-		/* init ctx */
 		ctx = wuy_pool_alloc(h2d_proxy_ctx_pool);
 		bzero(ctx, sizeof(struct h2d_proxy_ctx));
-		ctx->upc = upc;
 		r->module_ctxs[h2d_proxy_module.request_ctx.index] = ctx;
+
+		/* get upstream connection */
+		ctx->upc = h2d_upstream_get_connection(&conf->upstream);
+		if (ctx->upc == NULL) {
+			return H2D_ERROR;
+		}
+		ctx->upc->request = r;
 	}
 
-	if (h2d_upstream_connection_write(ctx->upc, NULL, 0) == H2D_AGAIN) {
-		return H2D_AGAIN;
+	if (!ctx->has_sent_request) {
+		if (h2d_upstream_connection_write(ctx->upc, NULL, 0) == H2D_AGAIN) {
+			return H2D_AGAIN;
+		}
+
+		char request_buffer[4096 + r->req.body_len];
+		int len = h2d_proxy_build_request_headers(r, request_buffer);
+		memcpy(request_buffer + len, r->req.body_buf, r->req.body_len);
+		h2d_upstream_connection_write(ctx->upc, request_buffer, len + r->req.body_len);
+		ctx->has_sent_request = true;
 	}
-
-	/* send header */
-	char buffer[4096];
-	int len = h2d_proxy_build_request_headers(r, buffer);
-	return h2d_upstream_connection_write(ctx->upc, buffer, len);
-}
-
-static int h2d_proxy_process_request_body(struct h2d_request *r)
-{
-	struct h2d_proxy_ctx *ctx = r->module_ctxs[h2d_proxy_module.request_ctx.index];
-	return h2d_upstream_connection_write(ctx->upc, r->req.body_buf, r->req.body_len);
-}
-
-static int h2d_proxy_generate_response_headers(struct h2d_request *r)
-{
-	struct h2d_proxy_ctx *ctx = r->module_ctxs[h2d_proxy_module.request_ctx.index];
 
 	char buffer[4096];
 	int read_len = h2d_upstream_connection_read(ctx->upc, buffer, sizeof(buffer));
@@ -194,8 +185,7 @@ static int h2d_proxy_generate_response_headers(struct h2d_request *r)
 	return H2D_OK;
 }
 
-static int h2d_proxy_generate_response_body(struct h2d_request *r,
-		uint8_t *buffer, int buf_len)
+static int h2d_proxy_generate_response_body(struct h2d_request *r, uint8_t *buffer, int buf_len)
 {
 	struct h2d_proxy_ctx *ctx = r->module_ctxs[h2d_proxy_module.request_ctx.index];
 
@@ -281,8 +271,6 @@ struct h2d_module h2d_proxy_module = {
 	.stats_path = h2d_proxy_conf_stats,
 
 	.content = {
-		.process_headers = h2d_proxy_process_request_headers,
-		.process_body = h2d_proxy_process_request_body,
 		.response_headers = h2d_proxy_generate_response_headers,
 		.response_body = h2d_proxy_generate_response_body,
 	},

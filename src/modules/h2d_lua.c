@@ -17,7 +17,6 @@ struct h2d_lua_ctx {
 	lua_State		*L;
 	uint8_t			*resp_body_buf;
 	int			resp_body_len;
-	bool			is_done;
 
 	int			(*resume_handler)(struct h2d_request *r);
 };
@@ -61,7 +60,6 @@ static int h2d_lua_thread_resume(struct h2d_request *r)
 	}
 	memcpy(ctx->resp_body_buf, str, strlen(str));
 	ctx->resp_body_len = strlen(str);
-	ctx->is_done = true;
 	h2d_request_active(r);
 	return H2D_OK;
 }
@@ -168,55 +166,48 @@ static bool h2d_lua_master_post(void)
 
 /* content handlers */
 
-static int h2d_lua_process_request_headers(struct h2d_request *r)
-{
-	struct h2d_lua_ctx *ctx = r->module_ctxs[h2d_lua_module.request_ctx.index];
-	if (ctx != NULL) {
-		return ctx->is_done ? H2D_OK : h2d_lua_thread_resume(r);
-	}
-
-	struct h2d_lua_conf *conf = r->conf_path->module_confs[h2d_lua_module.index];
-
-	ctx = malloc(sizeof(*ctx));
-	bzero(ctx, sizeof(*ctx));
-	ctx->L = h2d_lua_thread_new(conf->content);
-	ctx->resp_body_buf = malloc(4096); // TODO
-	r->module_ctxs[h2d_lua_module.request_ctx.index] = ctx;
-	return h2d_lua_thread_resume(r);
-}
-static int h2d_lua_process_request_body(struct h2d_request *r)
-{
-	return H2D_OK;
-}
 static int h2d_lua_generate_response_headers(struct h2d_request *r)
 {
-	struct h2d_lua_ctx *ctx = r->module_ctxs[h2d_lua_module.request_ctx.index];
-	assert(ctx->is_done);
-	r->resp.status_code = 200;
-	r->resp.content_length = ctx->resp_body_len;
-	return H2D_OK;
+        struct h2d_lua_conf *conf = r->conf_path->module_confs[h2d_lua_module.index];
+        struct h2d_lua_ctx *ctx = r->module_ctxs[h2d_lua_module.request_ctx.index];
+
+        if (ctx == NULL) {
+                ctx = malloc(sizeof(struct h2d_lua_ctx));
+                bzero(ctx, sizeof(struct h2d_lua_ctx));
+                ctx->L = h2d_lua_thread_new(conf->content);
+                ctx->resp_body_buf = malloc(4096); // TODO
+                r->module_ctxs[h2d_lua_module.request_ctx.index] = ctx;
+        }
+
+        int ret = h2d_lua_thread_resume(r);
+        if (ret != H2D_OK) {
+                return ret;
+        }
+
+        r->resp.status_code = 200;
+        r->resp.content_length = ctx->resp_body_len;
+        return H2D_OK;
 }
 static int h2d_lua_generate_response_body(struct h2d_request *r, uint8_t *buf, int len)
 {
-	struct h2d_lua_ctx *ctx = r->module_ctxs[h2d_lua_module.request_ctx.index];
-	memcpy(buf, ctx->resp_body_buf, ctx->resp_body_len);
-	return ctx->resp_body_len;
+        struct h2d_lua_ctx *ctx = r->module_ctxs[h2d_lua_module.request_ctx.index];
+        memcpy(buf, ctx->resp_body_buf, ctx->resp_body_len);
+        return ctx->resp_body_len;
 }
 
 static void h2d_lua_ctx_free(struct h2d_request *r)
 {
-	struct h2d_lua_ctx *ctx = r->module_ctxs[h2d_lua_module.request_ctx.index];
-	free(ctx->resp_body_buf);
+        struct h2d_lua_ctx *ctx = r->module_ctxs[h2d_lua_module.request_ctx.index];
+        free(ctx->resp_body_buf);
 
-	if (ctx->L != NULL) {
-		/* unref it, and wait GC */
-		lua_pushlightuserdata(h2d_L, ctx->L);
-		lua_pushnil(h2d_L);
-		lua_settable(h2d_L, LUA_REGISTRYINDEX);
-		ctx->L = NULL;
-	}
+        if (ctx->L != NULL) {
+                /* unref it, and wait GC */
+                lua_pushlightuserdata(h2d_L, ctx->L);
+                lua_pushnil(h2d_L);
+                lua_settable(h2d_L, LUA_REGISTRYINDEX);
+                ctx->L = NULL;
+        }
 }
-
 
 /* configuration */
 
@@ -259,8 +250,6 @@ struct h2d_module h2d_lua_module = {
 	},
 
 	.content = {
-		.process_headers = h2d_lua_process_request_headers,
-		.process_body = h2d_lua_process_request_body,
 		.response_headers = h2d_lua_generate_response_headers,
 		.response_body = h2d_lua_generate_response_body,
 	},

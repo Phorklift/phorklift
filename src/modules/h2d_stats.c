@@ -2,10 +2,6 @@
 
 extern struct h2d_module h2d_stats_module;
 
-static int h2d_stats_process_request_headers(struct h2d_request *r)
-{
-	return H2D_OK;
-}
 static int h2d_stats_generate_response_headers(struct h2d_request *r)
 {
 	r->resp.status_code = WUY_HTTP_200;
@@ -53,7 +49,6 @@ struct h2d_module h2d_stats_module = {
 	},
 
 	.content = {
-		.process_headers = h2d_stats_process_request_headers,
 		.response_headers = h2d_stats_generate_response_headers,
 		.response_body = h2d_stats_generate_response_body,
 	},

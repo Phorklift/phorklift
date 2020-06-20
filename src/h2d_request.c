@@ -103,6 +103,9 @@ static int h2d_request_process_headers(struct h2d_request *r)
 		return ret;
 	}
 
+	if (r->conf_path->content->content.process_headers == NULL) {
+		return H2D_OK;
+	}
 	return r->conf_path->content->content.process_headers(r);
 }
 
@@ -127,6 +130,9 @@ static int h2d_request_process_body(struct h2d_request *r)
 		return ret;
 	}
 
+	if (r->conf_path->content->content.process_body == NULL) {
+		return H2D_OK;
+	}
 	return r->conf_path->content->content.process_body(r);
 }
 
@@ -301,9 +307,11 @@ void h2d_request_run(struct h2d_request *r, int window)
 	if (ret != H2D_OK) { /* returns status code and breaks the normal process */
 		r->resp.status_code = ret;
 		r->is_broken = true;
+		r->state = H2D_REQUEST_STATE_RESPONSE_HEADERS;
+	} else {
+		r->state++;
 	}
 
-	r->state++;
 	if (window == 0 && r->state >= H2D_REQUEST_STATE_RESPONSE_HEADERS) {
 		return;
 	}

@@ -39,4 +39,7 @@ static inline struct h2d_header *h2d_header_add(struct h2d_header *h,
 	return next;
 }
 
+#define h2d_header_iter(head, h) \
+	for (struct h2d_header *h = head; h->name_len != 0; h = h2d_header_next(h))
+
 #endif
