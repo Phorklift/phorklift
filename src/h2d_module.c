@@ -3,7 +3,15 @@
 
 #include "h2d_main.h"
 
-#include "h2d_module.list.c"
+#define X(m) extern struct h2d_module m;
+H2D_MODULE_X_LIST
+#undef X
+static struct h2d_module *h2d_modules[] =
+{
+	#define X(m) &m,
+	H2D_MODULE_X_LIST
+	#undef X
+};
 
 static struct wuy_cflua_command *h2d_module_next_command(struct wuy_cflua_command *cmd, unsigned offset)
 {
@@ -14,7 +22,7 @@ static struct wuy_cflua_command *h2d_module_next_command(struct wuy_cflua_comman
 	}
 
 	for (; index < H2D_MODULE_NUMBER; index++) {
-		struct wuy_cflua_command *next = (struct wuy_cflua_command *)(((char *)h2d_modules[index]) + offset);
+		struct wuy_cflua_command *next = (void *)(((char *)h2d_modules[index]) + offset);
 		if (next->type != WUY_CFLUA_TYPE_END) {
 			return next;
 		}
@@ -47,17 +55,12 @@ int h2d_module_path_stats(void **confs, char *buf, int len)
 	return pos - buf;
 }
 
-int h2d_module_ctx_number = 0;
 void h2d_module_master_init(void)
 {
 	int i;
 	for (i = 0; i < H2D_MODULE_NUMBER; i++) {
 		struct h2d_module *m = h2d_modules[i];
 		m->index = i;
-
-		if (m->request_ctx.free != NULL) {
-			m->request_ctx.index = h2d_module_ctx_number++;
-		}
 
 		unsigned offset = sizeof(void *) * i;
 		m->command_listen.offset = offsetof(struct h2d_conf_listen, module_confs) + offset;
@@ -159,8 +162,8 @@ void h2d_module_request_ctx_free(struct h2d_request *r)
 	int i;
 	for (i = 0; i < H2D_MODULE_NUMBER; i++) {
 		struct h2d_module *m = h2d_modules[i];
-		if (m->request_ctx.free != NULL && r->module_ctxs[m->request_ctx.index] != NULL) {
-			m->request_ctx.free(r);
+		if (m->ctx_free != NULL && r->module_ctxs[m->index] != NULL) {
+			m->ctx_free(r);
 		}
 	}
 }

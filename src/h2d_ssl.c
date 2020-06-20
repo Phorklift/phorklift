@@ -13,6 +13,7 @@ static int h2d_ssl_alpn_callback(SSL *ssl, const unsigned char **out,
 	int ret = SSL_select_next_proto((unsigned char **)out, outlen, ALPN_ADVERTISE,
 			sizeof(ALPN_ADVERTISE) - 1, in, inlen);
 	if (ret != OPENSSL_NPN_NEGOTIATED) {
+		printf("ssl NPN fail\n");
 		return SSL_TLSEXT_ERR_NOACK;
 	}
 
@@ -33,6 +34,7 @@ static int h2d_ssl_sni_callback(SSL *ssl, int *ad, void *arg)
 	struct h2d_connection *c = SSL_get_ex_data(ssl, 0);
 	c->ssl_sni_conf_host = h2d_conf_listen_search_hostname(c->conf_listen, name);
 	if (c->ssl_sni_conf_host == NULL) {
+		printf("ssl SNI fail\n");
 		*ad = SSL_AD_INTERNAL_ERROR;
 		return SSL_TLSEXT_ERR_ALERT_FATAL;
 	}

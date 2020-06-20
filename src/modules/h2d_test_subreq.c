@@ -26,20 +26,20 @@ static int h2d_test_subreq_filter_response_body(struct h2d_request *r, uint8_t *
 		return data_len;
 	}
 
-	struct h2d_request *subr = r->module_ctxs[h2d_test_subreq_module.request_ctx.index];
+	struct h2d_request *subr = r->module_ctxs[h2d_test_subreq_module.index];
 	if (subr == NULL) {
 		subr = h2d_request_subreq_new(r);
 		subr->req.url = subr->req.buffer;
 		subr->req.next = h2d_header_add(subr->req.next, ":url", 4, (char *)data, data_len-1);
 		printf("subr: %s\n", h2d_header_value(subr->req.url));
 
-		r->module_ctxs[h2d_test_subreq_module.request_ctx.index] = subr;
+		r->module_ctxs[h2d_test_subreq_module.index] = subr;
 		return H2D_AGAIN;
 	} else if (subr != (void *)1) {
 		int new_data_len = subr->c->send_buf_pos - subr->c->send_buffer;
 		memcpy(data, subr->c->send_buffer, new_data_len);
 		subr->c->send_buf_pos = subr->c->send_buffer;
-		r->module_ctxs[h2d_test_subreq_module.request_ctx.index] = (void *)1;
+		r->module_ctxs[h2d_test_subreq_module.index] = (void *)1;
 
 		r->subr = NULL;
 		subr->father = NULL;
@@ -52,10 +52,6 @@ static int h2d_test_subreq_filter_response_body(struct h2d_request *r, uint8_t *
 }
 
 /* configuration */
-
-static void h2d_test_subreq_ctx_free(struct h2d_request *r)
-{
-}
 
 static struct wuy_cflua_command h2d_test_subreq_conf_commands[] = {
 	{	.type = WUY_CFLUA_TYPE_BOOLEAN,
@@ -74,10 +70,6 @@ struct h2d_module h2d_test_subreq_module = {
 			.commands = h2d_test_subreq_conf_commands,
 			.size = sizeof(struct h2d_test_subreq_conf),
 		}
-	},
-
-	.request_ctx = {
-		.free = h2d_test_subreq_ctx_free,
 	},
 
 	.filters = {

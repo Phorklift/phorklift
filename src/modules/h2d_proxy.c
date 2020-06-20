@@ -78,7 +78,7 @@ static int h2d_proxy_parse_response_headers(struct h2d_request *r,
 {
 	const char *p = buffer;
 	const char *buf_end = buffer + buf_len;
-	struct h2d_proxy_ctx *ctx = r->module_ctxs[h2d_proxy_module.request_ctx.index];
+	struct h2d_proxy_ctx *ctx = r->module_ctxs[h2d_proxy_module.index];
 
 	// printf("upstream headers: %d\n%s\n===\n", buf_len, buffer);
 
@@ -136,12 +136,12 @@ static int h2d_proxy_parse_response_headers(struct h2d_request *r,
 static int h2d_proxy_generate_response_headers(struct h2d_request *r)
 {
 	struct h2d_proxy_conf *conf = r->conf_path->module_confs[h2d_proxy_module.index];
-	struct h2d_proxy_ctx *ctx = r->module_ctxs[h2d_proxy_module.request_ctx.index];
+	struct h2d_proxy_ctx *ctx = r->module_ctxs[h2d_proxy_module.index];
 
 	if (ctx == NULL) {
 		ctx = wuy_pool_alloc(h2d_proxy_ctx_pool);
 		bzero(ctx, sizeof(struct h2d_proxy_ctx));
-		r->module_ctxs[h2d_proxy_module.request_ctx.index] = ctx;
+		r->module_ctxs[h2d_proxy_module.index] = ctx;
 
 		/* get upstream connection */
 		ctx->upc = h2d_upstream_get_connection(&conf->upstream);
@@ -187,7 +187,7 @@ static int h2d_proxy_generate_response_headers(struct h2d_request *r)
 
 static int h2d_proxy_generate_response_body(struct h2d_request *r, uint8_t *buffer, int buf_len)
 {
-	struct h2d_proxy_ctx *ctx = r->module_ctxs[h2d_proxy_module.request_ctx.index];
+	struct h2d_proxy_ctx *ctx = r->module_ctxs[h2d_proxy_module.index];
 
 	/* plain case */
 	if (!wuy_http_chunked_is_enabled(&ctx->chunked)) {
@@ -221,7 +221,7 @@ static int h2d_proxy_generate_response_body(struct h2d_request *r, uint8_t *buff
 
 static void h2d_proxy_ctx_free(struct h2d_request *r)
 {
-	struct h2d_proxy_ctx *ctx = r->module_ctxs[h2d_proxy_module.request_ctx.index];
+	struct h2d_proxy_ctx *ctx = r->module_ctxs[h2d_proxy_module.index];
 	if (ctx->upc != NULL) {
 		h2d_upstream_release_connection(ctx->upc);
 	}
@@ -275,9 +275,7 @@ struct h2d_module h2d_proxy_module = {
 		.response_body = h2d_proxy_generate_response_body,
 	},
 
-	.request_ctx = {
-		.free = h2d_proxy_ctx_free,
-	},
+	.ctx_free = h2d_proxy_ctx_free,
 
 	.master_init = h2d_proxy_master_init,
 };

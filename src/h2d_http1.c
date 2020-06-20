@@ -130,6 +130,11 @@ int h2d_http1_response_body_pack(struct h2d_request *r, uint8_t *payload,
 	}
 }
 
+void h2d_http1_response_body_finish(struct h2d_request *r)
+{
+	// TODO close connection if HTTP/1.0
+}
+
 void h2d_http1_on_writable(struct h2d_connection *c)
 {
 	struct h2d_request *r = c->u.request;

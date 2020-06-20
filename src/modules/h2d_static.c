@@ -72,13 +72,13 @@ static int h2d_static_generate_response_headers(struct h2d_request *r)
 
 	struct h2d_static_ctx *ctx = wuy_pool_alloc(h2d_static_ctx_pool);
 	ctx->fd = fd;
-	r->module_ctxs[h2d_static_module.request_ctx.index] = ctx;
+	r->module_ctxs[h2d_static_module.index] = ctx;
 
 	return H2D_OK;
 }
 static int h2d_static_generate_response_body(struct h2d_request *r, uint8_t *buf, int len)
 {
-	struct h2d_static_ctx *ctx = r->module_ctxs[h2d_static_module.request_ctx.index];
+	struct h2d_static_ctx *ctx = r->module_ctxs[h2d_static_module.index];
 
 	int ret = read(ctx->fd, buf, len);
 	if (ret < 0) {
@@ -90,7 +90,7 @@ static int h2d_static_generate_response_body(struct h2d_request *r, uint8_t *buf
 
 static void h2d_static_ctx_free(struct h2d_request *r)
 {
-	struct h2d_static_ctx *ctx = r->module_ctxs[h2d_static_module.request_ctx.index];
+	struct h2d_static_ctx *ctx = r->module_ctxs[h2d_static_module.index];
 	close(ctx->fd);
 }
 
@@ -166,9 +166,7 @@ struct h2d_module h2d_static_module = {
 		.response_body = h2d_static_generate_response_body,
 	},
 
-	.request_ctx = {
-		.free = h2d_static_ctx_free,
-	},
+	.ctx_free = h2d_static_ctx_free,
 
 	/* TODO stats in module angle. do we need path,host,listen, or a single one?
 	.stats = {

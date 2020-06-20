@@ -6,9 +6,6 @@ static wuy_pool_t *h2d_subreq_conn_pool;
 static WUY_LIST(h2d_request_defer_free_list);
 static WUY_LIST(h2d_request_defer_run_list);
 
-// TODO do not use H2D_CONF_MODULE_MAX
-#define H2D_REQUEST_SIZE (sizeof(struct h2d_request) + h2d_module_ctx_number * sizeof(void *))
-
 struct h2d_request *h2d_request_new(struct h2d_connection *c)
 {
 	struct h2d_request *r = wuy_pool_alloc(h2d_request_pool);
@@ -16,7 +13,7 @@ struct h2d_request *h2d_request_new(struct h2d_connection *c)
 		return NULL;
 	}
 
-	bzero(r, H2D_REQUEST_SIZE);
+	bzero(r, sizeof(struct h2d_request));
 	wuy_list_node_init(&r->list_node);
 
 	r->req.buffer = malloc(4096); // TODO
@@ -269,6 +266,21 @@ skip_generate:
 	return h2d_request_response_body(r);
 }
 
+/* if @is_body_finished is not detected at h2d_request_response_body(),
+ * call this to finish response body. It's used by upstream now. */
+void h2d_request_response_body_finish(struct h2d_request *r)
+{
+	if (h2d_request_is_closed(r)) {
+		return;
+	}
+	if (r->c->is_http2) {
+		h2d_http2_response_body_finish(r);
+	} else {
+		h2d_http1_response_body_finish(r);
+	}
+	h2d_request_close(r);
+}
+
 void h2d_request_run(struct h2d_request *r, int window)
 {
 	int ret;
@@ -380,7 +392,7 @@ static void h2d_request_defer_routine(void *data)
 
 void h2d_request_init(void)
 {
-	h2d_request_pool = wuy_pool_new(H2D_REQUEST_SIZE);
+	h2d_request_pool = wuy_pool_new_type(struct h2d_request);
 
 	h2d_subreq_conn_pool = wuy_pool_new_type(struct h2d_connection);
 

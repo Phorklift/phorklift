@@ -18,13 +18,8 @@ static void h2d_upstream_on_close(loop_stream_t *s, const char *reason, int err)
 	printf("upstream on close: %s\n", reason);
 
 	struct h2d_upstream_connection *upc = loop_stream_get_app_data(s);
-	struct h2d_request *r = upc->request;
-	if (r != NULL && !h2d_request_is_closed(r)) {
-		// TODO tmp code here
-		http2_make_frame_body(r->h2s, r->c->send_buf_pos, 0, true);
-		r->c->send_buf_pos += HTTP2_FRAME_HEADER_SIZE;
-		h2d_connection_flush(r->c);
-		h2d_request_close(r);
+	if (upc->request != NULL) {
+		h2d_request_response_body_finish(upc->request);
 	}
 
 	// TODO upstream->on_close()
@@ -92,14 +87,16 @@ void h2d_upstream_release_connection(struct h2d_upstream_connection *upc)
 		return;
 	}
 
-	if (loop_stream_is_closed(s) || address->idle_num >= 10 || upc->request == NULL || upc->preread_buf != NULL) {
+	wuy_list_t *move_to;
+	if (loop_stream_is_closed(s) || upc->request == NULL /* idle */
+			|| upc->preread_buf != NULL /* with un-processed data */
+			|| address->idle_num >= 10) {
 		/* close it */
 		loop_stream_close(s);
 		upc->loop_stream = NULL;
 		free(upc->preread_buf);
 		upc->preread_buf = NULL;
-		wuy_list_delete(&upc->list_node);
-		wuy_list_append(&h2d_upstream_connection_defer_list, &upc->list_node);
+		move_to = &h2d_upstream_connection_defer_list;
 		if (upc->request == NULL) {
 			address->idle_num--;
 		}
@@ -108,9 +105,11 @@ void h2d_upstream_release_connection(struct h2d_upstream_connection *upc)
 		/* put it to idle pool to reuse */
 		address->idle_num++;
 		upc->request = NULL;
-		wuy_list_delete(&upc->list_node);
-		wuy_list_append(&address->idle_head, &upc->list_node);
+		move_to = &address->idle_head;
 	}
+
+	wuy_list_delete(&upc->list_node);
+	wuy_list_append(move_to, &upc->list_node);
 }
 static void h2d_upstream_connection_defer_free(void *data)
 {

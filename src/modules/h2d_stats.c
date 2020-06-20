@@ -9,10 +9,10 @@ static int h2d_stats_generate_response_headers(struct h2d_request *r)
 }
 static int h2d_stats_generate_response_body(struct h2d_request *r, uint8_t *buf, int len)
 {
-	if (r->module_ctxs[h2d_stats_module.request_ctx.index] != NULL) {
+	if (r->module_ctxs[h2d_stats_module.index] != NULL) {
 		return 0;
 	}
-	r->module_ctxs[h2d_stats_module.request_ctx.index] = (void *)1;
+	r->module_ctxs[h2d_stats_module.index] = (void *)1;
 
 	char *pos = (char *)buf;
 	char *end = pos + len;
@@ -33,11 +33,6 @@ static int h2d_stats_generate_response_body(struct h2d_request *r, uint8_t *buf,
 	return pos - (char *)buf;
 }
 
-static void h2d_stats_ctx_free(struct h2d_request *r)
-{
-}
-
-
 /* configuration */
 
 struct h2d_module h2d_stats_module = {
@@ -51,9 +46,5 @@ struct h2d_module h2d_stats_module = {
 	.content = {
 		.response_headers = h2d_stats_generate_response_headers,
 		.response_body = h2d_stats_generate_response_body,
-	},
-
-	.request_ctx = {
-		.free = h2d_stats_ctx_free,
 	},
 };

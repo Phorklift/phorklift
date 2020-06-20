@@ -12,4 +12,6 @@ void h2d_http1_response_body_packfix(struct h2d_request *r,
 		uint8_t **p_buf_pos, int *p_buf_len);
 int h2d_http1_response_body_pack(struct h2d_request *r, uint8_t *payload,
 		int length, bool is_body_finished);
+
+void h2d_http1_response_body_finish(struct h2d_request *r);
 #endif

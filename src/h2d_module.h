@@ -3,6 +3,16 @@
 
 #include <stdbool.h>
 
+#include "h2d_module.list.h"
+
+/* calculate H2D_MODULE_NUMBER in preprocess */
+struct _nonuse {
+	#define X(m) char m;
+	H2D_MODULE_X_LIST
+	#undef X
+};
+#define H2D_MODULE_NUMBER (sizeof(struct _nonuse) / sizeof(char))
+
 #include "h2d_request.h"
 
 struct h2d_module {
@@ -32,17 +42,12 @@ struct h2d_module {
 		int	(*response_body)(struct h2d_request *, uint8_t *data, int data_len, int buf_len);
 	} filters;
 
-	struct {
-		int	index;
-		void	(*free)(struct h2d_request *);
-	} request_ctx;
+	void	(*ctx_free)(struct h2d_request *);
 
 	void	(*master_init)(void);
 	bool	(*master_post)(void);
 	void	(*worker_init)(void);
 };
-
-extern int h2d_module_ctx_number;
 
 void h2d_module_master_init(void);
 void h2d_module_master_post(void);

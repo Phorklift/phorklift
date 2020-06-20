@@ -149,6 +149,14 @@ int h2d_http2_response_body_pack(struct h2d_request *r, uint8_t *payload,
 	return length + HTTP2_FRAME_HEADER_SIZE;
 }
 
+void h2d_http2_response_body_finish(struct h2d_request *r)
+{
+	// TODO need check send_buf_pos??
+	http2_make_frame_body(r->h2s, r->c->send_buf_pos, 0, true);
+	r->c->send_buf_pos += HTTP2_FRAME_HEADER_SIZE;
+	h2d_connection_flush(r->c);
+}
+
 static bool h2d_http2_hook_stream_response(http2_stream_t *h2s, int window)
 {
 	h2d_request_run(http2_stream_get_app_data(h2s), -1);

@@ -32,7 +32,7 @@ static int h2d_lua_thread_resume(struct h2d_request *r)
 {
 	h2d_lua_current_request = r;
 
-	struct h2d_lua_ctx *ctx = r->module_ctxs[h2d_lua_module.request_ctx.index];
+	struct h2d_lua_ctx *ctx = r->module_ctxs[h2d_lua_module.index];
 
 	int argn = 0;
 	if (ctx->resume_handler != NULL) {
@@ -123,7 +123,7 @@ static int h2d_lua_api_headers(lua_State *L)
 
 static int h2d_lua_api_subrequest_resume(struct h2d_request *r)
 {
-	struct h2d_lua_ctx *ctx = r->module_ctxs[h2d_lua_module.request_ctx.index];
+	struct h2d_lua_ctx *ctx = r->module_ctxs[h2d_lua_module.index];
 
 	assert(r->subr != NULL);
 	printf("push: %d %ld\n", r->subr->resp.status_code, r->subr->c->send_buf_pos - r->subr->c->send_buffer);
@@ -144,7 +144,7 @@ static int h2d_lua_api_subrequest(lua_State *L)
 	subr->req.url = subr->req.buffer;
 	subr->req.next = h2d_header_add(subr->req.next, ":url", 4, url, len);
 
-	struct h2d_lua_ctx *ctx = h2d_lua_current_request->module_ctxs[h2d_lua_module.request_ctx.index];
+	struct h2d_lua_ctx *ctx = h2d_lua_current_request->module_ctxs[h2d_lua_module.index];
 	ctx->resume_handler = h2d_lua_api_subrequest_resume;
 
 	return lua_yield(L, 0);
@@ -169,14 +169,14 @@ static bool h2d_lua_master_post(void)
 static int h2d_lua_generate_response_headers(struct h2d_request *r)
 {
         struct h2d_lua_conf *conf = r->conf_path->module_confs[h2d_lua_module.index];
-        struct h2d_lua_ctx *ctx = r->module_ctxs[h2d_lua_module.request_ctx.index];
+        struct h2d_lua_ctx *ctx = r->module_ctxs[h2d_lua_module.index];
 
         if (ctx == NULL) {
                 ctx = malloc(sizeof(struct h2d_lua_ctx));
                 bzero(ctx, sizeof(struct h2d_lua_ctx));
                 ctx->L = h2d_lua_thread_new(conf->content);
                 ctx->resp_body_buf = malloc(4096); // TODO
-                r->module_ctxs[h2d_lua_module.request_ctx.index] = ctx;
+                r->module_ctxs[h2d_lua_module.index] = ctx;
         }
 
         int ret = h2d_lua_thread_resume(r);
@@ -190,14 +190,14 @@ static int h2d_lua_generate_response_headers(struct h2d_request *r)
 }
 static int h2d_lua_generate_response_body(struct h2d_request *r, uint8_t *buf, int len)
 {
-        struct h2d_lua_ctx *ctx = r->module_ctxs[h2d_lua_module.request_ctx.index];
+        struct h2d_lua_ctx *ctx = r->module_ctxs[h2d_lua_module.index];
         memcpy(buf, ctx->resp_body_buf, ctx->resp_body_len);
         return ctx->resp_body_len;
 }
 
 static void h2d_lua_ctx_free(struct h2d_request *r)
 {
-        struct h2d_lua_ctx *ctx = r->module_ctxs[h2d_lua_module.request_ctx.index];
+        struct h2d_lua_ctx *ctx = r->module_ctxs[h2d_lua_module.index];
         free(ctx->resp_body_buf);
 
         if (ctx->L != NULL) {
@@ -254,9 +254,7 @@ struct h2d_module h2d_lua_module = {
 		.response_body = h2d_lua_generate_response_body,
 	},
 
-	.request_ctx = {
-		.free = h2d_lua_ctx_free,
-	},
+	.ctx_free = h2d_lua_ctx_free,
 
 	.master_post = h2d_lua_master_post,
 };

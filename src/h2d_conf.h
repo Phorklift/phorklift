@@ -5,7 +5,7 @@
 #include <openssl/ssl.h>
 #include <lua.h>
 
-#define H2D_CONF_MODULE_MAX 10
+#include "h2d_module.h"
 
 struct h2d_conf_path {
 	wuy_array_t		pathnames;
@@ -14,7 +14,7 @@ struct h2d_conf_path {
 
 	struct h2d_module	*content;
 
-	void			*module_confs[H2D_CONF_MODULE_MAX];
+	void			*module_confs[H2D_MODULE_NUMBER];
 };
 
 struct h2d_conf_host {
@@ -30,7 +30,7 @@ struct h2d_conf_host {
 		int		ticket_timeout;
 	} ssl;
 
-	void			*module_confs[H2D_CONF_MODULE_MAX];
+	void			*module_confs[H2D_MODULE_NUMBER];
 };
 
 struct h2d_conf_listen {
@@ -54,7 +54,7 @@ struct h2d_conf_listen {
 		int		write_timeout;
 	} network;
 
-	void			*module_confs[H2D_CONF_MODULE_MAX];
+	void			*module_confs[H2D_MODULE_NUMBER];
 };
 
 extern lua_State *h2d_L;

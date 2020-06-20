@@ -3,6 +3,7 @@
 
 struct h2d_request;
 
+#include "h2d_module.h"
 #include "h2d_header.h"
 #include "h2d_conf.h"
 #include "h2d_connection.h"
@@ -65,7 +66,7 @@ struct h2d_request {
 	struct h2d_conf_host	*conf_host;
 	struct h2d_conf_path	*conf_path;
 
-	void 			*module_ctxs[0];
+	void 			*module_ctxs[H2D_MODULE_NUMBER];
 };
 
 struct h2d_request *h2d_request_new(struct h2d_connection *c);
@@ -87,5 +88,7 @@ void h2d_request_active(struct h2d_request *r);
 void h2d_request_init(void);
 
 struct h2d_request *h2d_request_subreq_new(struct h2d_request *father);
+
+void h2d_request_response_body_finish(struct h2d_request *r);
 
 #endif
