@@ -1,3 +1,4 @@
+#include <openssl/ssl.h>
 #include "h2d_main.h"
 
 static SSL_CTX *h2d_upstream_ssl_ctx;

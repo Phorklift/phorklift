@@ -1,5 +1,3 @@
-#include <openssl/ssl.h>
-
 #include "h2d_main.h"
 
 struct h2d_conf_listen_hostname {

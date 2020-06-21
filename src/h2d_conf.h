@@ -2,7 +2,7 @@
 #define H2D_CONF_H
 
 #include <stdbool.h>
-#include <openssl/ssl.h>
+#include <openssl/ossl_typ.h>
 #include <lua.h>
 
 #include "h2d_module.h"
