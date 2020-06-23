@@ -1,6 +1,3 @@
-#include <openssl/ssl.h>
-#include <openssl/err.h>
-
 #include "h2d_main.h"
 
 static wuy_pool_t *h2d_connection_pool;
@@ -120,6 +117,7 @@ static void h2d_connection_on_writable(loop_stream_t *s)
 	h2d_connection_flush(c);
 }
 
+#include <openssl/err.h> // TODO move outside
 static void h2d_connection_on_close(loop_stream_t *s, const char *reason, int err)
 {
 	printf(" -- close: %s %d %s\n", reason, err, ERR_error_string(ERR_get_error(), NULL));
@@ -146,11 +144,7 @@ static bool h2d_connection_on_accept(loop_tcp_listen_t *loop_listen,
 
 	/* set ssl */
 	if (conf_listen->ssl_ctx != NULL) {
-		SSL *ssl = SSL_new(conf_listen->ssl_ctx);
-		SSL_set_fd(ssl, loop_stream_fd(s));
-		SSL_set_accept_state(ssl);
-		SSL_set_ex_data(ssl, 0, c);
-		loop_stream_set_ssl(s, ssl);
+		h2d_ssl_stream_set(s, conf_listen->ssl_ctx, true, c);
 	}
 
 	return true;

@@ -28,7 +28,7 @@ static bool h2d_conf_host_post(void *data)
 	const char *cert = conf_host->ssl.certificate;
 	const char *pkey = conf_host->ssl.private_key;
 	if (cert[0] != '\0' || pkey[0] != '\0') {
-		conf_host->ssl.ctx = h2d_ssl_ctx_new(cert, pkey);
+		conf_host->ssl.ctx = h2d_ssl_ctx_new_server(cert, pkey);
 		if (conf_host->ssl.ctx == NULL) {
 			printf("fail in load certificate or private_key: %s %s\n", cert, pkey);
 			return false;

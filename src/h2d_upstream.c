@@ -1,4 +1,3 @@
-#include <openssl/ssl.h>
 #include "h2d_main.h"
 
 static SSL_CTX *h2d_upstream_ssl_ctx;
@@ -64,10 +63,7 @@ h2d_upstream_get_connection(struct h2d_upstream_conf *upstream)
 	}
 
 	if (upstream->ssl_enable) {
-		SSL *ssl = SSL_new(h2d_upstream_ssl_ctx);
-		SSL_set_fd(ssl, loop_stream_fd(s));
-		SSL_set_connect_state(ssl);
-		loop_stream_set_ssl(s, ssl);
+		h2d_ssl_stream_set(s, h2d_upstream_ssl_ctx, false, NULL);
 	}
 
 	struct h2d_upstream_connection *upc = wuy_pool_alloc(h2d_upstream_connection_pool);
@@ -192,8 +188,7 @@ int h2d_upstream_connection_write(struct h2d_upstream_connection *upc,
 
 void h2d_upstream_init(void)
 {
-	h2d_upstream_ssl_ctx = SSL_CTX_new(SSLv23_client_method());
-	SSL_CTX_set_ecdh_auto(h2d_upstream_ssl_ctx, 1);
+	h2d_upstream_ssl_ctx = h2d_ssl_ctx_new_client();
 
 	h2d_upstream_connection_pool = wuy_pool_new_type(struct h2d_upstream_connection);
 

@@ -46,7 +46,7 @@ static int h2d_ssl_sni_callback(SSL *ssl, int *ad, void *arg)
 	return SSL_TLSEXT_ERR_OK;
 }
 
-SSL_CTX *h2d_ssl_ctx_new(const char *cert_fname, const char *pkey_fname)
+SSL_CTX *h2d_ssl_ctx_new_server(const char *cert_fname, const char *pkey_fname)
 {
 	SSL_CTX *ctx = SSL_CTX_new(SSLv23_server_method());
 	SSL_CTX_set_ecdh_auto(ctx, 1);
@@ -65,12 +65,27 @@ SSL_CTX *h2d_ssl_ctx_new(const char *cert_fname, const char *pkey_fname)
 	return ctx;
 }
 
-SSL *h2d_ssl_new_server(SSL_CTX *ctx, int fd)
+SSL_CTX *h2d_ssl_ctx_new_client(void)
+{
+	SSL_CTX *ctx = SSL_CTX_new(SSLv23_client_method());
+	SSL_CTX_set_ecdh_auto(ctx, 1);
+	return ctx;
+}
+
+void h2d_ssl_stream_set(loop_stream_t *s, SSL_CTX *ctx, bool is_server, void *data)
 {
 	SSL *ssl = SSL_new(ctx);
-	SSL_set_fd(ssl, fd);
-	SSL_set_accept_state(ssl);
-	return ssl;
+	SSL_set_fd(ssl, loop_stream_fd(s));
+	if (is_server) {
+		SSL_set_accept_state(ssl);
+	} else {
+		SSL_set_connect_state(ssl);
+	}
+
+	if (data != NULL) {
+		SSL_set_ex_data(ssl, 0, data);
+	}
+	loop_stream_set_ssl(s, ssl);
 }
 
 void h2d_ssl_init(void)

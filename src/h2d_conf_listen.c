@@ -126,7 +126,7 @@ static bool h2d_conf_listen_post(void *data)
 		if (conf_listen->host_default != NULL) {
 			conf_listen->ssl_ctx = conf_listen->host_default->ssl.ctx;
 		} else {
-			conf_listen->ssl_ctx = h2d_ssl_ctx_new(NULL, NULL);
+			conf_listen->ssl_ctx = h2d_ssl_ctx_new_server(NULL, NULL);
 		}
 	}
 
