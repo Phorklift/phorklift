@@ -29,6 +29,10 @@ static loop_stream_ops_t h2d_upstream_ops = {
 	.on_readable = h2d_upstream_on_active,
 	.on_writable = h2d_upstream_on_active,
 	.on_close = h2d_upstream_on_close,
+
+	.underlying_read = h2d_ssl_stream_underlying_read,
+	.underlying_write = h2d_ssl_stream_underlying_write,
+	.underlying_close = h2d_ssl_stream_underlying_close,
 };
 
 
@@ -63,7 +67,7 @@ h2d_upstream_get_connection(struct h2d_upstream_conf *upstream)
 	}
 
 	if (upstream->ssl_enable) {
-		h2d_ssl_stream_set(s, h2d_upstream_ssl_ctx, false, NULL);
+		h2d_ssl_stream_set(s, h2d_upstream_ssl_ctx, false);
 	}
 
 	struct h2d_upstream_connection *upc = wuy_pool_alloc(h2d_upstream_connection_pool);

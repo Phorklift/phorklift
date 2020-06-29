@@ -72,20 +72,55 @@ SSL_CTX *h2d_ssl_ctx_new_client(void)
 	return ctx;
 }
 
-void h2d_ssl_stream_set(loop_stream_t *s, SSL_CTX *ctx, bool is_server, void *data)
+void h2d_ssl_stream_set(loop_stream_t *s, SSL_CTX *ctx, bool is_server)
 {
 	SSL *ssl = SSL_new(ctx);
 	SSL_set_fd(ssl, loop_stream_fd(s));
 	if (is_server) {
 		SSL_set_accept_state(ssl);
+		SSL_set_ex_data(ssl, 0, loop_stream_get_app_data(s));
 	} else {
 		SSL_set_connect_state(ssl);
 	}
 
-	if (data != NULL) {
-		SSL_set_ex_data(ssl, 0, data);
+	loop_stream_set_underlying(s, ssl);
+}
+
+int h2d_ssl_stream_underlying_read(void *ssl, void *buffer, int buf_len)
+{
+	errno = 0;
+	int read_len = SSL_read(ssl, buffer, buf_len);
+	if (read_len <= 0) {
+		int sslerr = SSL_get_error(ssl, read_len);
+		if (sslerr == SSL_ERROR_WANT_READ || sslerr == SSL_ERROR_WANT_WRITE) {
+			errno = EAGAIN;
+			return -1;
+		}
+		if (sslerr == SSL_ERROR_ZERO_RETURN) {
+			return 0;
+		}
+		return -1;
 	}
-	loop_stream_set_ssl(s, ssl);
+	return read_len;
+}
+
+int h2d_ssl_stream_underlying_write(void *ssl, const void *data, int len)
+{
+	errno = 0;
+	int write_len = SSL_write(ssl, data, len);
+	if (write_len <= 0) {
+		int sslerr = SSL_get_error(ssl, write_len);
+		if (sslerr != SSL_ERROR_WANT_READ && sslerr != SSL_ERROR_WANT_WRITE) {
+			errno = EAGAIN;
+		}
+		return -1;
+	}
+	return write_len;
+}
+
+void h2d_ssl_stream_underlying_close(void *ssl)
+{
+	SSL_free(ssl);
 }
 
 void h2d_ssl_init(void)

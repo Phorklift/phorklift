@@ -144,7 +144,7 @@ static bool h2d_connection_on_accept(loop_tcp_listen_t *loop_listen,
 
 	/* set ssl */
 	if (conf_listen->ssl_ctx != NULL) {
-		h2d_ssl_stream_set(s, conf_listen->ssl_ctx, true, c);
+		h2d_ssl_stream_set(s, conf_listen->ssl_ctx, true);
 	}
 
 	return true;
@@ -158,6 +158,10 @@ static loop_stream_ops_t h2d_connection_stream_ops = {
 	.on_read = h2d_connection_on_read,
 	.on_close = h2d_connection_on_close,
 	.on_writable = h2d_connection_on_writable,
+
+	.underlying_read = h2d_ssl_stream_underlying_read,
+	.underlying_write = h2d_ssl_stream_underlying_write,
+	.underlying_close = h2d_ssl_stream_underlying_close,
 };
 
 void h2d_connection_listen(wuy_array_t *listens)
