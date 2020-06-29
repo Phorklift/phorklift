@@ -11,8 +11,6 @@ struct h2d_proxy_ctx {
 	struct h2d_upstream_connection	*upc;
 };
 
-static wuy_pool_t *h2d_proxy_ctx_pool;
-
 extern struct h2d_module h2d_proxy_module;
 
 // TODO move this out
@@ -139,7 +137,7 @@ static int h2d_proxy_generate_response_headers(struct h2d_request *r)
 	struct h2d_proxy_ctx *ctx = r->module_ctxs[h2d_proxy_module.index];
 
 	if (ctx == NULL) {
-		ctx = wuy_pool_alloc(h2d_proxy_ctx_pool);
+		ctx = malloc(sizeof(struct h2d_proxy_ctx));
 		bzero(ctx, sizeof(struct h2d_proxy_ctx));
 		r->module_ctxs[h2d_proxy_module.index] = ctx;
 
@@ -225,7 +223,7 @@ static void h2d_proxy_ctx_free(struct h2d_request *r)
 	if (ctx->upc != NULL) {
 		h2d_upstream_release_connection(ctx->upc);
 	}
-	wuy_pool_free(ctx);
+	free(ctx);
 }
 
 static int h2d_proxy_conf_stats(void *data, char *buf, int len)
@@ -235,11 +233,6 @@ static int h2d_proxy_conf_stats(void *data, char *buf, int len)
 }
 
 /* configuration */
-
-static void h2d_proxy_master_init(void)
-{
-	h2d_proxy_ctx_pool = wuy_pool_new_type(struct h2d_proxy_ctx);
-}
 
 static struct wuy_cflua_command h2d_proxy_conf_commands[] = {
 	{	.type = WUY_CFLUA_TYPE_STRING,
@@ -276,6 +269,4 @@ struct h2d_module h2d_proxy_module = {
 	},
 
 	.ctx_free = h2d_proxy_ctx_free,
-
-	.master_init = h2d_proxy_master_init,
 };

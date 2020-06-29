@@ -2,9 +2,7 @@
 
 static SSL_CTX *h2d_upstream_ssl_ctx;
 
-static wuy_pool_t *h2d_upstream_connection_pool;
 static WUY_LIST(h2d_upstream_connection_defer_list);
-
 
 static void h2d_upstream_on_active(loop_stream_t *s)
 {
@@ -70,7 +68,7 @@ h2d_upstream_get_connection(struct h2d_upstream_conf *upstream)
 		h2d_ssl_stream_set(s, h2d_upstream_ssl_ctx, false);
 	}
 
-	struct h2d_upstream_connection *upc = wuy_pool_alloc(h2d_upstream_connection_pool);
+	struct h2d_upstream_connection *upc = malloc(sizeof(struct h2d_upstream_connection));
 	upc->address = address;
 	upc->loop_stream = s;
 	wuy_list_append(&address->active_head, &upc->list_node);
@@ -117,7 +115,7 @@ static void h2d_upstream_connection_defer_free(void *data)
 	wuy_list_node_t *node, *safe;
 	wuy_list_iter_safe(&h2d_upstream_connection_defer_list, node, safe) {
 		wuy_list_delete(node);
-		wuy_pool_free(wuy_containerof(node, struct h2d_upstream_connection, list_node));
+		free(wuy_containerof(node, struct h2d_upstream_connection, list_node));
 	}
 }
 
@@ -193,8 +191,6 @@ int h2d_upstream_connection_write(struct h2d_upstream_connection *upc,
 void h2d_upstream_init(void)
 {
 	h2d_upstream_ssl_ctx = h2d_ssl_ctx_new_client();
-
-	h2d_upstream_connection_pool = wuy_pool_new_type(struct h2d_upstream_connection);
 
 	loop_idle_add(h2d_loop, h2d_upstream_connection_defer_free, NULL);
 }

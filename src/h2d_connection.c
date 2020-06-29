@@ -1,7 +1,5 @@
 #include "h2d_main.h"
 
-static wuy_pool_t *h2d_connection_pool;
-
 static WUY_LIST(h2d_connection_defer_list);
 
 static void h2d_connection_close(struct h2d_connection *c)
@@ -36,7 +34,7 @@ static void h2d_connection_defer_free(void *data)
 	wuy_list_node_t *node, *safe;
 	wuy_list_iter_safe(&h2d_connection_defer_list, node, safe) {
 		wuy_list_delete(node);
-		wuy_pool_free(wuy_containerof(node, struct h2d_connection, list_node));
+		free(wuy_containerof(node, struct h2d_connection, list_node));
 	}
 }
 
@@ -130,7 +128,7 @@ static bool h2d_connection_on_accept(loop_tcp_listen_t *loop_listen,
 {
 	struct h2d_conf_listen *conf_listen = loop_tcp_listen_get_app_data(loop_listen);
 
-	struct h2d_connection *c = wuy_pool_alloc(h2d_connection_pool);
+	struct h2d_connection *c = malloc(sizeof(struct h2d_connection));
 	if (c == NULL) {
 		return false;
 	}
@@ -167,7 +165,6 @@ static loop_stream_ops_t h2d_connection_stream_ops = {
 void h2d_connection_listen(wuy_array_t *listens)
 {
 	/* init */
-	h2d_connection_pool = wuy_pool_new_type(struct h2d_connection);
 	loop_idle_add(h2d_loop, h2d_connection_defer_free, NULL);
 
 	/* listen */

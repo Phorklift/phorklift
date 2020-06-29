@@ -1,14 +1,11 @@
 #include "h2d_main.h"
 
-static wuy_pool_t *h2d_request_pool;
-static wuy_pool_t *h2d_subreq_conn_pool;
-
 static WUY_LIST(h2d_request_defer_free_list);
 static WUY_LIST(h2d_request_defer_run_list);
 
 struct h2d_request *h2d_request_new(struct h2d_connection *c)
 {
-	struct h2d_request *r = wuy_pool_alloc(h2d_request_pool);
+	struct h2d_request *r = malloc(sizeof(struct h2d_request));
 	if (r == NULL) {
 		return NULL;
 	}
@@ -353,7 +350,7 @@ void h2d_request_active(struct h2d_request *r)
 struct h2d_request *h2d_request_subreq_new(struct h2d_request *father)
 {
 	/* fake connection */
-	struct h2d_connection *c = wuy_pool_alloc(h2d_subreq_conn_pool);
+	struct h2d_connection *c = malloc(sizeof(struct h2d_connection));
 	bzero(c, sizeof(struct h2d_connection));
 	c->send_buffer = malloc(H2D_CONNECTION_SENDBUF_SIZE);
 	c->send_buf_pos = c->send_buffer;
@@ -386,15 +383,11 @@ static void h2d_request_defer_routine(void *data)
 
 	wuy_list_iter_safe(&h2d_request_defer_free_list, node, safe) {
 		wuy_list_delete(node);
-		wuy_pool_free(wuy_containerof(node, struct h2d_request, list_node));
+		free(wuy_containerof(node, struct h2d_request, list_node));
 	}
 }
 
 void h2d_request_init(void)
 {
-	h2d_request_pool = wuy_pool_new_type(struct h2d_request);
-
-	h2d_subreq_conn_pool = wuy_pool_new_type(struct h2d_connection);
-
 	loop_idle_add(h2d_loop, h2d_request_defer_routine, NULL);
 }

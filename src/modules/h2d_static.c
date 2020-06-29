@@ -25,8 +25,6 @@ struct h2d_static_ctx {
 	size_t		range;
 };
 
-static wuy_pool_t *h2d_static_ctx_pool;
-
 extern struct h2d_module h2d_static_module;
 
 
@@ -70,7 +68,7 @@ static int h2d_static_generate_response_headers(struct h2d_request *r)
 	r->resp.status_code = WUY_HTTP_200;
 	r->resp.content_length = st_buf.st_size;
 
-	struct h2d_static_ctx *ctx = wuy_pool_alloc(h2d_static_ctx_pool);
+	struct h2d_static_ctx *ctx = malloc(sizeof(struct h2d_static_ctx));
 	ctx->fd = fd;
 	r->module_ctxs[h2d_static_module.index] = ctx;
 
@@ -92,15 +90,11 @@ static void h2d_static_ctx_free(struct h2d_request *r)
 {
 	struct h2d_static_ctx *ctx = r->module_ctxs[h2d_static_module.index];
 	close(ctx->fd);
+	free(ctx);
 }
 
 
 /* configuration */
-
-static void h2d_static_master_init(void)
-{
-	h2d_static_ctx_pool = wuy_pool_new_type(struct h2d_static_ctx);
-}
 
 static bool h2d_static_conf_post(void *data)
 {
@@ -173,6 +167,4 @@ struct h2d_module h2d_static_module = {
 		.size = sizeof(struct h2d_static_stats),
 	},
 	*/
-
-	.master_init = h2d_static_master_init,
 };
