@@ -86,6 +86,31 @@ void h2d_ssl_stream_set(loop_stream_t *s, SSL_CTX *ctx, bool is_server)
 	loop_stream_set_underlying(s, ssl);
 }
 
+int h2d_ssl_stream_handshake(loop_stream_t *s)
+{
+	SSL *ssl = loop_stream_get_underlying(s);
+	if (ssl == NULL) { /* non-SSL */
+		return H2D_OK;
+	}
+	int ret = SSL_do_handshake(ssl);
+	if (ret == 1) { /* done */
+		return H2D_OK;
+	}
+	if (ret == 0) { /* SSL closed */
+		loop_stream_close(s);
+		return H2D_ERROR;
+	}
+
+	/* handshake error */
+	int sslerr = SSL_get_error(ssl, ret);
+	if (sslerr == SSL_ERROR_WANT_READ || sslerr == SSL_ERROR_WANT_WRITE) {
+		return H2D_AGAIN;
+	}
+	printf("upstream SSL handshake error: %d %s\n", sslerr, ERR_error_string(ERR_get_error(), NULL));
+	loop_stream_close(s);
+	return H2D_ERROR;
+}
+
 int h2d_ssl_stream_underlying_read(void *ssl, void *buffer, int buf_len)
 {
 	errno = 0;
@@ -110,7 +135,7 @@ int h2d_ssl_stream_underlying_write(void *ssl, const void *data, int len)
 	int write_len = SSL_write(ssl, data, len);
 	if (write_len <= 0) {
 		int sslerr = SSL_get_error(ssl, write_len);
-		if (sslerr != SSL_ERROR_WANT_READ && sslerr != SSL_ERROR_WANT_WRITE) {
+		if (sslerr == SSL_ERROR_WANT_READ || sslerr == SSL_ERROR_WANT_WRITE) {
 			errno = EAGAIN;
 		}
 		return -1;

@@ -6,6 +6,9 @@ static WUY_LIST(h2d_upstream_connection_defer_list);
 
 static void h2d_upstream_on_active(loop_stream_t *s)
 {
+	if (h2d_ssl_stream_handshake(s) != H2D_OK) {
+		return;
+	}
 	struct h2d_upstream_connection *upc = loop_stream_get_app_data(s);
 	if (upc->request != NULL) {
 		h2d_request_active(upc->request);
@@ -77,14 +80,19 @@ h2d_upstream_get_connection(struct h2d_upstream_conf *upstream)
 	return upc;
 }
 
+static bool h2d_upstream_connection_is_closed(struct h2d_upstream_connection *upc)
+{
+	return upc->loop_stream == NULL;
+}
+
 void h2d_upstream_release_connection(struct h2d_upstream_connection *upc)
 {
-	struct h2d_upstream_address *address = upc->address;
-	loop_stream_t *s = upc->loop_stream;
-
-	if (s == NULL) { /* has been closed */
+	if (h2d_upstream_connection_is_closed(upc)) {
 		return;
 	}
+
+	struct h2d_upstream_address *address = upc->address;
+	loop_stream_t *s = upc->loop_stream;
 
 	wuy_list_t *move_to;
 	if (loop_stream_is_closed(s) || upc->request == NULL /* idle */
@@ -123,6 +131,10 @@ int h2d_upstream_connection_read(struct h2d_upstream_connection *upc,
 		void *buffer, int buf_len)
 {
 	uint8_t *buf_pos = buffer;
+
+	if (h2d_upstream_connection_is_closed(upc)) {
+		return H2D_ERROR;
+	}
 
 	/* upc->preread_buf was allocated in h2d_upstream_connection_read_notfinish() */
 	if (upc->preread_buf != NULL) {
@@ -170,6 +182,9 @@ void h2d_upstream_connection_read_notfinish(struct h2d_upstream_connection *upc,
 int h2d_upstream_connection_write(struct h2d_upstream_connection *upc,
 		void *data, int data_len)
 {
+	if (h2d_upstream_connection_is_closed(upc)) {
+		return H2D_ERROR;
+	}
 	if (loop_stream_is_write_blocked(upc->loop_stream)) {
 		return H2D_AGAIN;
 	}
