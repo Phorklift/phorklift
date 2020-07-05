@@ -3,7 +3,7 @@
 
 #include <stdbool.h>
 #include <openssl/ossl_typ.h>
-#include <lua.h>
+#include <lua5.1/lua.h>
 
 #include "h2d_module.h"
 

@@ -1,5 +1,4 @@
 CFLAGS = -g -Wall -O2
-CFLAGS += -I/usr/include/lua5.1
 LDFLAGS = -Llibloop -Llibhttp2 -Llibwuya
 LDLIBS = -lloop -lhttp2 -lwuya -llua5.1 -lssl -lcrypto
 

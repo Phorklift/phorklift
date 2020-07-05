@@ -72,6 +72,7 @@ h2d_upstream_get_connection(struct h2d_upstream_conf *upstream)
 	}
 
 	struct h2d_upstream_connection *upc = malloc(sizeof(struct h2d_upstream_connection));
+	bzero(upc, sizeof(struct h2d_upstream_connection));
 	upc->address = address;
 	upc->loop_stream = s;
 	wuy_list_append(&address->active_head, &upc->list_node);
