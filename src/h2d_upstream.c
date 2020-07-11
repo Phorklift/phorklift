@@ -121,10 +121,9 @@ void h2d_upstream_release_connection(struct h2d_upstream_connection *upc)
 }
 static void h2d_upstream_connection_defer_free(void *data)
 {
-	wuy_list_node_t *node, *safe;
-	wuy_list_iter_safe(&h2d_upstream_connection_defer_list, node, safe) {
-		wuy_list_delete(node);
-		free(wuy_containerof(node, struct h2d_upstream_connection, list_node));
+	struct h2d_upstream_connection *upc;
+	while(wuy_list_pop_type(&h2d_upstream_connection_defer_list, upc, list_node)) {
+		free(upc);
 	}
 }
 

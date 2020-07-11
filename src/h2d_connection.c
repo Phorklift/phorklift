@@ -31,10 +31,9 @@ static void h2d_connection_close(struct h2d_connection *c)
 
 static void h2d_connection_defer_free(void *data)
 {
-	wuy_list_node_t *node, *safe;
-	wuy_list_iter_safe(&h2d_connection_defer_list, node, safe) {
-		wuy_list_delete(node);
-		free(wuy_containerof(node, struct h2d_connection, list_node));
+	struct h2d_connection *c;
+	while (wuy_list_pop_type(&h2d_connection_defer_list, c, list_node)) {
+		free(c);
 	}
 }
 
