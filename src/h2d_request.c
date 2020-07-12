@@ -1,6 +1,5 @@
 #include "h2d_main.h"
 
-static WUY_LIST(h2d_request_defer_free_list);
 static WUY_LIST(h2d_request_defer_run_list);
 
 struct h2d_request *h2d_request_new(struct h2d_connection *c)
@@ -57,9 +56,7 @@ void h2d_request_close(struct h2d_request *r)
 	free(r->req.buffer);
 	free(r->req.body_buf);
 	free(r->resp.buffer);
-
-	wuy_list_del_if(&r->list_node);
-	wuy_list_append(&h2d_request_defer_free_list, &r->list_node);
+	free(r);
 }
 
 static int h2d_request_process_headers(struct h2d_request *r)
@@ -342,7 +339,8 @@ void h2d_request_active(struct h2d_request *r)
 	// XXX timer -> epoll-block -> idle, so pending subreqs will not run
 	printf("active %p\n", r);
 
-	wuy_list_del_if(&r->list_node);
+	// TODO change to:   if (not linked) append;
+	wuy_list_del_if(&r->list_node); // TODO need delete?
 	wuy_list_append(&h2d_request_defer_run_list, &r->list_node);
 }
 
@@ -369,20 +367,16 @@ struct h2d_request *h2d_request_subreq_new(struct h2d_request *father)
 	return subreq;
 }
 
-static void h2d_request_defer_routine(void *data)
+static void h2d_request_defer_run(void *data)
 {
 	struct h2d_request *r;
 	while (wuy_list_pop_type(&h2d_request_defer_run_list, r, list_node)) {
 		h2d_request_run(r, -1);
 		h2d_connection_flush(r->c);
 	}
-
-	while (wuy_list_pop_type(&h2d_request_defer_free_list, r, list_node)) {
-		free(r);
-	}
 }
 
 void h2d_request_init(void)
 {
-	loop_idle_add(h2d_loop, h2d_request_defer_routine, NULL);
+	loop_idle_add(h2d_loop, h2d_request_defer_run, NULL);
 }

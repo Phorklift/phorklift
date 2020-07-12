@@ -24,8 +24,6 @@ struct h2d_connection {
 
 	uint8_t			*send_buffer;
 	uint8_t			*send_buf_pos;
-
-	wuy_list_node_t		list_node;
 };
 
 void h2d_connection_listen(wuy_array_t *listens);

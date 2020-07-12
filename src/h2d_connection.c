@@ -1,7 +1,5 @@
 #include "h2d_main.h"
 
-static WUY_LIST(h2d_connection_defer_list);
-
 static void h2d_connection_close(struct h2d_connection *c)
 {
 	if (c->closed) {
@@ -25,16 +23,7 @@ static void h2d_connection_close(struct h2d_connection *c)
 	free(c->send_buffer);
 	c->send_buffer = c->send_buf_pos = NULL;
 
-	/* free it later in h2d_connection_defer_free() */
-	wuy_list_append(&h2d_connection_defer_list, &c->list_node);
-}
-
-static void h2d_connection_defer_free(void *data)
-{
-	struct h2d_connection *c;
-	while (wuy_list_pop_type(&h2d_connection_defer_list, c, list_node)) {
-		free(c);
-	}
+	free(c);
 }
 
 int h2d_connection_flush(struct h2d_connection *c)
@@ -163,10 +152,6 @@ static loop_stream_ops_t h2d_connection_stream_ops = {
 
 void h2d_connection_listen(wuy_array_t *listens)
 {
-	/* init */
-	loop_idle_add(h2d_loop, h2d_connection_defer_free, NULL);
-
-	/* listen */
 	struct h2d_conf_listen *conf_listen;
 	wuy_array_iter_ppval(listens, conf_listen) {
 
