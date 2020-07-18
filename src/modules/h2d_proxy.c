@@ -157,7 +157,10 @@ static int h2d_proxy_generate_response_headers(struct h2d_request *r)
 		char request_buffer[4096 + r->req.body_len];
 		int len = h2d_proxy_build_request_headers(r, request_buffer);
 		memcpy(request_buffer + len, r->req.body_buf, r->req.body_len);
-		h2d_upstream_connection_write(ctx->upc, request_buffer, len + r->req.body_len);
+		int ret = h2d_upstream_connection_write(ctx->upc, request_buffer, len + r->req.body_len);
+		if (ret != H2D_OK) {
+			return ret;
+		}
 		ctx->has_sent_request = true;
 	}
 

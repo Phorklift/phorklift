@@ -13,6 +13,8 @@ int h2d_ssl_stream_underlying_read(void *underlying, void *buffer, int buf_len);
 int h2d_ssl_stream_underlying_write(void *underlying, const void *data, int len);
 void h2d_ssl_stream_underlying_close(void *underlying);
 
+const char *h2d_ssl_stream_error_string(loop_stream_t *s);
+
 void h2d_ssl_init(void);
 
 #endif

@@ -103,10 +103,10 @@ static void h2d_connection_on_writable(loop_stream_t *s)
 	h2d_connection_flush(c);
 }
 
-#include <openssl/err.h> // TODO move outside
-static void h2d_connection_on_close(loop_stream_t *s, const char *reason, int err)
+static void h2d_connection_on_close(loop_stream_t *s, enum loop_stream_close_reason reason)
 {
-	printf(" -- close: %s %d %s\n", reason, err, ERR_error_string(ERR_get_error(), NULL));
+	printf(" -- stream close %s, SSL: %s\n", loop_stream_close_string(reason),
+			h2d_ssl_stream_error_string(s));
 
 	h2d_connection_close(loop_stream_get_app_data(s));
 }

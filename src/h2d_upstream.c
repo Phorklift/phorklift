@@ -6,17 +6,24 @@ static WUY_LIST(h2d_upstream_connection_defer_list);
 
 static void h2d_upstream_on_active(loop_stream_t *s)
 {
-	if (h2d_ssl_stream_handshake(s) != H2D_OK) {
+	/* Explicit handshake is not required here because the following
+	 * routine will call SSL_read/SSL_write to do the handshake.
+	 * We handshake here just to avoid calling the following
+	 * routine during handshake for performence. So we handle
+	 * H2D_AGAIN only, but not H2D_ERROR. */
+	if (h2d_ssl_stream_handshake(s) == H2D_AGAIN) {
 		return;
 	}
+
 	struct h2d_upstream_connection *upc = loop_stream_get_app_data(s);
 	if (upc->request != NULL) {
 		h2d_request_active(upc->request);
 	}
 }
-static void h2d_upstream_on_close(loop_stream_t *s, const char *reason, int err)
+static void h2d_upstream_on_close(loop_stream_t *s, enum loop_stream_close_reason reason)
 {
-	printf("upstream on close: %s\n", reason);
+	printf(" == upstream close %s, SSL: %s\n", loop_stream_close_string(reason),
+			h2d_ssl_stream_error_string(s));
 
 	struct h2d_upstream_connection *upc = loop_stream_get_app_data(s);
 	if (upc->request != NULL) {
@@ -197,7 +204,8 @@ int h2d_upstream_connection_write(struct h2d_upstream_connection *upc,
 		return H2D_ERROR;
 	}
 	if (write_len != data_len) { /* blocking happens */
-		loop_stream_close(upc->loop_stream);
+		loop_stream_close(upc->loop_stream); // XXX 
+		h2d_upstream_release_connection(upc);
 		return H2D_ERROR;
 	}
 	return H2D_OK;
