@@ -40,9 +40,7 @@ static loop_stream_ops_t h2d_upstream_ops = {
 	.on_readable = h2d_upstream_on_active,
 	.on_writable = h2d_upstream_on_active,
 
-	.underlying_read = h2d_ssl_stream_underlying_read,
-	.underlying_write = h2d_ssl_stream_underlying_write,
-	.underlying_close = h2d_ssl_stream_underlying_close,
+	H2D_SSL_LOOP_STREAM_UNDERLYINGS,
 };
 
 

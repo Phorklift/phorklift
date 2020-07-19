@@ -17,4 +17,9 @@ const char *h2d_ssl_stream_error_string(loop_stream_t *s);
 
 void h2d_ssl_init(void);
 
+#define H2D_SSL_LOOP_STREAM_UNDERLYINGS \
+	.underlying_read = h2d_ssl_stream_underlying_read, \
+	.underlying_write = h2d_ssl_stream_underlying_write, \
+	.underlying_close = h2d_ssl_stream_underlying_close \
+
 #endif

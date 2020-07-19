@@ -56,6 +56,7 @@ int h2d_connection_flush(struct h2d_connection *c)
 	} else {
 		memmove(c->send_buffer, c->send_buffer + write_len, buf_len - write_len);
 		c->send_buf_pos -= write_len;
+		printf(" !!! write block: %d %d\n", buf_len, write_len);
 		return H2D_AGAIN;
 	}
 }
@@ -148,9 +149,7 @@ static loop_stream_ops_t h2d_connection_stream_ops = {
 	.on_close = h2d_connection_on_close,
 	.on_writable = h2d_connection_on_writable,
 
-	.underlying_read = h2d_ssl_stream_underlying_read,
-	.underlying_write = h2d_ssl_stream_underlying_write,
-	.underlying_close = h2d_ssl_stream_underlying_close,
+	H2D_SSL_LOOP_STREAM_UNDERLYINGS,
 };
 
 void h2d_connection_listen(wuy_array_t *listens)
