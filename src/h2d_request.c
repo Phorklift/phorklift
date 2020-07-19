@@ -4,12 +4,10 @@ static WUY_LIST(h2d_request_defer_run_list);
 
 struct h2d_request *h2d_request_new(struct h2d_connection *c)
 {
-	struct h2d_request *r = malloc(sizeof(struct h2d_request));
+	struct h2d_request *r = calloc(1, sizeof(struct h2d_request));
 	if (r == NULL) {
 		return NULL;
 	}
-
-	bzero(r, sizeof(struct h2d_request));
 
 	r->req.buffer = malloc(4096); // TODO
 	r->req.next = r->req.buffer;
@@ -330,8 +328,7 @@ void h2d_request_active(struct h2d_request *r)
 struct h2d_request *h2d_request_subreq_new(struct h2d_request *father)
 {
 	/* fake connection */
-	struct h2d_connection *c = malloc(sizeof(struct h2d_connection));
-	bzero(c, sizeof(struct h2d_connection));
+	struct h2d_connection *c = calloc(1, sizeof(struct h2d_connection));
 	c->send_buffer = malloc(H2D_CONNECTION_SENDBUF_SIZE);
 	c->send_buf_pos = c->send_buffer;
 	c->conf_listen = father->c->conf_listen;

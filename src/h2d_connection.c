@@ -9,11 +9,9 @@ static void h2d_connection_close(struct h2d_connection *c)
 
 	if (c->is_http2) {
 		http2_connection_close(c->u.h2c);
-		c->u.h2c = NULL;
 
 	} else if (c->u.request != NULL) {
 		h2d_request_close(c->u.request);
-		c->u.request = NULL;
 	}
 
 	// TODO loop_stream_write() before close??
@@ -21,8 +19,6 @@ static void h2d_connection_close(struct h2d_connection *c)
 	c->loop_stream = NULL;
 
 	free(c->send_buffer);
-	c->send_buffer = c->send_buf_pos = NULL;
-
 	free(c);
 }
 
@@ -120,11 +116,10 @@ static bool h2d_connection_on_accept(loop_tcp_listen_t *loop_listen,
 {
 	struct h2d_conf_listen *conf_listen = loop_tcp_listen_get_app_data(loop_listen);
 
-	struct h2d_connection *c = malloc(sizeof(struct h2d_connection));
+	struct h2d_connection *c = calloc(1, sizeof(struct h2d_connection));
 	if (c == NULL) {
 		return false;
 	}
-	bzero(c, sizeof(struct h2d_connection));
 	c->client_addr = *addr;
 	c->send_buffer = malloc(H2D_CONNECTION_SENDBUF_SIZE);
 	c->send_buf_pos = c->send_buffer;

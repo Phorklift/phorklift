@@ -172,8 +172,7 @@ static int h2d_lua_generate_response_headers(struct h2d_request *r)
 	struct h2d_lua_ctx *ctx = r->module_ctxs[h2d_lua_module.index];
 
 	if (ctx == NULL) {
-		ctx = malloc(sizeof(struct h2d_lua_ctx));
-		bzero(ctx, sizeof(struct h2d_lua_ctx));
+		ctx = calloc(1, sizeof(struct h2d_lua_ctx));
 		ctx->L = h2d_lua_thread_new(conf->content);
 		ctx->resp_body_buf = malloc(4096); // TODO
 		r->module_ctxs[h2d_lua_module.index] = ctx;

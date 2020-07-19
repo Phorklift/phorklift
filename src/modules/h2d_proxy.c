@@ -137,8 +137,7 @@ static int h2d_proxy_generate_response_headers(struct h2d_request *r)
 	struct h2d_proxy_ctx *ctx = r->module_ctxs[h2d_proxy_module.index];
 
 	if (ctx == NULL) {
-		ctx = malloc(sizeof(struct h2d_proxy_ctx));
-		bzero(ctx, sizeof(struct h2d_proxy_ctx));
+		ctx = calloc(1, sizeof(struct h2d_proxy_ctx));
 		r->module_ctxs[h2d_proxy_module.index] = ctx;
 
 		/* get upstream connection */

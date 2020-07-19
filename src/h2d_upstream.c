@@ -77,8 +77,7 @@ h2d_upstream_get_connection(struct h2d_upstream_conf *upstream)
 		h2d_ssl_stream_set(s, h2d_upstream_ssl_ctx, false);
 	}
 
-	upc = malloc(sizeof(struct h2d_upstream_connection));
-	bzero(upc, sizeof(struct h2d_upstream_connection));
+	upc = calloc(1, sizeof(struct h2d_upstream_connection));
 	upc->address = address;
 	upc->loop_stream = s;
 	wuy_list_append(&address->active_head, &upc->list_node);
