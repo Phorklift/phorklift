@@ -178,14 +178,13 @@ static int h2d_request_response_body(struct h2d_request *r)
 {
 	struct h2d_connection *c = r->c;
 
-	int ret = h2d_connection_make_space(c, 4096);
-	if (ret != H2D_OK) {
-		return ret;
+	int buf_len = h2d_connection_make_space(c, 4096);
+	if (buf_len < 0) {
+		return buf_len;
 	}
 
 	uint8_t *buffer = c->send_buf_pos;
 	uint8_t *buf_pos = buffer;
-	int buf_len = c->send_buffer + H2D_CONNECTION_SENDBUF_SIZE - buffer;
 
 	if (c->is_http2) {
 		h2d_http2_response_body_packfix(r, &buf_pos, &buf_len);
@@ -329,8 +328,6 @@ struct h2d_request *h2d_request_subreq_new(struct h2d_request *father)
 {
 	/* fake connection */
 	struct h2d_connection *c = calloc(1, sizeof(struct h2d_connection));
-	c->send_buffer = malloc(H2D_CONNECTION_SENDBUF_SIZE);
-	c->send_buf_pos = c->send_buffer;
 	c->conf_listen = father->c->conf_listen;
 
 	/* subrequest */

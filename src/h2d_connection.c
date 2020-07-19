@@ -28,6 +28,9 @@ int h2d_connection_flush(struct h2d_connection *c)
 		return H2D_ERROR;
 	}
 
+	if (c->send_buffer == NULL) {
+		return H2D_OK;
+	}
 	int buf_len = c->send_buf_pos - c->send_buffer;
 	if (buf_len == 0) {
 		return H2D_OK;
@@ -46,24 +49,53 @@ int h2d_connection_flush(struct h2d_connection *c)
 		return H2D_AGAIN;
 	}
 
-	if (write_len == buf_len) {
-		c->send_buf_pos = c->send_buffer;
-		return H2D_OK;
-	} else {
+	if (write_len < buf_len) {
 		memmove(c->send_buffer, c->send_buffer + write_len, buf_len - write_len);
 		c->send_buf_pos -= write_len;
 		printf(" !!! write block: %d %d\n", buf_len, write_len);
 		return H2D_AGAIN;
 	}
+
+	// TODO  check any pending requests before free
+	//free(c->send_buffer);
+	//c->send_buf_pos = c->send_buffer = NULL;
+	c->send_buf_pos = c->send_buffer;
+	return H2D_OK;
 }
 
 int h2d_connection_make_space(struct h2d_connection *c, int size)
 {
-	assert(size <= H2D_CONNECTION_SENDBUF_SIZE);
-	if (c->send_buffer + H2D_CONNECTION_SENDBUF_SIZE - c->send_buf_pos >= size) {
-		return H2D_OK;
+	int buf_size = c->conf_listen->network.send_buffer_size;
+	if (c->is_http2) {
+		buf_size += HTTP2_FRAME_HEADER_SIZE;
 	}
-	return h2d_connection_flush(c);
+
+	if (size > buf_size) {
+		printf("   !!! fatal: too small buf_size %d\n", buf_size);
+		return H2D_ERROR;
+	}
+
+	/* allocate buffer */
+	if (c->send_buffer == NULL) {
+		c->send_buffer = malloc(buf_size);
+		c->send_buf_pos = c->send_buffer;
+		return c->send_buffer ? buf_size : H2D_ERROR;
+	}
+
+	/* use exist buffer */
+	int available = buf_size - (c->send_buf_pos - c->send_buffer);
+	if (available >= size) {
+		return available;
+	}
+
+	int ret = h2d_connection_flush(c);
+	if (ret != H2D_OK) {
+		return ret;
+	}
+
+	// TODO the buffer may be freed after flush
+
+	return buf_size - (c->send_buf_pos - c->send_buffer);
 }
 
 static int h2d_connection_on_read(loop_stream_t *s, void *data, int len)
@@ -121,8 +153,6 @@ static bool h2d_connection_on_accept(loop_tcp_listen_t *loop_listen,
 		return false;
 	}
 	c->client_addr = *addr;
-	c->send_buffer = malloc(H2D_CONNECTION_SENDBUF_SIZE);
-	c->send_buf_pos = c->send_buffer;
 	c->conf_listen = conf_listen;
 	c->loop_stream = s;
 	loop_stream_set_app_data(s, c);

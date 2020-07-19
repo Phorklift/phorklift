@@ -50,8 +50,9 @@ struct h2d_conf_listen {
 
 	struct {
 		int		connections;
-		int		read_timeout;
-		int		write_timeout;
+		int		send_timeout;
+		int		recv_timeout;
+		int		send_buffer_size;
 	} network;
 
 	void			*module_confs[H2D_MODULE_NUMBER];

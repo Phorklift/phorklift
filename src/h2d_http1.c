@@ -75,7 +75,7 @@ int h2d_http1_response_headers(struct h2d_request *r)
 {
 	int estimate_size = (char *)r->resp.next - (char *)r->resp.buffer + 100; // TODO
 	int ret = h2d_connection_make_space(r->c, estimate_size);
-	if (ret != H2D_OK) {
+	if (ret < 0) {
 		return ret;
 	}
 

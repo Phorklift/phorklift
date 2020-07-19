@@ -104,14 +104,14 @@ int h2d_http2_response_headers(struct h2d_request *r)
 	struct h2d_connection *c = r->c;
 
 	int estimate_size = (char *)r->resp.next - (char *)r->resp.buffer + 100; // TODO
-	int ret = h2d_connection_make_space(c, estimate_size);
-	if (ret != H2D_OK) {
-		return ret;
+	int buf_size = h2d_connection_make_space(c, estimate_size);
+	if (buf_size < 0) {
+		return buf_size;
 	}
 
 	uint8_t *pos_frame = c->send_buf_pos;
 	uint8_t *pos_payload = pos_frame + HTTP2_FRAME_HEADER_SIZE;
-	uint8_t *pos_end = c->send_buffer + H2D_CONNECTION_SENDBUF_SIZE;
+	uint8_t *pos_end = c->send_buf_pos + buf_size;
 	uint8_t *p = pos_payload;
 
 	int proc_len = http2_make_status_code(p, pos_end - p, r->resp.status_code);
@@ -152,7 +152,10 @@ int h2d_http2_response_body_pack(struct h2d_request *r, uint8_t *payload,
 
 void h2d_http2_response_body_finish(struct h2d_request *r)
 {
-	// TODO need check send_buf_pos??
+	if (h2d_connection_make_space(r->c, HTTP2_FRAME_HEADER_SIZE) < 0) {
+		return;
+	}
+
 	http2_make_frame_body(r->h2s, r->c->send_buf_pos, 0, true);
 	r->c->send_buf_pos += HTTP2_FRAME_HEADER_SIZE;
 	h2d_connection_flush(r->c);
@@ -167,6 +170,13 @@ static bool h2d_http2_hook_stream_response(http2_stream_t *h2s, int window)
 static bool h2d_http2_hook_control_frame(http2_connection_t *h2c, const uint8_t *buf, int len)
 {
 	struct h2d_connection *c = http2_connection_get_app_data(h2c);
+
+	int ret = h2d_connection_make_space(c, len);
+	if (ret < 0) {
+		// TODO send again if ret==H2D_AGAIN
+		return false;
+	}
+
 	memcpy(c->send_buf_pos, buf, len);
 	c->send_buf_pos += len;
 	return true;

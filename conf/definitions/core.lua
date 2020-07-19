@@ -31,8 +31,9 @@ Listen () {
 
 	network = {
 		connections = 10000,
-		read_timeout = 10,
-		write_timeout = 10,
+		send_timeout = 10,
+		recv_timeout = 10,
+		send_buffer_size = 16 * 1024,
 		keepalive_timeout = 60,
 	},
 
