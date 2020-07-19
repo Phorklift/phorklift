@@ -79,7 +79,7 @@ static bool h2d_http2_hook_stream_body(http2_stream_t *h2s, const uint8_t *buf, 
 	if (buf == NULL) {
 		printf("set r->req.body_finished\n");
 		r->req.body_finished = true;
-		h2d_request_run(r, 0);
+		h2d_request_run(r, -1); // XXX this was 0 before ??? no response??
 		return true;
 	}
 

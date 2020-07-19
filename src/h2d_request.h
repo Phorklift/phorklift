@@ -89,6 +89,4 @@ void h2d_request_init(void);
 
 struct h2d_request *h2d_request_subreq_new(struct h2d_request *father);
 
-void h2d_request_response_body_finish(struct h2d_request *r);
-
 #endif

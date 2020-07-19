@@ -107,6 +107,9 @@ static void h2d_connection_on_close(loop_stream_t *s, enum loop_stream_close_rea
 {
 	printf(" -- stream close %s, SSL: %s\n", loop_stream_close_string(reason),
 			h2d_ssl_stream_error_string(s));
+	if (reason == LOOP_STREAM_READ_ERROR || reason == LOOP_STREAM_WRITE_ERROR) {
+		printf("errno: %s\n", strerror(errno));
+	}
 
 	h2d_connection_close(loop_stream_get_app_data(s));
 }

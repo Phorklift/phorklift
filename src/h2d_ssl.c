@@ -69,6 +69,7 @@ SSL_CTX *h2d_ssl_ctx_new_client(void)
 {
 	SSL_CTX *ctx = SSL_CTX_new(SSLv23_client_method());
 	SSL_CTX_set_ecdh_auto(ctx, 1);
+	SSL_CTX_set_verify(ctx, SSL_VERIFY_NONE, NULL); // TODO move this out as config
 	return ctx;
 }
 

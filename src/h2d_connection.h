@@ -3,7 +3,7 @@
 
 struct h2d_connection;
 
-#define H2D_CONNECTION_SENDBUF_SIZE (16*1024)
+#define H2D_CONNECTION_SENDBUF_SIZE (16*1024+9) // TODO is this ok?
 
 struct h2d_connection {
 	/* set on created */

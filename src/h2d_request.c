@@ -44,14 +44,16 @@ void h2d_request_close(struct h2d_request *r)
 		printf("!!!!!!!!! subrequest %p subr:%p\n", r, r->subr);
 	}
 
-	h2d_module_request_ctx_free(r);
-
 	if (r->h2s != NULL) { /* HTTP/2 */
+		h2d_http2_response_body_finish(r);
 		http2_stream_close(r->h2s);
 	} else { /* HTTP/1.x */
 		assert(r->c->u.request == r);
+		h2d_http1_response_body_finish(r);
 		r->c->u.request = NULL;
 	}
+
+	h2d_module_request_ctx_free(r);
 
 	free(r->req.buffer);
 	free(r->req.body_buf);
@@ -250,32 +252,13 @@ skip_generate:
 	r->resp.sent_length += body_len;
 	c->send_buf_pos += body_len;
 
-	if (is_body_finished) {
-		h2d_request_close(r);
-		return H2D_OK;
-	}
-
-	/* run again */
-	return h2d_request_response_body(r);
-}
-
-/* if @is_body_finished is not detected at h2d_request_response_body(),
- * call this to finish response body. It's used by upstream now. */
-void h2d_request_response_body_finish(struct h2d_request *r)
-{
-	if (h2d_request_is_closed(r)) {
-		return;
-	}
-	if (r->c->is_http2) {
-		h2d_http2_response_body_finish(r);
-	} else {
-		h2d_http1_response_body_finish(r);
-	}
-	h2d_request_close(r);
+	return is_body_finished ? H2D_OK : h2d_request_response_body(r);
 }
 
 void h2d_request_run(struct h2d_request *r, int window)
 {
+	printf("{{{ h2d_request_run %d %p %s\n", r->state, r, h2d_header_value(r->req.url));
+
 	int ret;
 	switch (r->state) {
 	case H2D_REQUEST_STATE_PARSE_HEADERS:
@@ -291,14 +274,14 @@ void h2d_request_run(struct h2d_request *r, int window)
 		break;
 	case H2D_REQUEST_STATE_RESPONSE_BODY:
 		ret = h2d_request_response_body(r);
-		/* fall through */
+		break;
 	case H2D_REQUEST_STATE_CLOSED:
 		return;
 	default:
 		abort();
 	}
 
-	printf("run %s: state:%d ret:%d\n", h2d_header_value(r->req.url), r->state, ret);
+	printf("}}} %p: state:%d ret:%d\n", r, r->state, ret);
 
 	if (ret == H2D_AGAIN) {
 		return;
@@ -337,7 +320,7 @@ void h2d_request_active(struct h2d_request *r)
 	}
 
 	// XXX timer -> epoll-block -> idle, so pending subreqs will not run
-	printf("active %p\n", r);
+	printf("active %s\n", h2d_header_value(r->req.url));
 
 	// TODO change to:   if (not linked) append;
 	wuy_list_del_if(&r->list_node); // TODO need delete?

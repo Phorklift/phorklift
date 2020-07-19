@@ -1,8 +1,22 @@
 #include "h2d_main.h"
 
+// TODO each upstream should has one ssl-ctx, for different ssl configs
 static SSL_CTX *h2d_upstream_ssl_ctx;
 
-static WUY_LIST(h2d_upstream_connection_defer_list);
+static void h2d_upstream_connection_close(struct h2d_upstream_connection *upc)
+{
+	loop_stream_close(upc->loop_stream);
+	upc->loop_stream = NULL;
+
+	wuy_list_delete(&upc->list_node);
+
+	if (upc->request == NULL) {
+		upc->address->idle_num--;
+	}
+
+	free(upc->preread_buf);
+	free(upc);
+}
 
 static void h2d_upstream_on_active(loop_stream_t *s)
 {
@@ -18,25 +32,13 @@ static void h2d_upstream_on_active(loop_stream_t *s)
 	struct h2d_upstream_connection *upc = loop_stream_get_app_data(s);
 	if (upc->request != NULL) {
 		h2d_request_active(upc->request);
+	} else { /* idle */
+		h2d_upstream_connection_close(upc);
 	}
-}
-static void h2d_upstream_on_close(loop_stream_t *s, enum loop_stream_close_reason reason)
-{
-	printf(" == upstream close %s, SSL: %s\n", loop_stream_close_string(reason),
-			h2d_ssl_stream_error_string(s));
-
-	struct h2d_upstream_connection *upc = loop_stream_get_app_data(s);
-	if (upc->request != NULL) {
-		h2d_request_response_body_finish(upc->request);
-	}
-
-	// TODO upstream->on_close()
-	h2d_upstream_release_connection(upc);
 }
 static loop_stream_ops_t h2d_upstream_ops = {
 	.on_readable = h2d_upstream_on_active,
 	.on_writable = h2d_upstream_on_active,
-	.on_close = h2d_upstream_on_close,
 
 	.underlying_read = h2d_ssl_stream_underlying_read,
 	.underlying_write = h2d_ssl_stream_underlying_write,
@@ -54,13 +56,12 @@ h2d_upstream_get_connection(struct h2d_upstream_conf *upstream)
 
 	atomic_fetch_add(&upstream->stats->total, 1);
 
-	if (!wuy_list_empty(&address->idle_head)) {
-		wuy_list_node_t *node = wuy_list_first(&address->idle_head);
-		wuy_list_delete(node);
-		wuy_list_append(&address->active_head, node);
+	struct h2d_upstream_connection *upc;
+	if (wuy_list_pop_type(&address->idle_head, upc, list_node)) {
+		wuy_list_append(&address->active_head, &upc->list_node);
 		address->idle_num--;
 		atomic_fetch_add(&upstream->stats->reuse, 1);
-		return wuy_containerof(node, struct h2d_upstream_connection, list_node);
+		return upc;
 	}
 
 	errno = 0;
@@ -78,7 +79,7 @@ h2d_upstream_get_connection(struct h2d_upstream_conf *upstream)
 		h2d_ssl_stream_set(s, h2d_upstream_ssl_ctx, false);
 	}
 
-	struct h2d_upstream_connection *upc = malloc(sizeof(struct h2d_upstream_connection));
+	upc = malloc(sizeof(struct h2d_upstream_connection));
 	bzero(upc, sizeof(struct h2d_upstream_connection));
 	upc->address = address;
 	upc->loop_stream = s;
@@ -88,60 +89,40 @@ h2d_upstream_get_connection(struct h2d_upstream_conf *upstream)
 	return upc;
 }
 
-static bool h2d_upstream_connection_is_closed(struct h2d_upstream_connection *upc)
-{
-	return upc->loop_stream == NULL;
-}
-
 void h2d_upstream_release_connection(struct h2d_upstream_connection *upc)
 {
-	if (h2d_upstream_connection_is_closed(upc)) {
+	assert(upc->request != NULL);
+	assert(upc->loop_stream != NULL);
+
+	/* close the connection */
+	if (loop_stream_is_closed(upc->loop_stream) || upc->preread_buf != NULL) {
+		h2d_upstream_connection_close(upc);
 		return;
 	}
 
+	/* put the connection into idle pool */
 	struct h2d_upstream_address *address = upc->address;
-	loop_stream_t *s = upc->loop_stream;
-
-	wuy_list_t *move_to;
-	if (loop_stream_is_closed(s) || upc->request == NULL /* idle */
-			|| upc->preread_buf != NULL /* with un-processed data */
-			|| address->idle_num >= 10) {
-		/* close it */
-		loop_stream_close(s);
-		upc->loop_stream = NULL;
-		free(upc->preread_buf);
-		upc->preread_buf = NULL;
-		move_to = &h2d_upstream_connection_defer_list;
-		if (upc->request == NULL) {
-			address->idle_num--;
-		}
-
-	} else {
-		/* put it to idle pool to reuse */
-		address->idle_num++;
-		upc->request = NULL;
-		move_to = &address->idle_head;
+	if (address->idle_num > 10) {
+		/* close the oldest one if pool is full */
+		struct h2d_upstream_connection *idle;
+		wuy_list_first_type(&address->idle_head, idle, list_node);
+		assert(idle != NULL);
+		h2d_upstream_connection_close(idle);
 	}
 
+	upc->request = NULL;
+	address->idle_num++;
 	wuy_list_delete(&upc->list_node);
-	wuy_list_append(move_to, &upc->list_node);
-}
-static void h2d_upstream_connection_defer_free(void *data)
-{
-	struct h2d_upstream_connection *upc;
-	while(wuy_list_pop_type(&h2d_upstream_connection_defer_list, upc, list_node)) {
-		free(upc);
-	}
+	wuy_list_append(&address->idle_head, &upc->list_node);
+
+	// TODO loop_stream_set_keepalive()
 }
 
 int h2d_upstream_connection_read(struct h2d_upstream_connection *upc,
 		void *buffer, int buf_len)
 {
+	assert(upc->loop_stream != NULL);
 	uint8_t *buf_pos = buffer;
-
-	if (h2d_upstream_connection_is_closed(upc)) {
-		return H2D_ERROR;
-	}
 
 	/* upc->preread_buf was allocated in h2d_upstream_connection_read_notfinish() */
 	if (upc->preread_buf != NULL) {
@@ -189,9 +170,8 @@ void h2d_upstream_connection_read_notfinish(struct h2d_upstream_connection *upc,
 int h2d_upstream_connection_write(struct h2d_upstream_connection *upc,
 		void *data, int data_len)
 {
-	if (h2d_upstream_connection_is_closed(upc)) {
-		return H2D_ERROR;
-	}
+	assert(upc->loop_stream != NULL);
+
 	if (loop_stream_is_write_blocked(upc->loop_stream)) {
 		return H2D_AGAIN;
 	}
@@ -204,8 +184,8 @@ int h2d_upstream_connection_write(struct h2d_upstream_connection *upc,
 		return H2D_ERROR;
 	}
 	if (write_len != data_len) { /* blocking happens */
-		loop_stream_close(upc->loop_stream); // XXX 
-		h2d_upstream_release_connection(upc);
+		printf(" !!! upstream write block!!! %d %d\n", write_len, data_len);
+		h2d_upstream_connection_close(upc);
 		return H2D_ERROR;
 	}
 	return H2D_OK;
@@ -214,8 +194,6 @@ int h2d_upstream_connection_write(struct h2d_upstream_connection *upc,
 void h2d_upstream_init(void)
 {
 	h2d_upstream_ssl_ctx = h2d_ssl_ctx_new_client();
-
-	loop_idle_add(h2d_loop, h2d_upstream_connection_defer_free, NULL);
 }
 
 
