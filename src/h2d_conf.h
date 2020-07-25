@@ -44,9 +44,13 @@ struct h2d_conf_listen {
 	struct h2d_conf_host	*host_default;
 
 	struct {
-		int		keepalive_timeout;
+		int		idle_timeout;
 		int		ping_interval;
 	} http2;
+
+	struct {
+		int		keepalive_timeout;
+	} http1;
 
 	struct {
 		int		connections;

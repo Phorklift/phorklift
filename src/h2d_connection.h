@@ -20,8 +20,15 @@ struct h2d_connection {
 		struct h2d_request	*request;
 	} u;
 
+	loop_timer_t		*recv_timer;
+	loop_timer_t		*send_timer;
+
+	time_t			last_recv_ts;
+
 	uint8_t			*send_buffer;
 	uint8_t			*send_buf_pos;
+
+	wuy_list_node_t		list_node;
 };
 
 void h2d_connection_listen(wuy_array_t *listens);
@@ -31,8 +38,8 @@ static inline bool h2d_connection_write_blocked(struct h2d_connection *c)
 	return c->send_buf_pos != c->send_buffer;
 }
 
-int h2d_connection_flush(struct h2d_connection *c);
-
 int h2d_connection_make_space(struct h2d_connection *c, int size);
+
+void h2d_connection_close(struct h2d_connection *c);
 
 #endif

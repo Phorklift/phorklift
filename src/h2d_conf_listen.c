@@ -134,13 +134,21 @@ static bool h2d_conf_listen_post(void *data)
 }
 
 static struct wuy_cflua_command h2d_conf_listen_http2_commands[] = {
-	{	.name = "keepalive_timeout",
+	{	.name = "idle_timeout",
 		.type = WUY_CFLUA_TYPE_INTEGER,
-		.offset = offsetof(struct h2d_conf_listen, http2.keepalive_timeout),
+		.offset = offsetof(struct h2d_conf_listen, http2.idle_timeout),
 	},
 	{	.name = "ping_interval",
 		.type = WUY_CFLUA_TYPE_INTEGER,
 		.offset = offsetof(struct h2d_conf_listen, http2.ping_interval),
+	},
+	{ NULL }
+};
+
+static struct wuy_cflua_command h2d_conf_listen_http1_commands[] = {
+	{	.name = "keepalive_timeout",
+		.type = WUY_CFLUA_TYPE_INTEGER,
+		.offset = offsetof(struct h2d_conf_listen, http1.keepalive_timeout),
 	},
 	{ NULL }
 };
@@ -174,6 +182,11 @@ static struct wuy_cflua_command h2d_conf_listen_commands[] = {
 		.type = WUY_CFLUA_TYPE_TABLE,
 		.offset = offsetof(struct h2d_conf_listen, addresses),
 		.u.table = WUY_CFLUA_ARRAY_STRING_TABLE,
+	},
+	{	.name = "http1",
+		.type = WUY_CFLUA_TYPE_TABLE,
+		.offset = offsetof(struct h2d_conf_listen, http1),
+		.u.table = &(struct wuy_cflua_table) { h2d_conf_listen_http1_commands },
 	},
 	{	.name = "http2",
 		.type = WUY_CFLUA_TYPE_TABLE,

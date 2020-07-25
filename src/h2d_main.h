@@ -7,6 +7,7 @@
 #include <stdbool.h>
 #include <stdatomic.h>
 #include <assert.h>
+#include <time.h>
 
 #include "libwuya/wuy_array.h"
 #include "libwuya/wuy_dict.h"
@@ -43,6 +44,9 @@
 #define H2D_EXIT_MODULE_INIT	3
 #define H2D_EXIT_FORK_WORKER	4
 #define H2D_EXIT_LISTEN		5
+
+#define MIN(a, b) (a)<(b)?(a):(b)
+#define MAX(a, b) (a)>(b)?(a):(b)
 
 /* global event-driven loop */
 extern loop_t *h2d_loop;

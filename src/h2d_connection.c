@@ -1,6 +1,15 @@
 #include "h2d_main.h"
 
-static void h2d_connection_close(struct h2d_connection *c)
+static WUY_LIST(h2d_connection_defer_list);
+
+static void h2d_connection_put_defer(struct h2d_connection *c)
+{
+	if (!wuy_list_node_linked(&c->list_node)) {
+		wuy_list_append(&h2d_connection_defer_list, &c->list_node);
+	}
+}
+
+void h2d_connection_close(struct h2d_connection *c)
 {
 	if (c->closed) {
 		return;
@@ -9,20 +18,24 @@ static void h2d_connection_close(struct h2d_connection *c)
 
 	if (c->is_http2) {
 		http2_connection_close(c->u.h2c);
-
 	} else if (c->u.request != NULL) {
 		h2d_request_close(c->u.request);
 	}
 
-	// TODO loop_stream_write() before close??
+	if (c->send_buffer != NULL) {
+		loop_stream_write(c->loop_stream, c->send_buffer,
+				c->send_buf_pos - c->send_buffer);
+		free(c->send_buffer);
+	}
 	loop_stream_close(c->loop_stream);
-	c->loop_stream = NULL;
 
-	free(c->send_buffer);
-	free(c);
+	loop_timer_delete(c->recv_timer);
+	loop_timer_delete(c->send_timer);
+
+	h2d_connection_put_defer(c);
 }
 
-int h2d_connection_flush(struct h2d_connection *c)
+static int h2d_connection_flush(struct h2d_connection *c)
 {
 	if (c->closed) {
 		return H2D_ERROR;
@@ -45,26 +58,44 @@ int h2d_connection_flush(struct h2d_connection *c)
 	if (write_len < 0) {
 		return H2D_ERROR;
 	}
-	if (write_len == 0) {
-		return H2D_AGAIN;
-	}
 
 	if (write_len < buf_len) {
-		memmove(c->send_buffer, c->send_buffer + write_len, buf_len - write_len);
-		c->send_buf_pos -= write_len;
-		printf(" !!! write block: %d %d\n", buf_len, write_len);
+		if (write_len > 0) {
+			memmove(c->send_buffer, c->send_buffer + write_len,
+					buf_len - write_len);
+			c->send_buf_pos -= write_len;
+		}
+
+		loop_timer_set_after(c->send_timer, c->conf_listen->network.send_timeout);
 		return H2D_AGAIN;
 	}
 
-	// TODO  check any pending requests before free
-	//free(c->send_buffer);
-	//c->send_buf_pos = c->send_buffer = NULL;
+	loop_timer_suspend(c->send_timer);
 	c->send_buf_pos = c->send_buffer;
 	return H2D_OK;
 }
 
+static void h2d_connection_defer_routine(void *data)
+{
+	struct h2d_connection *c;
+	while (wuy_list_pop_type(&h2d_connection_defer_list, c, list_node)) {
+		if (c->closed) {
+			free(c);
+		} else {
+			h2d_connection_flush(c);
+
+			free(c->send_buffer);
+			c->send_buffer = c->send_buf_pos = NULL;
+		}
+	}
+}
+
 int h2d_connection_make_space(struct h2d_connection *c, int size)
 {
+	if (c->closed) {
+		return H2D_ERROR;
+	}
+
 	int buf_size = c->conf_listen->network.send_buffer_size;
 	if (c->is_http2) {
 		buf_size += HTTP2_FRAME_HEADER_SIZE;
@@ -74,6 +105,9 @@ int h2d_connection_make_space(struct h2d_connection *c, int size)
 		printf("   !!! fatal: too small buf_size %d\n", buf_size);
 		return H2D_ERROR;
 	}
+
+	/* so flush this at h2d_connection_defer_routine() */
+	h2d_connection_put_defer(c);
 
 	/* allocate buffer */
 	if (c->send_buffer == NULL) {
@@ -93,8 +127,6 @@ int h2d_connection_make_space(struct h2d_connection *c, int size)
 		return ret;
 	}
 
-	// TODO the buffer may be freed after flush
-
 	return buf_size - (c->send_buf_pos - c->send_buffer);
 }
 
@@ -103,16 +135,13 @@ static int h2d_connection_on_read(loop_stream_t *s, void *data, int len)
 	struct h2d_connection *c = loop_stream_get_app_data(s);
 	// printf("on_read %d %p\n", len, c->h2c);
 
-	int proc_len;
+	c->last_recv_ts = time(NULL);
+
 	if (c->is_http2) {
-		proc_len = h2d_http2_on_read(c, data, len);
+		return h2d_http2_on_read(c, data, len);
 	} else {
-		proc_len = h2d_http1_on_read(c, data, len);
+		return h2d_http1_on_read(c, data, len);
 	}
-
-	h2d_connection_flush(c);
-
-	return proc_len;
 }
 
 static void h2d_connection_on_writable(loop_stream_t *s)
@@ -128,8 +157,6 @@ static void h2d_connection_on_writable(loop_stream_t *s)
 	} else {
 		h2d_http1_on_writable(c);
 	}
-
-	h2d_connection_flush(c);
 }
 
 static void h2d_connection_on_close(loop_stream_t *s, enum loop_stream_close_reason reason)
@@ -141,6 +168,25 @@ static void h2d_connection_on_close(loop_stream_t *s, enum loop_stream_close_rea
 	}
 
 	h2d_connection_close(loop_stream_get_app_data(s));
+}
+
+static int64_t h2d_connection_recv_timedout(int64_t at, void *data)
+{
+	struct h2d_connection *c = data;
+	if (c->is_http2) {
+		int timeout = h2d_http2_idle_ping(c);
+		if (timeout > 0) {
+			return timeout;
+		}
+	}
+
+	h2d_connection_close(c);
+	return 0;
+}
+static int64_t h2d_connection_send_timedout(int64_t at, void *c)
+{
+	h2d_connection_close(c);
+	return 0;
 }
 
 static bool h2d_connection_on_accept(loop_tcp_listen_t *loop_listen,
@@ -155,6 +201,8 @@ static bool h2d_connection_on_accept(loop_tcp_listen_t *loop_listen,
 	c->client_addr = *addr;
 	c->conf_listen = conf_listen;
 	c->loop_stream = s;
+	c->recv_timer = loop_timer_new(h2d_loop, h2d_connection_recv_timedout, c);
+	c->send_timer = loop_timer_new(h2d_loop, h2d_connection_send_timedout, c);
 	loop_stream_set_app_data(s, c);
 
 	/* set ssl */
@@ -179,6 +227,8 @@ static loop_stream_ops_t h2d_connection_stream_ops = {
 
 void h2d_connection_listen(wuy_array_t *listens)
 {
+	loop_idle_add(h2d_loop, h2d_connection_defer_routine, NULL);
+
 	struct h2d_conf_listen *conf_listen;
 	wuy_array_iter_ppval(listens, conf_listen) {
 

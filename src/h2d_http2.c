@@ -38,7 +38,6 @@ static bool h2d_http2_hook_stream_header(http2_stream_t *h2s, const char *name_s
 		}
 
 		r->state = H2D_REQUEST_STATE_PROCESS_HEADERS;
-		h2d_request_run(r, 0);
 		return true; //  return what ??
 	}
 
@@ -79,7 +78,6 @@ static bool h2d_http2_hook_stream_body(http2_stream_t *h2s, const uint8_t *buf, 
 	if (buf == NULL) {
 		printf("set r->req.body_finished\n");
 		r->req.body_finished = true;
-		h2d_request_run(r, -1); // XXX this was 0 before ??? no response??
 		return true;
 	}
 
@@ -150,7 +148,7 @@ int h2d_http2_response_body_pack(struct h2d_request *r, uint8_t *payload,
 	return length + HTTP2_FRAME_HEADER_SIZE;
 }
 
-void h2d_http2_response_body_finish(struct h2d_request *r)
+static void h2d_http2_response_body_finish(struct h2d_request *r)
 {
 	if (h2d_connection_make_space(r->c, HTTP2_FRAME_HEADER_SIZE) < 0) {
 		return;
@@ -158,7 +156,6 @@ void h2d_http2_response_body_finish(struct h2d_request *r)
 
 	http2_make_frame_body(r->h2s, r->c->send_buf_pos, 0, true);
 	r->c->send_buf_pos += HTTP2_FRAME_HEADER_SIZE;
-	h2d_connection_flush(r->c);
 }
 
 static bool h2d_http2_hook_stream_response(http2_stream_t *h2s, int window)
@@ -220,10 +217,8 @@ int h2d_http2_on_read(struct h2d_connection *c, void *data, int len)
 		return H2D_ERROR;
 	}
 
-	if (!h2d_connection_write_blocked(c)) {
-		/* h2d_http2_hook_stream_response() is called inside here */
-		http2_schedular(h2c);
-	}
+	/* h2d_http2_hook_stream_response() is called inside here */
+	http2_schedular(h2c);
 
 	return proc_len;
 }
@@ -232,6 +227,51 @@ void h2d_http2_on_writable(struct h2d_connection *c)
 {
 	/* h2d_http2_hook_stream_response() is called inside here */
 	http2_schedular(c->u.h2c);
+}
+
+int h2d_http2_read_timeout(struct h2d_connection *c)
+{
+	struct h2d_conf_listen *conf = c->conf_listen;
+	enum http2_connection_state state = http2_connection_state(c->u.h2c);
+	switch (state) {
+	case HTTP2_CSTATE_READING:
+		return conf->network.recv_timeout;
+	case HTTP2_CSTATE_RESPONSING:
+		return 0;
+	case HTTP2_CSTATE_IDLE:
+		return conf->http2.idle_timeout;
+	case HTTP2_CSTATE_CLOSED:
+		return 0;
+	default:
+		abort();
+	}
+}
+
+int h2d_http2_idle_ping(struct h2d_connection *c)
+{
+	http2_connection_t *h2c = c->u.h2c;
+
+	enum http2_connection_state state = http2_connection_state(h2c);
+	if (state != HTTP2_CSTATE_IDLE) {
+		return -1;
+	}
+
+	int idle_left = c->conf_listen->http2.idle_timeout - (time(NULL) - c->last_recv_ts);
+	if (idle_left <= 0) {
+		return -1;
+	}
+
+	http2_connection_ping(h2c);
+
+	return MIN(c->conf_listen->network.recv_timeout, idle_left);
+}
+
+void h2d_http2_request_close(struct h2d_request *r)
+{
+	if (r->state != H2D_REQUEST_STATE_DONE) {
+		h2d_http2_response_body_finish(r);
+	}
+	http2_stream_close(r->h2s);
 }
 
 /* on the connection negotiated to HTTP/2, by ALPN or Upgrade */

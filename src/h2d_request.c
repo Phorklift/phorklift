@@ -24,17 +24,17 @@ struct h2d_request *h2d_request_new(struct h2d_connection *c)
 
 void h2d_request_close(struct h2d_request *r)
 {
-	if (h2d_request_is_subreq(r) && !h2d_request_is_closed(r->father)) {
+	if (h2d_request_is_subreq(r) && !r->father->closed) {
 		/* father should close me */
 		printf("sub wake up father: %p -> %p\n", r, r->father);
 		h2d_request_active(r->father);
 		return;
 	}
 
-	if (r->state == H2D_REQUEST_STATE_CLOSED) {
+	if (r->closed) {
 		return;
 	}
-	r->state = H2D_REQUEST_STATE_CLOSED;
+	r->closed = true;
 
 	printf("request done: %s\n", h2d_header_value(r->req.url));
 
@@ -43,12 +43,9 @@ void h2d_request_close(struct h2d_request *r)
 	}
 
 	if (r->h2s != NULL) { /* HTTP/2 */
-		h2d_http2_response_body_finish(r);
-		http2_stream_close(r->h2s);
+		h2d_http2_request_close(r);
 	} else { /* HTTP/1.x */
-		assert(r->c->u.request == r);
-		h2d_http1_response_body_finish(r);
-		r->c->u.request = NULL;
+		h2d_http1_request_close(r);
 	}
 
 	h2d_module_request_ctx_free(r);
@@ -254,6 +251,10 @@ skip_generate:
 
 void h2d_request_run(struct h2d_request *r, int window)
 {
+	if (r->closed) {
+		return;
+	}
+
 	printf("{{{ h2d_request_run %d %p %s\n", r->state, r, h2d_header_value(r->req.url));
 
 	int ret;
@@ -272,7 +273,8 @@ void h2d_request_run(struct h2d_request *r, int window)
 	case H2D_REQUEST_STATE_RESPONSE_BODY:
 		ret = h2d_request_response_body(r);
 		break;
-	case H2D_REQUEST_STATE_CLOSED:
+	case H2D_REQUEST_STATE_DONE:
+		h2d_request_close(r);
 		return;
 	default:
 		abort();
@@ -349,7 +351,6 @@ static void h2d_request_defer_run(void *data)
 	struct h2d_request *r;
 	while (wuy_list_pop_type(&h2d_request_defer_run_list, r, list_node)) {
 		h2d_request_run(r, -1);
-		h2d_connection_flush(r->c);
 	}
 }
 

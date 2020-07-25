@@ -47,9 +47,10 @@ struct h2d_request {
 		H2D_REQUEST_STATE_PROCESS_BODY,
 		H2D_REQUEST_STATE_RESPONSE_HEADERS,
 		H2D_REQUEST_STATE_RESPONSE_BODY,
-		H2D_REQUEST_STATE_CLOSED,
+		H2D_REQUEST_STATE_DONE,
 	} state;
 
+	bool			closed;
 	bool			is_broken; //TODO may put in h2d_request_run()?
 
 	int			filter_step_process_headers;
@@ -72,10 +73,6 @@ struct h2d_request {
 struct h2d_request *h2d_request_new(struct h2d_connection *c);
 void h2d_request_close(struct h2d_request *r);
 
-static inline bool h2d_request_is_closed(struct h2d_request *r)
-{
-	return r->state == H2D_REQUEST_STATE_CLOSED;
-}
 static inline bool h2d_request_is_subreq(struct h2d_request *r)
 {
 	return r->father != NULL;

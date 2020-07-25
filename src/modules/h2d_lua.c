@@ -85,6 +85,7 @@ static lua_State *h2d_lua_thread_new(wuy_cflua_function_t entry)
 static int64_t h2d_lua_api_sleep_timeout(int64_t at, void *data)
 {
 	// XXX the request may closed yet!!!
+	// maybe should close the timer in ctx-free
 	printf("Lua timer finish.\n");
 	h2d_lua_thread_resume(data);
 	return -1;

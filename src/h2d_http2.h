@@ -13,10 +13,14 @@ void h2d_http2_response_body_packfix(struct h2d_request *r,
 int h2d_http2_response_body_pack(struct h2d_request *r, uint8_t *payload,
 		int length, bool is_body_finished);
 
-void h2d_http2_response_body_finish(struct h2d_request *r);
-
 void h2d_http2_connection_init(struct h2d_connection *c);
 
 void h2d_http2_init(void);
+
+int h2d_http2_read_timeout(struct h2d_connection *c);
+
+int h2d_http2_idle_ping(struct h2d_connection *c);
+
+void h2d_http2_request_close(struct h2d_request *r);
 
 #endif

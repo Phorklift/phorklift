@@ -14,6 +14,9 @@ static int h2d_http1_request_headers(struct h2d_request *r, const char *buffer, 
 			printf("invalid request line !!!!\n");
 			return H2D_ERROR;
 		}
+		if (proc_len == 0) {
+			return H2D_AGAIN;
+		}
 
 		r->req.url = r->req.next;
 		r->req.next = h2d_header_add(r->req.next, ":url", 4, url_str, url_len);
@@ -130,11 +133,6 @@ int h2d_http1_response_body_pack(struct h2d_request *r, uint8_t *payload,
 	}
 }
 
-void h2d_http1_response_body_finish(struct h2d_request *r)
-{
-	// TODO close connection if HTTP/1.0
-}
-
 void h2d_http1_on_writable(struct h2d_connection *c)
 {
 	struct h2d_request *r = c->u.request;
@@ -187,10 +185,35 @@ int h2d_http1_on_read(struct h2d_connection *c, void *data, int buf_len)
 	/* run */
 	h2d_request_run(r, -1);
 
-	if (r->state == H2D_REQUEST_STATE_CLOSED && r->req.version == 0) {
-		// TODO check Connection header
-		return -1;
+	return buf_len;
+}
+
+int h2d_http1_read_timeout(struct h2d_connection *c)
+{
+	struct h2d_request *r = c->u.request;
+
+	/* keepalive */
+	if (r == NULL) {
+		return c->conf_listen->http1.keepalive_timeout;
 	}
 
-	return buf_len;
+	/* in reading request */
+	if (r->state <= H2D_REQUEST_STATE_PROCESS_BODY) {
+		return c->conf_listen->network.recv_timeout;
+	}
+
+	/* in responsing */
+	return 0;
+}
+
+void h2d_http1_request_close(struct h2d_request *r)
+{
+	assert(r->c->u.request == r);
+
+	if (r->state != H2D_REQUEST_STATE_DONE || r->req.version == 0) {
+		h2d_connection_close(r->c);
+	} else {
+		r->c->u.request = NULL;
+		// TODO keepalive
+	}
 }
