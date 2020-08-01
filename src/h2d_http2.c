@@ -78,6 +78,7 @@ static bool h2d_http2_hook_stream_body(http2_stream_t *h2s, const uint8_t *buf, 
 	if (buf == NULL) {
 		printf("set r->req.body_finished\n");
 		r->req.body_finished = true;
+		h2d_request_run(r, -1); // TODO only for POST, should remove this
 		return true;
 	}
 
@@ -204,7 +205,6 @@ void h2d_http2_init(void)
 	}
 }
 
-
 /* connection event handlers */
 
 int h2d_http2_on_read(struct h2d_connection *c, void *data, int len)
@@ -220,6 +220,10 @@ int h2d_http2_on_read(struct h2d_connection *c, void *data, int len)
 	/* h2d_http2_hook_stream_response() is called inside here */
 	http2_schedular(h2c);
 
+	if (!c->closed && http2_connection_in_reading(c->u.h2c)) {
+		h2d_connection_set_recv_timer(c);
+	}
+
 	return proc_len;
 }
 
@@ -229,49 +233,17 @@ void h2d_http2_on_writable(struct h2d_connection *c)
 	http2_schedular(c->u.h2c);
 }
 
-int h2d_http2_read_timeout(struct h2d_connection *c)
-{
-	struct h2d_conf_listen *conf = c->conf_listen;
-	enum http2_connection_state state = http2_connection_state(c->u.h2c);
-	switch (state) {
-	case HTTP2_CSTATE_READING:
-		return conf->network.recv_timeout;
-	case HTTP2_CSTATE_RESPONSING:
-		return 0;
-	case HTTP2_CSTATE_IDLE:
-		return conf->http2.idle_timeout;
-	case HTTP2_CSTATE_CLOSED:
-		return 0;
-	default:
-		abort();
-	}
-}
-
-int h2d_http2_idle_ping(struct h2d_connection *c)
-{
-	http2_connection_t *h2c = c->u.h2c;
-
-	enum http2_connection_state state = http2_connection_state(h2c);
-	if (state != HTTP2_CSTATE_IDLE) {
-		return -1;
-	}
-
-	int idle_left = c->conf_listen->http2.idle_timeout - (time(NULL) - c->last_recv_ts);
-	if (idle_left <= 0) {
-		return -1;
-	}
-
-	http2_connection_ping(h2c);
-
-	return MIN(c->conf_listen->network.recv_timeout, idle_left);
-}
-
 void h2d_http2_request_close(struct h2d_request *r)
 {
 	if (r->state != H2D_REQUEST_STATE_DONE) {
 		h2d_http2_response_body_finish(r);
 	}
-	http2_stream_close(r->h2s);
+
+	bool become_idle = http2_stream_close(r->h2s);
+
+	if (become_idle) {
+		h2d_connection_set_idle(r->c, r->c->conf_listen->http2.idle_timeout);
+	}
 }
 
 /* on the connection negotiated to HTTP/2, by ALPN or Upgrade */

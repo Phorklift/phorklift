@@ -15,6 +15,4 @@ int h2d_http1_response_body_pack(struct h2d_request *r, uint8_t *payload,
 
 void h2d_http1_request_close(struct h2d_request *r);
 
-int h2d_http1_read_timeout(struct h2d_connection *c);
-
 #endif

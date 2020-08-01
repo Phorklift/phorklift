@@ -34,12 +34,14 @@ Listen () {
 		send_timeout = 10,
 		recv_timeout = 10,
 		send_buffer_size = 16 * 1024,
-		keepalive_timeout = 60,
 	},
 
+	http1 = {
+		keepalive_timeout = 60,
+	},
 	http2 = {
 		ping_interval = 45,
-		keepalive_timeout = 10*60,
+		idle_timeout = 10*60,
 	},
 
 	--[[

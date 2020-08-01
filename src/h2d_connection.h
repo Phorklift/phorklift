@@ -23,8 +23,6 @@ struct h2d_connection {
 	loop_timer_t		*recv_timer;
 	loop_timer_t		*send_timer;
 
-	time_t			last_recv_ts;
-
 	uint8_t			*send_buffer;
 	uint8_t			*send_buf_pos;
 
@@ -38,7 +36,15 @@ static inline bool h2d_connection_write_blocked(struct h2d_connection *c)
 	return c->send_buf_pos != c->send_buffer;
 }
 
+static inline void h2d_connection_set_recv_timer(struct h2d_connection *c)
+{
+	int64_t timeout_ms = c->conf_listen->network.recv_timeout * 1000;
+	loop_timer_set_after(c->recv_timer, timeout_ms);
+}
+
 int h2d_connection_make_space(struct h2d_connection *c, int size);
+
+void h2d_connection_set_idle(struct h2d_connection *c, int timeout);
 
 void h2d_connection_close(struct h2d_connection *c);
 

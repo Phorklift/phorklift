@@ -160,6 +160,7 @@ int h2d_http1_on_read(struct h2d_connection *c, void *data, int buf_len)
 			return proc_len;
 		}
 		if (r->state == H2D_REQUEST_STATE_PARSE_HEADERS) {
+			h2d_connection_set_recv_timer(c);
 			return proc_len;
 		}
 
@@ -185,35 +186,22 @@ int h2d_http1_on_read(struct h2d_connection *c, void *data, int buf_len)
 	/* run */
 	h2d_request_run(r, -1);
 
+	if (!c->closed && c->u.request != NULL && r->state <= H2D_REQUEST_STATE_PROCESS_BODY) {
+		h2d_connection_set_recv_timer(c);
+	}
+
 	return buf_len;
-}
-
-int h2d_http1_read_timeout(struct h2d_connection *c)
-{
-	struct h2d_request *r = c->u.request;
-
-	/* keepalive */
-	if (r == NULL) {
-		return c->conf_listen->http1.keepalive_timeout;
-	}
-
-	/* in reading request */
-	if (r->state <= H2D_REQUEST_STATE_PROCESS_BODY) {
-		return c->conf_listen->network.recv_timeout;
-	}
-
-	/* in responsing */
-	return 0;
 }
 
 void h2d_http1_request_close(struct h2d_request *r)
 {
-	assert(r->c->u.request == r);
+	struct h2d_connection *c = r->c;
+	assert(c->u.request == r);
 
 	if (r->state != H2D_REQUEST_STATE_DONE || r->req.version == 0) {
-		h2d_connection_close(r->c);
+		h2d_connection_close(c);
 	} else {
-		r->c->u.request = NULL;
-		// TODO keepalive
+		c->u.request = NULL;
+		h2d_connection_set_idle(c, c->conf_listen->http1.keepalive_timeout);
 	}
 }

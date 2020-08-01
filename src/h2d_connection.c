@@ -35,6 +35,19 @@ void h2d_connection_close(struct h2d_connection *c)
 	h2d_connection_put_defer(c);
 }
 
+void h2d_connection_set_idle(struct h2d_connection *c, int timeout)
+{
+	if (c->closed) {
+		return;
+	}
+
+	printf("h2d_connection_set_idle\n");
+
+	loop_timer_set_after(c->recv_timer, timeout * 1000);
+
+	// TODO link this to conf->idle_head
+}
+
 static int h2d_connection_flush(struct h2d_connection *c)
 {
 	if (c->closed) {
@@ -82,10 +95,10 @@ static void h2d_connection_defer_routine(void *data)
 		if (c->closed) {
 			free(c);
 		} else {
-			h2d_connection_flush(c);
-
-			free(c->send_buffer);
-			c->send_buffer = c->send_buf_pos = NULL;
+			if (h2d_connection_flush(c) == H2D_OK) {
+				free(c->send_buffer);
+				c->send_buffer = c->send_buf_pos = NULL;
+			}
 		}
 	}
 }
@@ -135,7 +148,7 @@ static int h2d_connection_on_read(loop_stream_t *s, void *data, int len)
 	struct h2d_connection *c = loop_stream_get_app_data(s);
 	// printf("on_read %d %p\n", len, c->h2c);
 
-	c->last_recv_ts = time(NULL);
+	loop_timer_suspend(c->recv_timer);
 
 	if (c->is_http2) {
 		return h2d_http2_on_read(c, data, len);
@@ -170,21 +183,15 @@ static void h2d_connection_on_close(loop_stream_t *s, enum loop_stream_close_rea
 	h2d_connection_close(loop_stream_get_app_data(s));
 }
 
-static int64_t h2d_connection_recv_timedout(int64_t at, void *data)
+static int64_t h2d_connection_recv_timedout(int64_t at, void *c)
 {
-	struct h2d_connection *c = data;
-	if (c->is_http2) {
-		int timeout = h2d_http2_idle_ping(c);
-		if (timeout > 0) {
-			return timeout;
-		}
-	}
-
+	printf("h2d_connection_recv_timedout\n");
 	h2d_connection_close(c);
 	return 0;
 }
 static int64_t h2d_connection_send_timedout(int64_t at, void *c)
 {
+	printf("h2d_connection_send_timedout\n");
 	h2d_connection_close(c);
 	return 0;
 }
