@@ -36,8 +36,7 @@ static int h2d_proxy_build_request_headers(struct h2d_request *r, char *buffer)
 
 	char *pos = buffer;
 
-	pos += sprintf(pos, "%s %s HTTP/1.1\r\n", wuy_http_string_method(r->req.method),
-			h2d_header_value(r->req.url));
+	pos += sprintf(pos, "%s %s HTTP/1.1\r\n", wuy_http_string_method(r->req.method), r->req.url);
 
 	if (r->req.content_length != H2D_CONTENT_LENGTH_INIT) {
 		pos += sprintf(pos, "Content-Length: %ld\r\n", r->req.content_length);
@@ -45,15 +44,8 @@ static int h2d_proxy_build_request_headers(struct h2d_request *r, char *buffer)
 
 	bool append_xff = false;
 	struct h2d_header *h;
-	for (h = r->req.buffer; h->name_len != 0; h = h2d_header_next(h)) {
+	h2d_header_iter(&r->req.headers, h) {
 		const char *name = h->str;
-		if (name[0] == ':') {
-			if (strcmp(name, ":authority") == 0) {
-				name = "Host";
-			} else {
-				continue;
-			}
-		}
 		pos += sprintf(pos, "%s: %s\r\n", name, h2d_header_value(h));
 
 		if (conf->x_forwarded_for && strcasecmp(name, "X-Forwarded-For") == 0) {
@@ -124,7 +116,7 @@ static int h2d_proxy_parse_response_headers(struct h2d_request *r,
 			continue;
 		}
 
-		r->resp.next = h2d_header_add(r->resp.next, name_str,
+		h2d_header_add(&r->resp.headers, name_str,
 				name_len, value_str, value_len);
 	}
 

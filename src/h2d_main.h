@@ -11,6 +11,7 @@
 
 #include "libwuya/wuy_array.h"
 #include "libwuya/wuy_dict.h"
+#include "libwuya/wuy_slist.h"
 #include "libwuya/wuy_list.h"
 #include "libwuya/wuy_cflua.h"
 #include "libwuya/wuy_tcp.h"

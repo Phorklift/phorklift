@@ -18,8 +18,7 @@ static int h2d_http1_request_headers(struct h2d_request *r, const char *buffer, 
 			return H2D_AGAIN;
 		}
 
-		r->req.url = r->req.next;
-		r->req.next = h2d_header_add(r->req.next, ":url", 4, url_str, url_len);
+		r->req.url = strndup(url_str, url_len);
 
 		buf_pos += proc_len;
 	}
@@ -56,12 +55,8 @@ static int h2d_http1_request_headers(struct h2d_request *r, const char *buffer, 
 			wuy_http_chunked_enable(&r->req.chunked);
 			continue;
 		}
-		if (memcmp(name_str, "Host", 4) == 0) {
-			r->req.host = r->req.next;
-		}
 
-		r->req.next = h2d_header_add(r->req.next, name_str,
-				name_len, value_str, value_len);
+		h2d_header_add(&r->req.headers, name_str, name_len, value_str, value_len);
 	}
 
 	return buf_pos - buffer;
@@ -76,7 +71,7 @@ static bool h2d_http1_response_is_chunked(struct h2d_request *r)
 }
 int h2d_http1_response_headers(struct h2d_request *r)
 {
-	int estimate_size = (char *)r->resp.next - (char *)r->resp.buffer + 100; // TODO
+	int estimate_size = 4000; // TODO
 	int ret = h2d_connection_make_space(r->c, estimate_size);
 	if (ret < 0) {
 		return ret;
@@ -94,7 +89,7 @@ int h2d_http1_response_headers(struct h2d_request *r)
 	}
 
 	struct h2d_header *h;
-	for (h = r->resp.buffer; h->name_len != 0; h = h2d_header_next(h)) {
+	h2d_header_iter(&r->resp.headers, h) {
 		p += sprintf(p, "%s: %s\r\n", h->str, h2d_header_value(h));
 	}
 	p += sprintf(p, "\r\n");

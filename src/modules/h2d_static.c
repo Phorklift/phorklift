@@ -35,7 +35,8 @@ static int h2d_static_generate_response_headers(struct h2d_request *r)
 	atomic_fetch_add(&conf->stats->total, 1);
 
 	time_t if_modified_since = 0;
-	h2d_header_iter(r->req.buffer, h) {
+	struct h2d_header *h;
+	h2d_header_iter(&r->req.headers, h) {
 		const char *name = h->str;
 		const char *value = h2d_header_value(h);
 		if (strcasecmp(name, "If-Modified-Since") == 0) {
@@ -43,11 +44,10 @@ static int h2d_static_generate_response_headers(struct h2d_request *r)
 		}
 	}
 
-	const char *url = h2d_header_value(r->req.url);
-	int fd = openat(conf->dirfd, url + 1, O_RDONLY);
+	int fd = openat(conf->dirfd, r->req.url + 1, O_RDONLY);
 	if (fd < 0) {
 		atomic_fetch_add(&conf->stats->ret404, 1);
-		printf("error to open file: %s\n", url);
+		printf("error to open file: %s\n", r->req.url);
 		return WUY_HTTP_404;
 	}
 
@@ -55,7 +55,7 @@ static int h2d_static_generate_response_headers(struct h2d_request *r)
 	fstat(fd, &st_buf);
 
 	printf("Modified: %ld . %ld .\n", if_modified_since, st_buf.st_mtime);
-	r->resp.next = h2d_header_add(r->resp.next, "Last-Modified", 13,
+	h2d_header_add(&r->resp.headers, "Last-Modified", 13,
 			wuy_http_date_make(st_buf.st_mtime),
 			WUY_HTTP_DATE_LENGTH);
 

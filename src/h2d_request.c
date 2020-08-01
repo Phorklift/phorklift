@@ -9,13 +9,8 @@ struct h2d_request *h2d_request_new(struct h2d_connection *c)
 		return NULL;
 	}
 
-	r->req.buffer = malloc(4096); // TODO
-	r->req.next = r->req.buffer;
-	r->req.next->name_len = 0;
-
-	r->resp.buffer = malloc(4096); // TODO
-	r->resp.next = r->resp.buffer;
-	r->resp.next->name_len = 0;
+	wuy_slist_init(&r->req.headers);
+	wuy_slist_init(&r->resp.headers);
 	r->resp.content_length = H2D_CONTENT_LENGTH_INIT;
 
 	r->c = c;
@@ -36,7 +31,7 @@ void h2d_request_close(struct h2d_request *r)
 	}
 	r->closed = true;
 
-	printf("request done: %s\n", h2d_header_value(r->req.url));
+	printf("request done: %s\n", r->req.url);
 
 	if (r->subr != NULL) {
 		printf("!!!!!!!!! subrequest %p subr:%p\n", r, r->subr);
@@ -50,9 +45,9 @@ void h2d_request_close(struct h2d_request *r)
 
 	h2d_module_request_ctx_free(r);
 
-	free(r->req.buffer);
+	h2d_header_free_list(&r->req.headers);
+	h2d_header_free_list(&r->resp.headers);
 	free(r->req.body_buf);
-	free(r->resp.buffer);
 	free(r);
 }
 
@@ -60,8 +55,17 @@ static int h2d_request_process_headers(struct h2d_request *r)
 {
 	/* locate host */
 	if (r->conf_host == NULL) { /* already set if subrequest */
-		r->conf_host = h2d_conf_listen_search_hostname(r->c->conf_listen,
-				r->req.host ? h2d_header_value(r->req.host) : NULL);
+		const char *host = NULL;
+		struct h2d_header *h;
+		h2d_header_iter(&r->req.headers, h) {
+			if (strcmp(h->str, "Host") == 0) {
+				r->req.host = h;
+				host = h2d_header_value(h);
+				break;
+			}
+		}
+
+		r->conf_host = h2d_conf_listen_search_hostname(r->c->conf_listen, host);
 		if (r->conf_host == NULL) {
 			printf("invalid host\n");
 			return H2D_ERROR;
@@ -76,10 +80,9 @@ static int h2d_request_process_headers(struct h2d_request *r)
 		printf("no path\n");
 		return H2D_ERROR;
 	}
-	r->conf_path = h2d_conf_host_search_pathname(r->conf_host,
-			h2d_header_value(r->req.url));
+	r->conf_path = h2d_conf_host_search_pathname(r->conf_host, r->req.url);
 	if (r->conf_path == NULL) {
-		printf("no path matched\n");
+		printf("no path matched %s\n", r->req.url);
 		// return WUY_HTTP_404;
 		return H2D_ERROR;
 	}
@@ -255,7 +258,7 @@ void h2d_request_run(struct h2d_request *r, int window)
 		return;
 	}
 
-	printf("{{{ h2d_request_run %d %p %s\n", r->state, r, h2d_header_value(r->req.url));
+	printf("{{{ h2d_request_run %d %p %s\n", r->state, r, r->req.url);
 
 	int ret;
 	switch (r->state) {
@@ -319,7 +322,7 @@ void h2d_request_active(struct h2d_request *r)
 	}
 
 	// XXX timer -> epoll-block -> idle, so pending subreqs will not run
-	printf("active %s\n", h2d_header_value(r->req.url));
+	printf("active %s\n", r->req.url);
 
 	// TODO change to:   if (not linked) append;
 	wuy_list_del_if(&r->list_node); // TODO need delete?

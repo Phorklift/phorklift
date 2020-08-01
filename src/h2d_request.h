@@ -14,12 +14,11 @@ struct h2d_request {
 	struct {
 		enum wuy_http_method	method;
 		int			version;
-		struct h2d_header	*url;
-		struct h2d_header	*host;
+		char			*url;
 		size_t			content_length;
 
-		struct h2d_header	*buffer;
-		struct h2d_header	*next;
+		wuy_slist_t		headers;
+		struct h2d_header	*host;
 
 		wuy_http_chunked_t	chunked;
 
@@ -31,9 +30,7 @@ struct h2d_request {
 	struct {
 		enum wuy_http_status_code  status_code;
 		int			version;
-
-		struct h2d_header	*buffer;
-		struct h2d_header	*next;
+		wuy_slist_t		headers;
 
 		size_t			content_length;
 		size_t			content_generate_length;

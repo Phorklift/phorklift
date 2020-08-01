@@ -44,11 +44,11 @@ static bool h2d_http2_hook_stream_header(http2_stream_t *h2s, const char *name_s
 	/* parse this one header */
 	if (name_str[0] == ':') {
 		if (h2d_litestr_equal(name_str, name_len, ":path")) {
-			r->req.url = r->req.next;
+			r->req.url = strndup(value_str, value_len);
+			return true;
 		} else if (h2d_litestr_equal(name_str, name_len, ":authority")) {
 			name_str = "Host";
 			name_len = 4;
-			r->req.host = r->req.next;
 		} else if (h2d_litestr_equal(name_str, name_len, ":scheme")) {
 			return true;
 		} else if (h2d_litestr_equal(name_str, name_len, ":method")) {
@@ -67,7 +67,8 @@ static bool h2d_http2_hook_stream_header(http2_stream_t *h2s, const char *name_s
 		}
 	}
 
-	r->req.next = h2d_header_add(r->req.next, name_str, name_len, value_str, value_len);
+	h2d_header_add(&r->req.headers, name_str, name_len, value_str, value_len);
+
 	return true;
 }
 
@@ -102,7 +103,7 @@ int h2d_http2_response_headers(struct h2d_request *r)
 {
 	struct h2d_connection *c = r->c;
 
-	int estimate_size = (char *)r->resp.next - (char *)r->resp.buffer + 100; // TODO
+	int estimate_size = 4000; // TODO
 	int buf_size = h2d_connection_make_space(c, estimate_size);
 	if (buf_size < 0) {
 		return buf_size;
@@ -122,7 +123,7 @@ int h2d_http2_response_headers(struct h2d_request *r)
 	}
 
 	struct h2d_header *h;
-	for (h = r->resp.buffer; h->name_len != 0; h = h2d_header_next(h)) {
+	h2d_header_iter(&r->resp.headers, h) {
 		proc_len = http2_make_header(r->h2s, p, pos_end - p, h->str,
 				h->name_len, h2d_header_value(h), h->value_len);
 		p += proc_len;

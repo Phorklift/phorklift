@@ -104,7 +104,7 @@ static int h2d_lua_api_sleep(lua_State *L)
 static int h2d_lua_api_url(lua_State *L)
 {
 	struct h2d_request *r = h2d_lua_current_request;
-	lua_pushstring(L, h2d_header_value(r->req.url));
+	lua_pushstring(L, r->req.url);
 	return 1;
 }
 
@@ -114,7 +114,7 @@ static int h2d_lua_api_headers(lua_State *L)
 
 	struct h2d_request *r = h2d_lua_current_request;
 	struct h2d_header *h;
-	for (h = r->req.buffer; h->name_len != 0; h = h2d_header_next(h)) {
+	h2d_header_iter(&r->req.headers, h) {
 		lua_pushstring(L, h2d_header_value(h));
 		lua_setfield(L, -2, h->str);
 	}
@@ -142,8 +142,7 @@ static int h2d_lua_api_subrequest(lua_State *L)
 	size_t len;
 	const char *url = lua_tolstring(L, -1, &len);
 	struct h2d_request *subr = h2d_request_subreq_new(h2d_lua_current_request);
-	subr->req.url = subr->req.buffer;
-	subr->req.next = h2d_header_add(subr->req.next, ":url", 4, url, len);
+	subr->req.url = strdup(url);
 
 	struct h2d_lua_ctx *ctx = h2d_lua_current_request->module_ctxs[h2d_lua_module.index];
 	ctx->resume_handler = h2d_lua_api_subrequest_resume;
