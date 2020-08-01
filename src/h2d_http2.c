@@ -242,7 +242,7 @@ void h2d_http2_request_close(struct h2d_request *r)
 	bool become_idle = http2_stream_close(r->h2s);
 
 	if (become_idle) {
-		h2d_connection_set_idle(r->c, r->c->conf_listen->http2.idle_timeout);
+		h2d_connection_set_idle(r->c);
 	}
 }
 

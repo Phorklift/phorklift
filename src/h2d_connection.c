@@ -29,21 +29,20 @@ void h2d_connection_close(struct h2d_connection *c)
 	}
 	loop_stream_close(c->loop_stream);
 
-	loop_timer_delete(c->recv_timer);
-	loop_timer_delete(c->send_timer);
+	loop_group_timer_node_delete(c->recv_timer);
+	loop_group_timer_node_delete(c->send_timer);
 
 	h2d_connection_put_defer(c);
 }
 
-void h2d_connection_set_idle(struct h2d_connection *c, int timeout)
+void h2d_connection_set_idle(struct h2d_connection *c)
 {
 	if (c->closed) {
 		return;
 	}
 
-	printf("h2d_connection_set_idle\n");
-
-	loop_timer_set_after(c->recv_timer, timeout * 1000);
+	loop_group_timer_node_set(c->is_http2 ? c->conf_listen->http2.idle_timer_group
+			: c->conf_listen->http1.keepalive_timer_group, c->recv_timer);
 
 	// TODO link this to conf->idle_head
 }
@@ -79,11 +78,11 @@ static int h2d_connection_flush(struct h2d_connection *c)
 			c->send_buf_pos -= write_len;
 		}
 
-		loop_timer_set_after(c->send_timer, c->conf_listen->network.send_timeout);
+		loop_group_timer_node_set(c->conf_listen->network.send_timer_group, c->send_timer);
 		return H2D_AGAIN;
 	}
 
-	loop_timer_suspend(c->send_timer);
+	loop_group_timer_node_suspend(c->send_timer);
 	c->send_buf_pos = c->send_buffer;
 	return H2D_OK;
 }
@@ -93,6 +92,7 @@ static void h2d_connection_defer_routine(void *data)
 	struct h2d_connection *c;
 	while (wuy_list_pop_type(&h2d_connection_defer_list, c, list_node)) {
 		if (c->closed) {
+			c->conf_listen->network.current--;
 			free(c);
 		} else {
 			if (h2d_connection_flush(c) == H2D_OK) {
@@ -148,7 +148,7 @@ static int h2d_connection_on_read(loop_stream_t *s, void *data, int len)
 	struct h2d_connection *c = loop_stream_get_app_data(s);
 	// printf("on_read %d %p\n", len, c->h2c);
 
-	loop_timer_suspend(c->recv_timer);
+	loop_group_timer_node_suspend(c->recv_timer);
 
 	if (c->is_http2) {
 		return h2d_http2_on_read(c, data, len);
@@ -183,23 +183,30 @@ static void h2d_connection_on_close(loop_stream_t *s, enum loop_stream_close_rea
 	h2d_connection_close(loop_stream_get_app_data(s));
 }
 
-static int64_t h2d_connection_recv_timedout(int64_t at, void *c)
+static bool h2d_connection_free_idle(struct h2d_conf_listen *conf_listen)
 {
-	printf("h2d_connection_recv_timedout\n");
-	h2d_connection_close(c);
-	return 0;
+	if (loop_group_timer_expire_one_ahead(conf_listen->http1.keepalive_timer_group,
+				conf_listen->http1.keepalive_timeout / 2)) {
+		return true;
+	}
+	if (loop_group_timer_expire_one_ahead(conf_listen->http2.idle_timer_group,
+				conf_listen->http2.idle_timeout / 2)) {
+		return true;
+	}
+	return false;
 }
-static int64_t h2d_connection_send_timedout(int64_t at, void *c)
-{
-	printf("h2d_connection_send_timedout\n");
-	h2d_connection_close(c);
-	return 0;
-}
-
 static bool h2d_connection_on_accept(loop_tcp_listen_t *loop_listen,
 		loop_stream_t *s, struct sockaddr *addr)
 {
 	struct h2d_conf_listen *conf_listen = loop_tcp_listen_get_app_data(loop_listen);
+
+	if (conf_listen->network.current >= conf_listen->network.connections) {
+		if (!h2d_connection_free_idle(conf_listen)) {
+			return false;
+		}
+	}
+
+	conf_listen->network.current++;
 
 	struct h2d_connection *c = calloc(1, sizeof(struct h2d_connection));
 	if (c == NULL) {
@@ -208,8 +215,8 @@ static bool h2d_connection_on_accept(loop_tcp_listen_t *loop_listen,
 	c->client_addr = *addr;
 	c->conf_listen = conf_listen;
 	c->loop_stream = s;
-	c->recv_timer = loop_timer_new(h2d_loop, h2d_connection_recv_timedout, c);
-	c->send_timer = loop_timer_new(h2d_loop, h2d_connection_send_timedout, c);
+	c->recv_timer = loop_group_timer_node_new(c);
+	c->send_timer = loop_group_timer_node_new(c);
 	loop_stream_set_app_data(s, c);
 
 	/* set ssl */
@@ -232,6 +239,19 @@ static loop_stream_ops_t h2d_connection_stream_ops = {
 	H2D_SSL_LOOP_STREAM_UNDERLYINGS,
 };
 
+static int64_t h2d_connection_recv_timedout(int64_t at, void *c)
+{
+	printf("h2d_connection_recv_timedout\n");
+	h2d_connection_close(c);
+	return 0;
+}
+static int64_t h2d_connection_send_timedout(int64_t at, void *c)
+{
+	printf("h2d_connection_send_timedout\n");
+	h2d_connection_close(c);
+	return 0;
+}
+
 void h2d_connection_listen(wuy_array_t *listens)
 {
 	loop_idle_add(h2d_loop, h2d_connection_defer_routine, NULL);
@@ -239,6 +259,21 @@ void h2d_connection_listen(wuy_array_t *listens)
 	struct h2d_conf_listen *conf_listen;
 	wuy_array_iter_ppval(listens, conf_listen) {
 
+		/* group timers */
+		conf_listen->http1.keepalive_timer_group = loop_group_timer_new(h2d_loop,
+				h2d_connection_recv_timedout,
+				conf_listen->http1.keepalive_timeout * 1000);
+		conf_listen->http2.idle_timer_group = loop_group_timer_new(h2d_loop,
+				h2d_connection_recv_timedout,
+				conf_listen->http2.idle_timeout * 1000);
+		conf_listen->network.recv_timer_group = loop_group_timer_new(h2d_loop,
+				h2d_connection_recv_timedout,
+				conf_listen->network.recv_timeout * 1000);
+		conf_listen->network.send_timer_group = loop_group_timer_new(h2d_loop,
+				h2d_connection_send_timedout,
+				conf_listen->network.send_timeout * 1000);
+
+		/* listen */
 		const char *addr;
 		wuy_array_iter_ppval(&conf_listen->addresses, addr) {
 			loop_tcp_listen_t *loop_listen = loop_tcp_listen(h2d_loop,

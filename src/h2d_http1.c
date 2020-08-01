@@ -202,6 +202,6 @@ void h2d_http1_request_close(struct h2d_request *r)
 		h2d_connection_close(c);
 	} else {
 		c->u.request = NULL;
-		h2d_connection_set_idle(c, c->conf_listen->http1.keepalive_timeout);
+		h2d_connection_set_idle(c);
 	}
 }

@@ -46,17 +46,25 @@ struct h2d_conf_listen {
 	struct {
 		int		idle_timeout;
 		int		ping_interval;
+
+		loop_group_timer_t	*idle_timer_group;
 	} http2;
 
 	struct {
 		int		keepalive_timeout;
+
+		loop_group_timer_t	*keepalive_timer_group;
 	} http1;
 
 	struct {
+		long		current; // TODO shared-mem
 		int		connections;
 		int		send_timeout;
 		int		recv_timeout;
 		int		send_buffer_size;
+
+		loop_group_timer_t	*send_timer_group;
+		loop_group_timer_t	*recv_timer_group;
 	} network;
 
 	void			*module_confs[H2D_MODULE_NUMBER];
