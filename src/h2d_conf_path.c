@@ -26,7 +26,7 @@ static bool h2d_conf_path_post(void *data)
 	}
 
 	if (conf_path->content == NULL) {
-		printf("no content set, %s\n", *((char **)(conf_path->pathnames.data)));
+		printf("no content set, %s\n", conf_path->pathnames[0]);
 		return false;
 	}
 

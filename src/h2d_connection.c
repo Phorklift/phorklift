@@ -252,12 +252,12 @@ static int64_t h2d_connection_send_timedout(int64_t at, void *c)
 	return 0;
 }
 
-void h2d_connection_listen(wuy_array_t *listens)
+void h2d_connection_listen(struct h2d_conf_listen **listens)
 {
 	loop_idle_add(h2d_loop, h2d_connection_defer_routine, NULL);
 
 	struct h2d_conf_listen *conf_listen;
-	wuy_array_iter_ppval(listens, conf_listen) {
+	for (int i = 0; (conf_listen = listens[i]) != NULL; i++) {
 
 		/* group timers */
 		conf_listen->http1.keepalive_timer_group = loop_group_timer_new(h2d_loop,
@@ -274,10 +274,9 @@ void h2d_connection_listen(wuy_array_t *listens)
 				conf_listen->network.send_timeout * 1000);
 
 		/* listen */
-		const char *addr;
-		wuy_array_iter_ppval(&conf_listen->addresses, addr) {
+		for (int j = 0; conf_listen->addresses[j] != NULL; j++) {
 			loop_tcp_listen_t *loop_listen = loop_tcp_listen(h2d_loop,
-					addr, &h2d_connection_listen_ops,
+					conf_listen->addresses[j], &h2d_connection_listen_ops,
 					&h2d_connection_stream_ops);
 
 			if (loop_listen == NULL) {

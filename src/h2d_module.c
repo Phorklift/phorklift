@@ -125,7 +125,7 @@ struct h2d_module *h2d_module_content_is_enabled(int i, void *conf)
 
 	/* it's multi-value array */
 	if ((first->flags & WUY_CFLUA_FLAG_UNIQ_MEMBER) == 0) {
-		is_enabled = wuy_array_yet_init(ptr);
+		is_enabled = *(char **)ptr != NULL;
 		goto out;
 	}
 
@@ -136,7 +136,7 @@ struct h2d_module *h2d_module_content_is_enabled(int i, void *conf)
 	case WUY_CFLUA_TYPE_BOOLEAN:
 		is_enabled = *(bool *)ptr;
 		break;
-	case WUY_CFLUA_TYPE_FLOAT:
+	case WUY_CFLUA_TYPE_DOUBLE:
 		is_enabled = *(double *)ptr != 0;
 		break;
 	case WUY_CFLUA_TYPE_INTEGER:

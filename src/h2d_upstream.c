@@ -48,7 +48,7 @@ struct h2d_upstream_connection *
 h2d_upstream_get_connection(struct h2d_upstream_conf *upstream)
 {
 	struct h2d_upstream_address *address = &upstream->rr_addresses[upstream->rr_index++];
-	if (upstream->rr_index == wuy_array_count(&upstream->addresses)) {
+	if (upstream->rr_index == upstream->address_num) {
 		upstream->rr_index = 0;
 	}
 
@@ -200,21 +200,19 @@ static bool h2d_upstream_conf_post(void *data)
 {
 	struct h2d_upstream_conf *conf = data;
 
-	if (!wuy_array_yet_init(&conf->addresses)) {
+	if (conf->addresses == NULL) {
 		return true;
 	}
 
 	conf->stats = wuy_shmem_alloc(sizeof(struct h2d_upstream_stats));
 
-	conf->rr_addresses = calloc(wuy_array_count(&conf->addresses),
-			sizeof(struct h2d_upstream_address));
+	conf->rr_addresses = calloc(conf->address_num, sizeof(struct h2d_upstream_address));
 
 	struct h2d_upstream_address *address = conf->rr_addresses;
-	const char *addr;
-	wuy_array_iter_ppval(&conf->addresses, addr) {
+	for (int i = 0; conf->addresses[i] != NULL; i++) {
 
-		if (!wuy_sockaddr_pton(addr, &address->sockaddr, conf->default_port)) {
-			printf("invalid upstream address: %s\n", addr);
+		if (!wuy_sockaddr_pton(conf->addresses[i], &address->sockaddr, conf->default_port)) {
+			printf("invalid upstream address: %s\n", conf->addresses[i]);
 			return false;
 		}
 		address->idle_num = 0;

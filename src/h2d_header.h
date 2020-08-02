@@ -2,6 +2,7 @@
 #define H2D_HTTP_H
 
 #include <string.h>
+#include <stdlib.h>
 
 struct h2d_header {
 	wuy_slist_node_t	list_node;

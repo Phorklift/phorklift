@@ -18,13 +18,13 @@ static int h2d_stats_generate_response_body(struct h2d_request *r, uint8_t *buf,
 	char *end = pos + len;
 
 	struct h2d_conf_host *conf_host;
-	wuy_array_iter_ppval(&r->c->conf_listen->hosts, conf_host) {
-		const char *hostname = wuy_array_get_ppval(&conf_host->hostnames, 0);
+	for (int i = 0; (conf_host = r->c->conf_listen->hosts[i]) != NULL; i++) {
+		const char *hostname = conf_host->hostnames[0];
 		pos += sprintf(pos, "== Host: %s\n", hostname);
 
 		struct h2d_conf_path *conf_path;
-		wuy_array_iter_ppval(&conf_host->paths, conf_path) {
-			const char *pathname = wuy_array_get_ppval(&conf_path->pathnames, 0);
+		for (int j = 0; (conf_path = conf_host->paths[j]) != NULL; j++) {
+			const char *pathname = conf_path->pathnames[0];
 			pos += sprintf(pos, "= Path: %s\n", pathname);
 			pos += h2d_module_path_stats(conf_path->module_confs, pos, end - pos);
 		}

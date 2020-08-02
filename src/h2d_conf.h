@@ -8,7 +8,7 @@
 #include "h2d_module.h"
 
 struct h2d_conf_path {
-	wuy_array_t		pathnames;
+	char			**pathnames;
 
 	bool			(*req_hook)(void);
 
@@ -18,9 +18,9 @@ struct h2d_conf_path {
 };
 
 struct h2d_conf_host {
-	wuy_array_t		hostnames;
+	char			**hostnames;
 
-	wuy_array_t		paths;
+	struct h2d_conf_path	**paths;
 
 	struct {
 		SSL_CTX		*ctx;
@@ -34,11 +34,11 @@ struct h2d_conf_host {
 };
 
 struct h2d_conf_listen {
-	wuy_array_t		addresses;
+	char			**addresses;
 
 	SSL_CTX			*ssl_ctx;
 
-	wuy_array_t		hosts;
+	struct h2d_conf_host	**hosts;
 
 	wuy_dict_t		*host_dict;
 	struct h2d_conf_host	*host_default;
@@ -72,7 +72,7 @@ struct h2d_conf_listen {
 
 extern lua_State *h2d_L;
 
-wuy_array_t *h2d_conf_parse(const char *defaults_file, const char *conf_file);
+struct h2d_conf_listen **h2d_conf_parse(const char *defaults_file, const char *conf_file);
 
 bool h2d_conf_is_zero_function(wuy_cflua_function_t f);
 

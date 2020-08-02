@@ -4,9 +4,9 @@ struct h2d_conf_path *h2d_conf_host_search_pathname(
 		struct h2d_conf_host *conf_host, const char *name)
 {
 	struct h2d_conf_path *conf_path;
-	wuy_array_iter_ppval(&conf_host->paths, conf_path) {
-		const char *pathname;
-		wuy_array_iter_ppval(&conf_path->pathnames, pathname) {
+	for (int i = 0; (conf_path = conf_host->paths[i]) != NULL; i++) {
+		char *pathname;
+		for (int j = 0; (pathname = conf_path->pathnames[j]) != NULL; j++) {
 			if (memcmp(pathname, name, strlen(pathname)) == 0) {
 				return conf_path;
 			}
@@ -19,7 +19,7 @@ static bool h2d_conf_host_post(void *data)
 {
 	struct h2d_conf_host *conf_host = data;
 
-	if (wuy_array_count(&conf_host->paths) == 0) {
+	if (conf_host->paths == NULL) {
 		printf("No path is defined in host\n");
 		return false;
 	}

@@ -8,7 +8,7 @@ struct h2d_acl_rule {
 	bool		is_deny;
 };
 struct h2d_acl_conf {
-	wuy_array_t		strs;
+	const char		**strs;
 	struct h2d_acl_rule	*rules;
 };
 
@@ -17,8 +17,7 @@ extern struct h2d_module h2d_acl_module;
 static int h2d_acl_process_headers(struct h2d_request *r)
 {
 	struct h2d_acl_conf *conf = r->conf_path->module_confs[h2d_acl_module.index];
-	int count = wuy_array_count(&conf->strs);
-	if (count != 0) {
+	if (conf->strs != NULL) {
 		return WUY_HTTP_403;
 	}
 	return H2D_OK;
@@ -30,8 +29,7 @@ static bool h2d_acl_conf_post(void *data)
 {
 	struct h2d_acl_conf *conf = data;
 
-	int count = wuy_array_count(&conf->strs);
-	if (count == 0) {
+	if (conf->strs != NULL) {
 		return true;
 	}
 

@@ -29,7 +29,7 @@ bool h2d_conf_is_zero_function(wuy_cflua_function_t f)
  * This is persistent because of the functions defined in config file. */
 lua_State *h2d_L;
 
-wuy_array_t *h2d_conf_parse(const char *defaults_file, const char *conf_file)
+struct h2d_conf_listen **h2d_conf_parse(const char *defaults_file, const char *conf_file)
 {
 	h2d_L = lua_open();
 	luaL_openlibs(h2d_L);
@@ -69,12 +69,12 @@ wuy_array_t *h2d_conf_parse(const char *defaults_file, const char *conf_file)
 		.u.table = &(struct wuy_cflua_table) { listens_commands },
 	};
 
-	static wuy_array_t h2d_conf_listens;
+	static struct h2d_conf_listen **h2d_conf_listens;
 	int br = wuy_cflua_parse(h2d_L, &global, &h2d_conf_listens);
 	if (br < 0) {
 		printf("parse: %d\n", br);
 		exit(H2D_EXIT_CONF);
 	}
 
-	return &h2d_conf_listens;
+	return h2d_conf_listens;
 }

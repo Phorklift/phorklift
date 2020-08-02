@@ -27,7 +27,7 @@ struct h2d_conf_host *h2d_conf_listen_search_hostname(
 static bool h2d_conf_listen_add_hostname(struct h2d_conf_listen *conf_listen,
 		struct h2d_conf_host *conf_host, char *name)
 {
-	if (name == NULL || name[0] == '\0') {
+	if (name[0] == '\0') {
 		printf("invalid empty host name\n");
 		return false;
 	}
@@ -91,7 +91,7 @@ static bool h2d_conf_listen_post(void *data)
 {
 	struct h2d_conf_listen *conf_listen = data;
 
-	if (wuy_array_count(&conf_listen->hosts) == 0) {
+	if (conf_listen->hosts == NULL) {
 		printf("error: No host defined in listen\n");
 		return false;
 	}
@@ -101,24 +101,26 @@ static bool h2d_conf_listen_post(void *data)
 			offsetof(struct h2d_conf_listen_hostname, name),
 			offsetof(struct h2d_conf_listen_hostname, dict_node));
 
-	int ssl_count = 0;
+	bool is_ssl = false, is_plain = false;
 	struct h2d_conf_host *conf_host;
-	wuy_array_iter_ppval(&conf_listen->hosts, conf_host) {
-		char *hostname;
-		wuy_array_iter_ppval(&conf_host->hostnames, hostname) {
-			if (!h2d_conf_listen_add_hostname(conf_listen, conf_host, hostname)) {
+	for (int i = 0; (conf_host = conf_listen->hosts[i]) != NULL; i++) {
+		for (int j = 0; conf_host->hostnames[j] != NULL; j++) {
+			if (!h2d_conf_listen_add_hostname(conf_listen, conf_host,
+						conf_host->hostnames[j])) {
 				return false;
 			}
 		}
 
 		if (conf_host->ssl.ctx != NULL) {
-			ssl_count++;
+			is_ssl = true;
+		} else {
+			is_plain = true;
 		}
 	}
 
 	/* ssl */
-	if (ssl_count > 0) {
-		if (ssl_count != wuy_array_count(&conf_listen->hosts)) {
+	if (is_ssl) {
+		if (is_plain) {
 			printf("plain vs ssl\n");
 			return false;
 		}

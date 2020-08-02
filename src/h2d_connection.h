@@ -29,7 +29,7 @@ struct h2d_connection {
 	wuy_list_node_t		list_node;
 };
 
-void h2d_connection_listen(wuy_array_t *listens);
+void h2d_connection_listen(struct h2d_conf_listen **listens);
 
 static inline bool h2d_connection_write_blocked(struct h2d_connection *c)
 {

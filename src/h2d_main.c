@@ -75,7 +75,7 @@ static void h2d_signal_worker_quit(int signo)
 {
 	loop_kill(h2d_loop);
 }
-static void h2d_worker_entry(wuy_array_t *listens)
+static void h2d_worker_entry(struct h2d_conf_listen **listens)
 {
 	printf("start worker: %d\n", getpid());
 
@@ -124,7 +124,7 @@ int main(int argc, char * const *argv)
 
 	h2d_module_master_init();
 
-	wuy_array_t *listens = h2d_conf_parse(opt_defaults_file, opt_conf_file);
+	struct h2d_conf_listen **listens = h2d_conf_parse(opt_defaults_file, opt_conf_file);
 
 	h2d_module_master_post();
 

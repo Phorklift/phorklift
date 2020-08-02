@@ -106,7 +106,7 @@ static bool h2d_static_conf_post(void *data)
 
 	conf->dirfd = open(conf->dir_name, O_RDONLY, O_DIRECTORY);
 	if (conf->dirfd < 0) {
-		printf("static: fail to open dir\n");
+		printf("static: fail to open dir: %s\n", conf->dir_name);
 		return false;
 	}
 	// printf("debug: open %s\n", conf->dir_name);

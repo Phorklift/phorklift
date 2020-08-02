@@ -28,7 +28,8 @@ struct h2d_upstream_address {
 
 struct h2d_upstream_conf {
 	/* configrations */
-	wuy_array_t		addresses;
+	const char		**addresses;
+	int			address_num;
 	int			recv_buffer_size;
 	int			send_buffer_size;
 	int			idle_max;
