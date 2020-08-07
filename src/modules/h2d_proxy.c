@@ -232,8 +232,8 @@ static int h2d_proxy_conf_stats(void *data, char *buf, int len)
 
 static struct wuy_cflua_command h2d_proxy_conf_commands[] = {
 	{	.type = WUY_CFLUA_TYPE_STRING,
-		.offset = offsetof(struct h2d_proxy_conf, upstream.addresses),
-		.array_num_offset = offsetof(struct h2d_proxy_conf, upstream.address_num),
+		.offset = offsetof(struct h2d_proxy_conf, upstream.hostnames),
+		.array_member_size = sizeof(struct h2d_upstream_hostname),
 	},
 	{	.name = "upstream",
 		.type = WUY_CFLUA_TYPE_TABLE,

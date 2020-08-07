@@ -40,8 +40,8 @@ Listen () {
 		keepalive_timeout = 60,
 	},
 	http2 = {
-		ping_interval = 45,
-		idle_timeout = 10*60,
+		ping_interval = 45, -- not implement
+		idle_timeout = 3*60,
 	},
 
 	--[[

@@ -1,5 +1,10 @@
 #include "h2d_main.h"
 
+/* for getaddrinfo() */
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netdb.h>
+
 // TODO each upstream should has one ssl-ctx, for different ssl configs
 static SSL_CTX *h2d_upstream_ssl_ctx;
 
@@ -47,12 +52,12 @@ static loop_stream_ops_t h2d_upstream_ops = {
 struct h2d_upstream_connection *
 h2d_upstream_get_connection(struct h2d_upstream_conf *upstream)
 {
-	struct h2d_upstream_address *address = &upstream->rr_addresses[upstream->rr_index++];
-	if (upstream->rr_index == upstream->address_num) {
+	atomic_fetch_add(&upstream->stats->total, 1);
+
+	struct h2d_upstream_address *address = upstream->rr_addresses[upstream->rr_index++];
+	if (upstream->rr_index == upstream->rr_total) {
 		upstream->rr_index = 0;
 	}
-
-	atomic_fetch_add(&upstream->stats->total, 1);
 
 	struct h2d_upstream_connection *upc;
 	if (wuy_list_pop_type(&address->idle_head, upc, list_node)) {
@@ -196,31 +201,93 @@ void h2d_upstream_init(void)
 
 /* configration */
 
+static void h2d_upstream_conf_address_add(struct h2d_upstream_conf *conf,
+		struct sockaddr *sockaddr)
+{
+	struct h2d_upstream_address *address = malloc(sizeof(struct h2d_upstream_address));
+	address->sockaddr = *sockaddr;
+	address->idle_num = 0;
+	wuy_list_init(&address->idle_head);
+	wuy_list_init(&address->active_head);
+	wuy_list_append(&conf->addresses, &address->list_node);
+	address->upstream = conf;
+
+	conf->rr_total++;
+}
+
 static bool h2d_upstream_conf_post(void *data)
 {
 	struct h2d_upstream_conf *conf = data;
 
-	if (conf->addresses == NULL) {
+	if (conf->hostnames == NULL) {
 		return true;
 	}
 
 	conf->stats = wuy_shmem_alloc(sizeof(struct h2d_upstream_stats));
 
-	conf->rr_addresses = calloc(conf->address_num, sizeof(struct h2d_upstream_address));
+	wuy_list_init(&conf->addresses);
 
-	struct h2d_upstream_address *address = conf->rr_addresses;
-	for (int i = 0; conf->addresses[i] != NULL; i++) {
+	for (int i = 0; conf->hostnames[i].name != NULL; i++) {
+		struct h2d_upstream_hostname *hostname = &conf->hostnames[i];
 
-		if (!wuy_sockaddr_pton(conf->addresses[i], &address->sockaddr, conf->default_port)) {
-			printf("invalid upstream address: %s\n", conf->addresses[i]);
+		/* it's IP */
+		struct sockaddr sockaddr;
+		if (wuy_sockaddr_pton(hostname->name, &sockaddr, conf->default_port)) {
+			hostname->is_ip = true;
+			h2d_upstream_conf_address_add(conf, &sockaddr);
+			continue;
+		}
+
+		/* it's hostname, resolve it */
+		hostname->is_ip = false;
+		hostname->port = conf->default_port;
+
+		/* parse the port */
+		char *pport = strchr(hostname->name, ':');
+		if (pport != NULL) {
+			hostname->port = atoi(pport + 1);
+			if (hostname->port == 0) {
+				printf("invalid port %s\n", hostname->name);
+				return false;
+			}
+			*pport = '\0';
+		}
+
+		/* resolve the hostname */
+		struct addrinfo hints;
+		struct addrinfo *results;
+
+		bzero(&hints, sizeof(struct addrinfo));
+		hints.ai_family = AF_UNSPEC;
+		hints.ai_socktype = SOCK_STREAM;
+		hints.ai_flags = AI_ADDRCONFIG;
+
+		if (getaddrinfo(hostname->name, NULL, &hints, &results) != 0) {
+			printf("fail to resolve %s\n", hostname->name);
 			return false;
 		}
-		address->idle_num = 0;
-		wuy_list_init(&address->idle_head);
-		wuy_list_init(&address->active_head);
+		for (struct addrinfo *rp = results; rp != NULL; rp = rp->ai_next) {
+			if (rp->ai_family == AF_INET) {
+				struct sockaddr_in *sin = (struct sockaddr_in *)rp->ai_addr;
+				sin->sin_port = htons(hostname->port);
+			} else {
+				struct sockaddr_in6 *sin6 = (struct sockaddr_in6 *)rp->ai_addr;
+				sin6->sin6_port = htons(hostname->port);
+			}
+			h2d_upstream_conf_address_add(conf, rp->ai_addr);
+		}
 
-		address++;
+		freeaddrinfo(results);
 	}
+
+	/* loadbalance: RR */
+	conf->rr_addresses = malloc(sizeof(struct h2d_upstream_address *) * conf->rr_total);
+	struct h2d_upstream_address *addr;
+	wuy_list_iter_type(&conf->addresses, addr, list_node) {
+		conf->rr_addresses[conf->rr_index++] = addr;
+	}
+	conf->rr_index = 0;
+
 	return true;
 }
 

@@ -24,12 +24,19 @@ struct h2d_upstream_address {
 	int			idle_num;
 	wuy_list_t		idle_head;
 	wuy_list_t		active_head;
+	wuy_list_node_t		list_node; // for RR
+	struct h2d_upstream_conf	*upstream;
+};
+
+struct h2d_upstream_hostname {
+	char			*name; /* must at top */
+	bool			is_ip;
+	unsigned short		port;
 };
 
 struct h2d_upstream_conf {
 	/* configrations */
-	const char		**addresses;
-	int			address_num;
+	struct h2d_upstream_hostname	*hostnames;
 	int			recv_buffer_size;
 	int			send_buffer_size;
 	int			idle_max;
@@ -39,9 +46,12 @@ struct h2d_upstream_conf {
 	int			idle_timeout;
 	bool			ssl_enable;
 
+	wuy_list_t		addresses;
+
 	/* load balances */
-	int			rr_index;
-	struct h2d_upstream_address	*rr_addresses;
+	struct h2d_upstream_address	**rr_addresses;
+	int				rr_index;
+	int				rr_total;
 
 	struct h2d_upstream_stats	*stats;
 };
