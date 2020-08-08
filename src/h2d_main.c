@@ -121,6 +121,7 @@ int main(int argc, char * const *argv)
 
 	h2d_ssl_init();
 	h2d_http2_init();
+	h2d_resolver_init();
 
 	h2d_module_master_init();
 

@@ -8,6 +8,13 @@
 // TODO each upstream should has one ssl-ctx, for different ssl configs
 static SSL_CTX *h2d_upstream_ssl_ctx;
 
+static void h2d_upstream_address_free(struct h2d_upstream_address *address)
+{
+	if (wuy_list_empty(&address->active_head) && wuy_list_empty(&address->idle_head)) {
+		free(address);
+	}
+}
+
 static void h2d_upstream_connection_close(struct h2d_upstream_connection *upc)
 {
 	loop_stream_close(upc->loop_stream);
@@ -15,13 +22,220 @@ static void h2d_upstream_connection_close(struct h2d_upstream_connection *upc)
 
 	wuy_list_delete(&upc->list_node);
 
+	struct h2d_upstream_address *address = upc->address;
 	if (upc->request == NULL) {
-		upc->address->idle_num--;
+		address->idle_num--;
 	}
 
 	free(upc->preread_buf);
 	free(upc);
+
+	/* free address if it was deleted */
+	if (address->deleted) {
+		h2d_upstream_address_free(address);
+	}
 }
+
+static void h2d_upstream_address_delete(struct h2d_upstream_address *address)
+{
+	wuy_list_delete(&address->hostname_node);
+	wuy_list_delete(&address->upstream_node);
+	h2d_upstream_address_free(address);
+}
+
+static void h2d_upstream_lb_rr_routine(struct h2d_upstream_conf *upstream)
+{
+	int num = 0;
+	bool any_deleted = false;
+
+	struct h2d_upstream_address *address, *safe;
+	wuy_list_iter_safe_type(&upstream->address_head, address, safe, upstream_node) {
+		if (address->deleted) {
+			any_deleted = true;
+			h2d_upstream_address_delete(address);
+		} else {
+			num++;
+		}
+	}
+
+	if (num == upstream->rr_total && !any_deleted) { /* no change */
+		return;
+	}
+
+	upstream->rr_index = 0;
+	upstream->rr_total = num;
+
+	upstream->rr_addresses = realloc(upstream->rr_addresses,
+			sizeof(struct h2d_upstream_address *) * num);
+
+	int i = 0;
+	wuy_list_iter_type(&upstream->address_head, address, upstream_node) {
+		upstream->rr_addresses[i++] = address;
+	}
+}
+
+static void h2d_upstream_do_resolve(struct h2d_upstream_conf *upstream)
+{
+	/* pick one hostname */
+	char *name = NULL;
+	while (1) {
+		struct h2d_upstream_hostname *hostname = &upstream->hostnames[upstream->resolve_index++];
+		if (hostname->name != NULL || hostname->need_resolved) {
+			name = hostname->name;
+			break;
+		}
+	}
+
+	/* finish resolve */
+	if (name == NULL) {
+		upstream->resolve_last = time(NULL);
+		upstream->resolve_index = 0;
+		h2d_upstream_lb_rr_routine(upstream);
+		return;
+	}
+
+	/* send resolve query */
+	struct h2d_resolver_query query;
+	int name_len = strlen(name);
+	assert(name_len < sizeof(query.hostname));
+	memcpy(query.hostname, name, name_len);
+	query.expire_after = upstream->resolve_interval;
+	loop_stream_write(upstream->resolve_stream, &query,
+			sizeof(query.expire_after) + name_len);
+}
+
+static void h2d_upstream_conf_address_add(struct h2d_upstream_conf *upstream,
+		struct h2d_upstream_hostname *hostname, struct sockaddr *sockaddr,
+		struct h2d_upstream_address *before)
+{
+	struct h2d_upstream_address *address = malloc(sizeof(struct h2d_upstream_address));
+
+	switch (sockaddr->sa_family) {
+	case AF_INET:
+		address->sockaddr.sin = *((struct sockaddr_in *)sockaddr);
+		if (hostname->port != 0) {
+			address->sockaddr.sin.sin_port = htons(hostname->port);
+		}
+		break;
+
+	case AF_INET6:
+		address->sockaddr.sin6 = *((struct sockaddr_in6 *)sockaddr);
+		if (hostname->port != 0) {
+			address->sockaddr.sin6.sin6_port = htons(hostname->port);
+		}
+		break;
+
+	case AF_UNIX:
+		address->sockaddr.sun = *((struct sockaddr_un *)sockaddr);
+		break;
+
+	default:
+		printf("sa_family: %d\n", sockaddr->sa_family);
+		abort();
+	}
+
+	address->deleted = false;
+	address->idle_num = 0;
+	wuy_list_init(&address->idle_head);
+	wuy_list_init(&address->active_head);
+	address->upstream = upstream;
+
+	if (before != NULL) {
+		wuy_list_add_before(&before->upstream_node, &address->upstream_node);
+		wuy_list_add_before(&before->hostname_node, &address->hostname_node);
+	} else {
+		wuy_list_append(&upstream->address_head, &address->upstream_node);
+		wuy_list_append(&hostname->address_head, &address->hostname_node);
+	}
+}
+
+static void h2d_upstream_address_log(struct h2d_upstream_hostname *hostname,
+		struct sockaddr *sa, const char *op)
+{
+	char addrbuf[100];
+	wuy_sockaddr_ntop(sa, addrbuf, sizeof(addrbuf));
+	printf(" upstream resolve: %s %s %s\n", hostname->name, op, addrbuf);
+}
+
+static int h2d_upstream_resolve_on_read(loop_stream_t *s, void *data, int len)
+{
+	struct h2d_upstream_conf *upstream = loop_stream_get_app_data(s);
+	struct h2d_upstream_hostname *hostname = &upstream->hostnames[upstream->resolve_index-1];
+
+	/* diff */
+	uint8_t *p = data;
+	uint8_t *end = p + len;
+	wuy_list_node_t *node = wuy_list_first(&hostname->address_head);
+	while (p < end && node != NULL) {
+		struct h2d_upstream_address *address = wuy_containerof(node,
+				struct h2d_upstream_address, hostname_node);
+
+		struct sockaddr *newaddr = (struct sockaddr *)p;
+
+		/* compare in the same way with h2d_resolver_addrcmp() */
+		int cmp = wuy_sockaddr_addrcmp(newaddr, &address->sockaddr.s);
+
+		if (cmp < 0) { /* new address */
+			h2d_upstream_address_log(hostname, newaddr, "new");
+			h2d_upstream_conf_address_add(upstream, hostname, newaddr, address);
+			p += wuy_sockaddr_size(newaddr);
+
+		} else if (cmp > 0) { /* delete address */
+			h2d_upstream_address_log(hostname, &address->sockaddr.s, "delete");
+			address->deleted = true;
+			node = wuy_list_next(&hostname->address_head, node);
+
+		} else {
+			printf("matched\n");
+			p += wuy_sockaddr_size(newaddr);
+			node = wuy_list_next(&hostname->address_head, node);
+		}
+	}
+	while (node != NULL) {
+		struct h2d_upstream_address *address = wuy_containerof(node,
+				struct h2d_upstream_address, hostname_node);
+		h2d_upstream_address_log(hostname, &address->sockaddr.s, "delete2");
+		address->deleted = true;
+		node = wuy_list_next(&hostname->address_head, node);
+	}
+	while (p < end) {
+		struct sockaddr *newaddr = (struct sockaddr *)p;
+		h2d_upstream_address_log(hostname, newaddr, "new2");
+		h2d_upstream_conf_address_add(upstream, hostname, newaddr, NULL);
+		p += wuy_sockaddr_size(newaddr);
+	}
+
+	/* resolve next hostname */
+	h2d_upstream_do_resolve(upstream);
+
+	return len;
+}
+static loop_stream_ops_t h2d_upstream_resolve_ops = {
+	.on_read = h2d_upstream_resolve_on_read,
+};
+
+static void h2d_upstream_try_resolve(struct h2d_upstream_conf *upstream)
+{
+	if (upstream->resolve_last == 0) {
+		return;
+	}
+
+	if (upstream->resolve_stream == NULL) { /* init at first time */
+		int fd = h2d_resolver_connect();
+		upstream->resolve_stream = loop_stream_new(h2d_loop, fd, &h2d_upstream_resolve_ops, false);
+		loop_stream_set_app_data(upstream->resolve_stream, upstream);
+	}
+
+	if (time(NULL) - upstream->resolve_last < upstream->resolve_interval) {
+		return;
+	}
+	if (upstream->resolve_index != 0) { /* in processing already */
+		return;
+	}
+
+	h2d_upstream_do_resolve(upstream);
+}
+
 
 static void h2d_upstream_on_active(loop_stream_t *s)
 {
@@ -54,6 +268,8 @@ h2d_upstream_get_connection(struct h2d_upstream_conf *upstream)
 {
 	atomic_fetch_add(&upstream->stats->total, 1);
 
+	h2d_upstream_try_resolve(upstream);
+
 	struct h2d_upstream_address *address = upstream->rr_addresses[upstream->rr_index++];
 	if (upstream->rr_index == upstream->rr_total) {
 		upstream->rr_index = 0;
@@ -68,7 +284,7 @@ h2d_upstream_get_connection(struct h2d_upstream_conf *upstream)
 	}
 
 	errno = 0;
-	int fd = wuy_tcp_connect(&address->sockaddr);
+	int fd = wuy_tcp_connect(&address->sockaddr.s);
 	if (fd < 0) {
 		return NULL;
 	}
@@ -96,14 +312,15 @@ void h2d_upstream_release_connection(struct h2d_upstream_connection *upc)
 	assert(upc->request != NULL);
 	assert(upc->loop_stream != NULL);
 
+	struct h2d_upstream_address *address = upc->address;
+
 	/* close the connection */
-	if (loop_stream_is_closed(upc->loop_stream) || upc->preread_buf != NULL) {
+	if (address->deleted || loop_stream_is_closed(upc->loop_stream) || upc->preread_buf != NULL) {
 		h2d_upstream_connection_close(upc);
 		return;
 	}
 
 	/* put the connection into idle pool */
-	struct h2d_upstream_address *address = upc->address;
 	if (address->idle_num > 10) {
 		/* close the oldest one if pool is full */
 		struct h2d_upstream_connection *idle;
@@ -201,20 +418,6 @@ void h2d_upstream_init(void)
 
 /* configration */
 
-static void h2d_upstream_conf_address_add(struct h2d_upstream_conf *conf,
-		struct sockaddr *sockaddr)
-{
-	struct h2d_upstream_address *address = malloc(sizeof(struct h2d_upstream_address));
-	address->sockaddr = *sockaddr;
-	address->idle_num = 0;
-	wuy_list_init(&address->idle_head);
-	wuy_list_init(&address->active_head);
-	wuy_list_append(&conf->addresses, &address->list_node);
-	address->upstream = conf;
-
-	conf->rr_total++;
-}
-
 static bool h2d_upstream_conf_post(void *data)
 {
 	struct h2d_upstream_conf *conf = data;
@@ -225,21 +428,26 @@ static bool h2d_upstream_conf_post(void *data)
 
 	conf->stats = wuy_shmem_alloc(sizeof(struct h2d_upstream_stats));
 
-	wuy_list_init(&conf->addresses);
+	wuy_list_init(&conf->address_head);
 
+	bool need_resolved = false;
 	for (int i = 0; conf->hostnames[i].name != NULL; i++) {
 		struct h2d_upstream_hostname *hostname = &conf->hostnames[i];
+
+		wuy_list_init(&hostname->address_head);
 
 		/* it's IP */
 		struct sockaddr sockaddr;
 		if (wuy_sockaddr_pton(hostname->name, &sockaddr, conf->default_port)) {
-			hostname->is_ip = true;
-			h2d_upstream_conf_address_add(conf, &sockaddr);
+			hostname->need_resolved = false;
+			hostname->port = 0;
+			h2d_upstream_conf_address_add(conf, hostname, &sockaddr, NULL);
 			continue;
 		}
 
 		/* it's hostname, resolve it */
-		hostname->is_ip = false;
+		need_resolved = true;
+		hostname->need_resolved = true;
 		hostname->port = conf->default_port;
 
 		/* parse the port */
@@ -254,39 +462,30 @@ static bool h2d_upstream_conf_post(void *data)
 		}
 
 		/* resolve the hostname */
-		struct addrinfo hints;
-		struct addrinfo *results;
-
-		bzero(&hints, sizeof(struct addrinfo));
-		hints.ai_family = AF_UNSPEC;
-		hints.ai_socktype = SOCK_STREAM;
-		hints.ai_flags = AI_ADDRCONFIG;
-
-		if (getaddrinfo(hostname->name, NULL, &hints, &results) != 0) {
-			printf("fail to resolve %s\n", hostname->name);
+		int length;
+		uint8_t *buffer = h2d_resolver_hostname(hostname->name, &length);
+		if (buffer == NULL) {
+			printf("resolve fail %s\n", hostname->name);
 			return false;
 		}
-		for (struct addrinfo *rp = results; rp != NULL; rp = rp->ai_next) {
-			if (rp->ai_family == AF_INET) {
-				struct sockaddr_in *sin = (struct sockaddr_in *)rp->ai_addr;
-				sin->sin_port = htons(hostname->port);
-			} else {
-				struct sockaddr_in6 *sin6 = (struct sockaddr_in6 *)rp->ai_addr;
-				sin6->sin6_port = htons(hostname->port);
-			}
-			h2d_upstream_conf_address_add(conf, rp->ai_addr);
+
+		uint8_t *p = buffer;
+		while (p < buffer + length) {
+			struct sockaddr *sa = (struct sockaddr *)p;
+			h2d_upstream_conf_address_add(conf, hostname, sa, NULL);
+			p += wuy_sockaddr_size(sa);
 		}
 
-		freeaddrinfo(results);
+		free(buffer);
 	}
 
-	/* loadbalance: RR */
-	conf->rr_addresses = malloc(sizeof(struct h2d_upstream_address *) * conf->rr_total);
-	struct h2d_upstream_address *addr;
-	wuy_list_iter_type(&conf->addresses, addr, list_node) {
-		conf->rr_addresses[conf->rr_index++] = addr;
+	/* resolve stream */
+	if (need_resolved && conf->resolve_interval > 0) {
+		conf->resolve_last = time(NULL);
 	}
-	conf->rr_index = 0;
+
+	/* LB routine */
+	h2d_upstream_lb_rr_routine(conf);
 
 	return true;
 }
@@ -317,6 +516,10 @@ static struct wuy_cflua_command h2d_upstream_conf_commands[] = {
 	{	.name = "default_port",
 		.type = WUY_CFLUA_TYPE_INTEGER,
 		.offset = offsetof(struct h2d_upstream_conf, default_port),
+	},
+	{	.name = "resolve_interval",
+		.type = WUY_CFLUA_TYPE_INTEGER,
+		.offset = offsetof(struct h2d_upstream_conf, resolve_interval),
 	},
 	{	.name = "ssl_enable",
 		.type = WUY_CFLUA_TYPE_BOOLEAN,

@@ -8,6 +8,7 @@ general = {
 		idle_timeout = 10,
 		idle_max = 10,
 		default_port = 80,
+		resolve_interval = 10*60,
 		send_buffer_size = 1024*16,
 		recv_buffer_size = 1024*16,
 		ssl_enable = false,
