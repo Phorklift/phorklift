@@ -135,7 +135,7 @@ static int h2d_proxy_generate_response_headers(struct h2d_request *r)
 		/* get upstream connection */
 		ctx->upc = h2d_upstream_get_connection(&conf->upstream, r);
 		if (ctx->upc == NULL) {
-			return H2D_ERROR;
+			return WUY_HTTP_500;
 		}
 	}
 
@@ -204,12 +204,15 @@ static int h2d_proxy_generate_response_body(struct h2d_request *r, uint8_t *buff
 		printf("invalid chunked: %d\n", proc_len);
 		return H2D_ERROR;
 	}
-	if (proc_len != read_len) {
-		// TODO
-		printf("warning: process chunked: %d %d\n", proc_len, read_len);
+	assert(proc_len == read_len);
+
+	if (buf_len == 0 && !wuy_http_chunked_is_finished(&ctx->chunked)) {
+		return H2D_AGAIN;
 	}
 
-	return buf_len == 0 ? H2D_AGAIN : buf_len;
+	/* if chunked is finished, this function will be called again
+	 * and returns 0 then. */
+	return buf_len;
 }
 
 static void h2d_proxy_ctx_free(struct h2d_request *r)
@@ -240,6 +243,10 @@ static struct wuy_cflua_command h2d_proxy_conf_commands[] = {
 		.u.table = &h2d_upstream_conf_table,
 	},
 	{	.name = "x_forwarded_for",
+		.type = WUY_CFLUA_TYPE_BOOLEAN,
+		.offset = offsetof(struct h2d_proxy_conf, x_forwarded_for),
+	},
+	{	.name = "x_forwarded_for_hello",
 		.type = WUY_CFLUA_TYPE_BOOLEAN,
 		.offset = offsetof(struct h2d_proxy_conf, x_forwarded_for),
 	},
