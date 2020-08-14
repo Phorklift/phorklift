@@ -11,7 +11,7 @@ struct h2d_proxy_ctx {
 	struct h2d_upstream_connection	*upc;
 };
 
-extern struct h2d_module h2d_proxy_module;
+struct h2d_module h2d_proxy_module;
 
 // TODO move this out
 static const char *client_addr(struct h2d_request *r)
@@ -133,11 +133,10 @@ static int h2d_proxy_generate_response_headers(struct h2d_request *r)
 		r->module_ctxs[h2d_proxy_module.index] = ctx;
 
 		/* get upstream connection */
-		ctx->upc = h2d_upstream_get_connection(&conf->upstream);
+		ctx->upc = h2d_upstream_get_connection(&conf->upstream, r);
 		if (ctx->upc == NULL) {
 			return H2D_ERROR;
 		}
-		ctx->upc->request = r;
 	}
 
 	if (!ctx->has_sent_request) {

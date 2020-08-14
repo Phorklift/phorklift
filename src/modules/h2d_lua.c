@@ -21,12 +21,12 @@ struct h2d_lua_ctx {
 	int			(*resume_handler)(struct h2d_request *r);
 };
 
-extern struct h2d_module h2d_lua_module;
+struct h2d_module h2d_lua_module;
 
 
 /* thread */
 
-static struct h2d_request *h2d_lua_current_request;
+struct h2d_request *h2d_lua_current_request;
 
 static int h2d_lua_thread_resume(struct h2d_request *r)
 {

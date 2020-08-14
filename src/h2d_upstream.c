@@ -43,40 +43,9 @@ static void h2d_upstream_address_delete(struct h2d_upstream_address *address)
 	h2d_upstream_address_free(address);
 }
 
-static void h2d_upstream_lb_rr_routine(struct h2d_upstream_conf *upstream)
-{
-	int num = 0;
-	bool any_deleted = false;
-
-	struct h2d_upstream_address *address, *safe;
-	wuy_list_iter_safe_type(&upstream->address_head, address, safe, upstream_node) {
-		if (address->deleted) {
-			any_deleted = true;
-			h2d_upstream_address_delete(address);
-		} else {
-			num++;
-		}
-	}
-
-	if (num == upstream->rr_total && !any_deleted) { /* no change */
-		return;
-	}
-
-	upstream->rr_index = 0;
-	upstream->rr_total = num;
-
-	upstream->rr_addresses = realloc(upstream->rr_addresses,
-			sizeof(struct h2d_upstream_address *) * num);
-
-	int i = 0;
-	wuy_list_iter_type(&upstream->address_head, address, upstream_node) {
-		upstream->rr_addresses[i++] = address;
-	}
-}
-
 static void h2d_upstream_do_resolve(struct h2d_upstream_conf *upstream)
 {
-	/* pick one hostname */
+	/* pick next hostname */
 	char *name = NULL;
 	while (1) {
 		struct h2d_upstream_hostname *hostname = &upstream->hostnames[upstream->resolve_index++];
@@ -86,11 +55,32 @@ static void h2d_upstream_do_resolve(struct h2d_upstream_conf *upstream)
 		}
 	}
 
-	/* finish resolve */
+	/* finish resolve all hostnames */
 	if (name == NULL) {
 		upstream->resolve_last = time(NULL);
 		upstream->resolve_index = 0;
-		h2d_upstream_lb_rr_routine(upstream);
+		if (!upstream->resolve_updated) {
+			return;
+		}
+
+		/* clear deleted addresses, just before loadbalance->update() */
+		upstream->address_num = 0;
+		struct h2d_upstream_address *address, *safe;
+		wuy_list_iter_safe_type(&upstream->address_head, address, safe, upstream_node) {
+			if (address->deleted) {
+				h2d_upstream_address_delete(address);
+			} else {
+				upstream->address_num++;
+			}
+		}
+
+		if (upstream->address_num == 0) {
+			printf("!!! no address. no update\n");
+			return;
+		}
+
+		upstream->loadbalance->update(upstream);
+		upstream->resolve_updated = false;
 		return;
 	}
 
@@ -104,7 +94,7 @@ static void h2d_upstream_do_resolve(struct h2d_upstream_conf *upstream)
 			sizeof(query.expire_after) + name_len);
 }
 
-static void h2d_upstream_conf_address_add(struct h2d_upstream_conf *upstream,
+static void h2d_upstream_address_add(struct h2d_upstream_conf *upstream,
 		struct h2d_upstream_hostname *hostname, struct sockaddr *sockaddr,
 		struct h2d_upstream_address *before)
 {
@@ -149,14 +139,6 @@ static void h2d_upstream_conf_address_add(struct h2d_upstream_conf *upstream,
 	}
 }
 
-static void h2d_upstream_address_log(struct h2d_upstream_hostname *hostname,
-		struct sockaddr *sa, const char *op)
-{
-	char addrbuf[100];
-	wuy_sockaddr_ntop(sa, addrbuf, sizeof(addrbuf));
-	printf(" upstream resolve: %s %s %s\n", hostname->name, op, addrbuf);
-}
-
 static int h2d_upstream_resolve_on_read(loop_stream_t *s, void *data, int len)
 {
 	struct h2d_upstream_conf *upstream = loop_stream_get_app_data(s);
@@ -174,35 +156,39 @@ static int h2d_upstream_resolve_on_read(loop_stream_t *s, void *data, int len)
 
 		/* compare in the same way with h2d_resolver_addrcmp() */
 		int cmp = wuy_sockaddr_addrcmp(newaddr, &address->sockaddr.s);
+		if (cmp == 0) {
+			p += wuy_sockaddr_size(newaddr);
+			node = wuy_list_next(&hostname->address_head, node);
+			continue;
+		}
 
 		if (cmp < 0) { /* new address */
-			h2d_upstream_address_log(hostname, newaddr, "new");
-			h2d_upstream_conf_address_add(upstream, hostname, newaddr, address);
+			h2d_upstream_address_add(upstream, hostname, newaddr, address);
 			p += wuy_sockaddr_size(newaddr);
-
-		} else if (cmp > 0) { /* delete address */
-			h2d_upstream_address_log(hostname, &address->sockaddr.s, "delete");
-			address->deleted = true;
-			node = wuy_list_next(&hostname->address_head, node);
 
 		} else {
-			printf("matched\n");
-			p += wuy_sockaddr_size(newaddr);
+			/* delete address.
+			 * We can not free the address now because it is used
+			 * by loadbalance. We just mark it here and free it
+			 * just before loadbalance->update(). */
+			address->deleted = true;
 			node = wuy_list_next(&hostname->address_head, node);
 		}
+
+		upstream->resolve_updated = true;
 	}
 	while (node != NULL) {
 		struct h2d_upstream_address *address = wuy_containerof(node,
 				struct h2d_upstream_address, hostname_node);
-		h2d_upstream_address_log(hostname, &address->sockaddr.s, "delete2");
-		address->deleted = true;
 		node = wuy_list_next(&hostname->address_head, node);
+		address->deleted = true;
+		upstream->resolve_updated = true;
 	}
 	while (p < end) {
 		struct sockaddr *newaddr = (struct sockaddr *)p;
-		h2d_upstream_address_log(hostname, newaddr, "new2");
-		h2d_upstream_conf_address_add(upstream, hostname, newaddr, NULL);
+		h2d_upstream_address_add(upstream, hostname, newaddr, NULL);
 		p += wuy_sockaddr_size(newaddr);
+		upstream->resolve_updated = true;
 	}
 
 	/* resolve next hostname */
@@ -217,10 +203,14 @@ static loop_stream_ops_t h2d_upstream_resolve_ops = {
 static void h2d_upstream_try_resolve(struct h2d_upstream_conf *upstream)
 {
 	if (upstream->resolve_last == 0) {
+		/* all static addresses, no need resolve */
 		return;
 	}
 
-	if (upstream->resolve_stream == NULL) { /* init at first time */
+	if (upstream->resolve_stream == NULL) {
+		/* initialize the loop_stream.
+		 * We can not initialize this at h2d_upstream_conf_post() because
+		 * it is called in master process while we need the worker. */
 		int fd = h2d_resolver_connect();
 		upstream->resolve_stream = loop_stream_new(h2d_loop, fd, &h2d_upstream_resolve_ops, false);
 		loop_stream_set_app_data(upstream->resolve_stream, upstream);
@@ -233,6 +223,7 @@ static void h2d_upstream_try_resolve(struct h2d_upstream_conf *upstream)
 		return;
 	}
 
+	/* begin the resolve */
 	h2d_upstream_do_resolve(upstream);
 }
 
@@ -264,22 +255,29 @@ static loop_stream_ops_t h2d_upstream_ops = {
 
 
 struct h2d_upstream_connection *
-h2d_upstream_get_connection(struct h2d_upstream_conf *upstream)
+h2d_upstream_get_connection(struct h2d_upstream_conf *upstream, struct h2d_request *r)
 {
 	atomic_fetch_add(&upstream->stats->total, 1);
 
 	h2d_upstream_try_resolve(upstream);
 
-	struct h2d_upstream_address *address = upstream->rr_addresses[upstream->rr_index++];
-	if (upstream->rr_index == upstream->rr_total) {
-		upstream->rr_index = 0;
+	struct h2d_upstream_address *address = upstream->loadbalance->pick(upstream, r);
+	if (address == NULL) {
+		printf("upstream pick fail\n");
+		atomic_fetch_add(&upstream->stats->pick_fail, 1);
+		return NULL;
 	}
+
+	char tmpbuf[100];
+	wuy_sockaddr_ntop(&address->sockaddr.s, tmpbuf, sizeof(tmpbuf));
+	printf("pick %s\n", tmpbuf);
 
 	struct h2d_upstream_connection *upc;
 	if (wuy_list_pop_type(&address->idle_head, upc, list_node)) {
 		wuy_list_append(&address->active_head, &upc->list_node);
 		address->idle_num--;
 		atomic_fetch_add(&upstream->stats->reuse, 1);
+		upc->request = r;
 		return upc;
 	}
 
@@ -304,6 +302,7 @@ h2d_upstream_get_connection(struct h2d_upstream_conf *upstream)
 	wuy_list_append(&address->active_head, &upc->list_node);
 	loop_stream_set_app_data(s, upc);
 
+	upc->request = r;
 	return upc;
 }
 
@@ -315,7 +314,7 @@ void h2d_upstream_release_connection(struct h2d_upstream_connection *upc)
 	struct h2d_upstream_address *address = upc->address;
 
 	/* close the connection */
-	if (address->deleted || loop_stream_is_closed(upc->loop_stream) || upc->preread_buf != NULL) {
+	if (loop_stream_is_closed(upc->loop_stream) || upc->preread_buf != NULL) {
 		h2d_upstream_connection_close(upc);
 		return;
 	}
@@ -366,6 +365,7 @@ int h2d_upstream_connection_read(struct h2d_upstream_connection *upc,
 
 	int read_len = loop_stream_read(upc->loop_stream, buf_pos, buf_len);
 	if (read_len < 0) {
+		printf("upstream read fail %d\n", read_len);
 		return H2D_ERROR;
 	}
 
@@ -400,6 +400,7 @@ int h2d_upstream_connection_write(struct h2d_upstream_connection *upc,
 
 	int write_len = loop_stream_write(upc->loop_stream, data, data_len);
 	if (write_len < 0) {
+		printf("upstream write fail %d\n", write_len);
 		return H2D_ERROR;
 	}
 	if (write_len != data_len) { /* blocking happens */
@@ -417,6 +418,20 @@ void h2d_upstream_init(void)
 
 
 /* configration */
+
+extern struct h2d_upstream_loadbalance h2d_upstream_loadbalance_hash;
+extern struct h2d_upstream_loadbalance h2d_upstream_loadbalance_roundrobin;
+static struct h2d_upstream_loadbalance *
+h2d_upstream_conf_loadbalance_select(struct h2d_upstream_conf *conf)
+{
+	/* We have 2 loadbalances now, roundrobin and hash.
+	 * Use hash if conf->hash is set, otherwise roundrobin. */
+	if (!h2d_conf_is_zero_function(conf->hash)) {
+		return &h2d_upstream_loadbalance_hash;
+	} else {
+		return &h2d_upstream_loadbalance_roundrobin;
+	}
+}
 
 static bool h2d_upstream_conf_post(void *data)
 {
@@ -436,12 +451,13 @@ static bool h2d_upstream_conf_post(void *data)
 
 		wuy_list_init(&hostname->address_head);
 
-		/* it's IP */
+		/* it's static address, no need resolve */
 		struct sockaddr sockaddr;
 		if (wuy_sockaddr_pton(hostname->name, &sockaddr, conf->default_port)) {
 			hostname->need_resolved = false;
 			hostname->port = 0;
-			h2d_upstream_conf_address_add(conf, hostname, &sockaddr, NULL);
+			h2d_upstream_address_add(conf, hostname, &sockaddr, NULL);
+			conf->address_num++;
 			continue;
 		}
 
@@ -472,11 +488,17 @@ static bool h2d_upstream_conf_post(void *data)
 		uint8_t *p = buffer;
 		while (p < buffer + length) {
 			struct sockaddr *sa = (struct sockaddr *)p;
-			h2d_upstream_conf_address_add(conf, hostname, sa, NULL);
+			h2d_upstream_address_add(conf, hostname, sa, NULL);
 			p += wuy_sockaddr_size(sa);
+			conf->address_num++;
 		}
 
 		free(buffer);
+	}
+
+	if (conf->address_num == 0) {
+		printf("no address for upstream\n");
+		return false;
 	}
 
 	/* resolve stream */
@@ -484,8 +506,12 @@ static bool h2d_upstream_conf_post(void *data)
 		conf->resolve_last = time(NULL);
 	}
 
-	/* LB routine */
-	h2d_upstream_lb_rr_routine(conf);
+	/* loadbalance */
+	conf->loadbalance = h2d_upstream_conf_loadbalance_select(conf);
+	if (conf->loadbalance->init != NULL) {
+		conf->loadbalance->init(conf);
+	}
+	conf->loadbalance->update(conf);
 
 	return true;
 }
@@ -497,7 +523,10 @@ int h2d_upstream_conf_stats(void *data, char *buf, int len)
 	if (stats == NULL) {
 		return 0;
 	}
-	return snprintf(buf, len, "upstream: %d %d\n", atomic_load(&stats->total), atomic_load(&stats->reuse));
+	return snprintf(buf, len, "upstream: %d %d %d\n",
+			atomic_load(&stats->total),
+			atomic_load(&stats->reuse),
+			atomic_load(&stats->pick_fail));
 }
 
 static struct wuy_cflua_command h2d_upstream_conf_commands[] = {
@@ -524,6 +553,12 @@ static struct wuy_cflua_command h2d_upstream_conf_commands[] = {
 	{	.name = "ssl_enable",
 		.type = WUY_CFLUA_TYPE_BOOLEAN,
 		.offset = offsetof(struct h2d_upstream_conf, ssl_enable),
+	},
+
+	/* loadbalances */
+	{	.name = "hash",
+		.type = WUY_CFLUA_TYPE_FUNCTION,
+		.offset = offsetof(struct h2d_upstream_conf, hash),
 	},
 	{ NULL }
 };

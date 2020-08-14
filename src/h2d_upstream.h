@@ -8,6 +8,7 @@
 struct h2d_upstream_stats {
 	atomic_int		total;
 	atomic_int		reuse;
+	atomic_int		pick_fail;
 };
 
 struct h2d_upstream_connection {
@@ -32,6 +33,7 @@ struct h2d_upstream_address {
 	} sockaddr;
 
 	bool			deleted;
+	bool			down;
 	int			idle_num;
 	wuy_list_t		idle_head;
 	wuy_list_t		active_head;
@@ -47,37 +49,51 @@ struct h2d_upstream_hostname {
 	wuy_list_t		address_head;
 };
 
+struct h2d_upstream_loadbalance {
+	const char			*name;
+	void 				(*init)(struct h2d_upstream_conf *);
+	void 				(*update)(struct h2d_upstream_conf *);
+	struct h2d_upstream_address *	(*pick)(struct h2d_upstream_conf *, struct h2d_request *);
+};
+
 struct h2d_upstream_conf {
 	/* configrations */
 	struct h2d_upstream_hostname	*hostnames;
-	int			recv_buffer_size;
-	int			send_buffer_size;
-	int			idle_max;
-	int			default_port;
-	int			resolve_interval;
-	int			read_timeout; // read or recv?
-	int			write_timeout;
-	int			idle_timeout;
-	bool			ssl_enable;
+	int				recv_buffer_size;
+	int				send_buffer_size;
+	int				idle_max;
+	int				default_port;
+	int				resolve_interval;
+	int				read_timeout; // read or recv?
+	int				write_timeout;
+	int				idle_timeout;
+	bool				ssl_enable;
 
-	wuy_list_t		address_head;
+	wuy_list_t			address_head;
+	int				address_num;
 
-	time_t			resolve_last;
-	int			resolve_index;
-	loop_stream_t		*resolve_stream;
+	/* resolve */
+	time_t				resolve_last;
+	int				resolve_index;
+	bool				resolve_updated;
+	loop_stream_t			*resolve_stream;
 
-	/* load balances */
-	struct h2d_upstream_address	**rr_addresses;
-	int				rr_index;
-	int				rr_total;
-
+	/* stats */
 	struct h2d_upstream_stats	*stats;
+
+	/* loadbalances */
+	struct h2d_upstream_loadbalance	*loadbalance;
+	void				*lb_ctx;
+
+	/* configrations of loadbalances
+	 * Add configrations here if you add a new loadbalance. */
+	wuy_cflua_function_t		hash;
 };
 
 extern struct wuy_cflua_table h2d_upstream_conf_table;
 
 struct h2d_upstream_connection *
-h2d_upstream_get_connection(struct h2d_upstream_conf *upstream);
+h2d_upstream_get_connection(struct h2d_upstream_conf *upstream, struct h2d_request *r);
 
 void h2d_upstream_release_connection(struct h2d_upstream_connection *upc);
 

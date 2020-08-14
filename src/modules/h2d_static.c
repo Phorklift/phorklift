@@ -25,7 +25,7 @@ struct h2d_static_ctx {
 	size_t		range;
 };
 
-extern struct h2d_module h2d_static_module;
+struct h2d_module h2d_static_module;
 
 
 /* content handlers */

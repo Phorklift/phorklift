@@ -12,7 +12,7 @@ struct h2d_acl_conf {
 	struct h2d_acl_rule	*rules;
 };
 
-extern struct h2d_module h2d_acl_module;
+struct h2d_module h2d_acl_module;
 
 static int h2d_acl_process_headers(struct h2d_request *r)
 {

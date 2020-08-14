@@ -1,6 +1,6 @@
 #include "h2d_main.h"
 
-extern struct h2d_module h2d_stats_module;
+struct h2d_module h2d_stats_module;
 
 static int h2d_stats_generate_response_headers(struct h2d_request *r)
 {

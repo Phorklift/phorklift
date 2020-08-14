@@ -12,6 +12,8 @@ general = {
 		send_buffer_size = 1024*16,
 		recv_buffer_size = 1024*16,
 		ssl_enable = false,
+
+		hash = H2D_ZERO_FUNC,
 	},
 	mask = {
 		_array_type = "number",
