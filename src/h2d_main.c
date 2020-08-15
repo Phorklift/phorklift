@@ -71,6 +71,8 @@ static void h2d_getopt(int argc, char *const *argv)
 }
 
 loop_t *h2d_loop = NULL;
+
+static int h2d_worker_fds[2];
 static void h2d_signal_worker_quit(int signo)
 {
 	loop_kill(h2d_loop);
@@ -80,7 +82,6 @@ static void h2d_worker_entry(struct h2d_conf_listen **listens)
 	printf("start worker: %d\n", getpid());
 
 	signal(SIGQUIT, h2d_signal_worker_quit);
-	signal(SIGUSR1, h2d_signal_worker_quit);
 
 	prctl(PR_SET_NAME, (unsigned long)"h2tpd-worker", 0, 0, 0);
 
@@ -92,6 +93,14 @@ static void h2d_worker_entry(struct h2d_conf_listen **listens)
 
 	h2d_connection_listen(listens);
 
+	/* notify master */
+	if (write(h2d_worker_fds[1], &listens, 1) < 0) {
+		perror("fail in notify master");
+	}
+	close(h2d_worker_fds[0]);
+	close(h2d_worker_fds[1]);
+
+	/* go to work! */
 	loop_run(h2d_loop);
 	printf("!!!!! worker quit\n");
 }
@@ -111,13 +120,40 @@ static void h2d_signal_dispatch(int signo)
 	kill(0, signo);
 }
 
+static pid_t h2d_worker_new(struct h2d_conf_listen **listens)
+{
+	if (pipe(h2d_worker_fds) < 0) {
+		return -1;
+	}
+
+	pid_t pid = fork();
+	if (pid < 0) {
+		perror("fail in fork");
+		return -1;
+	}
+	if (pid == 0) {
+		h2d_worker_entry(listens);
+		exit(0);
+	}
+
+	/* wait the notification */
+	char c;
+	int len = read(h2d_worker_fds[0], &c, 1);
+	close(h2d_worker_fds[0]);
+	close(h2d_worker_fds[1]);
+	if (len < 1) {
+		return -1;
+	}
+
+	return pid;
+}
+
 int main(int argc, char * const *argv)
 {
 	h2d_getopt(argc, argv);
 
 	signal(SIGPIPE, SIG_IGN);
 	signal(SIGQUIT, h2d_signal_dispatch);
-	signal(SIGUSR1, h2d_signal_dispatch);
 
 	h2d_ssl_init();
 	h2d_http2_init();
@@ -136,14 +172,8 @@ int main(int argc, char * const *argv)
 
 	/* start workers */
 	for (int i = 0; i < opt_worker_num; i++) {
-		pid_t pid = fork();
-		if (pid < 0) {
-			perror("fail in fork");
+		if (h2d_worker_new(listens) < 0) {
 			return H2D_EXIT_FORK_WORKER;
-		}
-		if (pid == 0) {
-			h2d_worker_entry(listens);
-			exit(0);
 		}
 	}
 
@@ -168,16 +198,7 @@ int main(int argc, char * const *argv)
 			continue;
 		}
 
-		/* create new worker */
-		pid = fork();
-		if (pid < 0) {
-			perror("fail in fork");
-			continue;
-		}
-		if (pid == 0) {
-			h2d_worker_entry(listens);
-			exit(0);
-		}
+		h2d_worker_new(listens);
 	}
 
 	return 0;
