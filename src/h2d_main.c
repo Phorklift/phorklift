@@ -94,7 +94,8 @@ static void h2d_worker_entry(struct h2d_conf_listen **listens)
 	h2d_connection_listen(listens);
 
 	/* notify master */
-	if (write(h2d_worker_fds[1], &listens, 1) < 0) {
+	char n = 1;
+	if (write(h2d_worker_fds[1], &n, 1) < 0) {
 		perror("fail in notify master");
 	}
 	close(h2d_worker_fds[0]);
