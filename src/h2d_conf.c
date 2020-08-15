@@ -25,6 +25,12 @@ bool h2d_conf_is_zero_function(wuy_cflua_function_t f)
 	return false;
 }
 
+/* say nothing. for wuy_cflua_strerror() print. */
+static int h2d_conf_name(void *data, char *buf, int size)
+{
+	return 0;
+}
+
 /* This holds the global lua state.
  * This is persistent because of the functions defined in config file. */
 lua_State *h2d_L;
@@ -66,13 +72,16 @@ struct h2d_conf_listen **h2d_conf_parse(const char *defaults_file, const char *c
 	};
 	struct wuy_cflua_command global = {
 		.type = WUY_CFLUA_TYPE_TABLE,
-		.u.table = &(struct wuy_cflua_table) { listens_commands },
+		.u.table = &(struct wuy_cflua_table) {
+			.commands = listens_commands,
+			.name = h2d_conf_name,
+		},
 	};
 
 	static struct h2d_conf_listen **h2d_conf_listens;
-	int br = wuy_cflua_parse(h2d_L, &global, &h2d_conf_listens);
-	if (br < 0) {
-		printf("parse: %d\n", br);
+	int err = wuy_cflua_parse(h2d_L, &global, &h2d_conf_listens);
+	if (err < 0) {
+		printf("parse config error: %s\n", wuy_cflua_strerror(h2d_L, err));
 		exit(H2D_EXIT_CONF);
 	}
 

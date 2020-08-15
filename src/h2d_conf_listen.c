@@ -87,6 +87,12 @@ static bool h2d_conf_listen_add_hostname(struct h2d_conf_listen *conf_listen,
 	return true;
 }
 
+static int h2d_conf_listen_name(void *data, char *buf, int size)
+{
+	struct h2d_conf_listen *conf_listen = data;
+	return snprintf(buf, size, "Listen(%s)>", conf_listen->addresses[0]);
+}
+
 static bool h2d_conf_listen_post(void *data)
 {
 	struct h2d_conf_listen *conf_listen = data;
@@ -176,14 +182,14 @@ static struct wuy_cflua_command h2d_conf_listen_network_commands[] = {
 };
 
 static struct wuy_cflua_command h2d_conf_listen_commands[] = {
-	{	.type = WUY_CFLUA_TYPE_TABLE,
-		.offset = offsetof(struct h2d_conf_listen, hosts),
-		.u.table = &h2d_conf_host_table,
-	},
 	{	.name = "_addresses",
 		.type = WUY_CFLUA_TYPE_TABLE,
 		.offset = offsetof(struct h2d_conf_listen, addresses),
 		.u.table = WUY_CFLUA_ARRAY_STRING_TABLE,
+	},
+	{	.type = WUY_CFLUA_TYPE_TABLE,
+		.offset = offsetof(struct h2d_conf_listen, hosts),
+		.u.table = &h2d_conf_host_table,
 	},
 	{	.name = "http1",
 		.type = WUY_CFLUA_TYPE_TABLE,
@@ -209,4 +215,5 @@ struct wuy_cflua_table h2d_conf_listen_table = {
 	.commands = h2d_conf_listen_commands,
 	.size = sizeof(struct h2d_conf_listen),
 	.post = h2d_conf_listen_post,
+	.name = h2d_conf_listen_name,
 };

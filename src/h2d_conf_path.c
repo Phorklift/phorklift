@@ -1,5 +1,11 @@
 #include "h2d_main.h"
 
+static int h2d_conf_path_name(void *data, char *buf, int size)
+{
+	struct h2d_conf_path *conf_path = data;
+	return snprintf(buf, size, "Path(%s)>", conf_path->pathnames[0]);
+}
+
 /* make sure there is one and only one content module is enabled */
 static bool h2d_conf_path_post(void *data)
 {
@@ -48,4 +54,5 @@ struct wuy_cflua_table h2d_conf_path_table = {
 	.commands = h2d_conf_path_commands,
 	.size = sizeof(struct h2d_conf_path),
 	.post = h2d_conf_path_post,
+	.name = h2d_conf_path_name,
 };

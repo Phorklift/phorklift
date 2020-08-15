@@ -15,6 +15,12 @@ struct h2d_conf_path *h2d_conf_host_search_pathname(
 	return NULL;
 }
 
+static int h2d_conf_host_name(void *data, char *buf, int size)
+{
+	struct h2d_conf_host *conf_host = data;
+	return snprintf(buf, size, "Host(%s)>", conf_host->hostnames[0]);
+}
+
 static bool h2d_conf_host_post(void *data)
 {
 	struct h2d_conf_host *conf_host = data;
@@ -59,14 +65,14 @@ static struct wuy_cflua_command h2d_conf_host_ssl_commands[] = {
 };
 
 static struct wuy_cflua_command h2d_conf_host_commands[] = {
-	{	.type = WUY_CFLUA_TYPE_TABLE,
-		.offset = offsetof(struct h2d_conf_host, paths),
-		.u.table = &h2d_conf_path_table,
-	},
 	{	.name = "_hostnames",
 		.type = WUY_CFLUA_TYPE_TABLE,
 		.offset = offsetof(struct h2d_conf_host, hostnames),
 		.u.table = WUY_CFLUA_ARRAY_STRING_TABLE,
+	},
+	{	.type = WUY_CFLUA_TYPE_TABLE,
+		.offset = offsetof(struct h2d_conf_host, paths),
+		.u.table = &h2d_conf_path_table,
 	},
 	{	.name = "ssl",
 		.type = WUY_CFLUA_TYPE_TABLE,
@@ -82,4 +88,5 @@ struct wuy_cflua_table h2d_conf_host_table = {
 	.commands = h2d_conf_host_commands,
 	.size = sizeof(struct h2d_conf_host),
 	.post = h2d_conf_host_post,
+	.name = h2d_conf_host_name,
 };
