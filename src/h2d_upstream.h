@@ -8,6 +8,7 @@
 struct h2d_upstream_stats {
 	atomic_int		total;
 	atomic_int		reuse;
+	atomic_int		retry;
 	atomic_int		pick_fail;
 };
 
@@ -33,7 +34,7 @@ struct h2d_upstream_address {
 	} sockaddr;
 
 	bool			deleted;
-	bool			down;
+	int			fails;
 	int			idle_num;
 	wuy_list_t		idle_head;
 	wuy_list_t		active_head;
@@ -62,6 +63,7 @@ struct h2d_upstream_conf {
 	int				recv_buffer_size;
 	int				send_buffer_size;
 	int				idle_max;
+	int				fails;
 	int				default_port;
 	int				resolve_interval;
 	int				read_timeout; // read or recv?
@@ -95,6 +97,9 @@ extern struct wuy_cflua_table h2d_upstream_conf_table;
 struct h2d_upstream_connection *
 h2d_upstream_get_connection(struct h2d_upstream_conf *upstream, struct h2d_request *r);
 
+struct h2d_upstream_connection *
+h2d_upstream_retry_connection(struct h2d_upstream_connection *old);
+
 void h2d_upstream_release_connection(struct h2d_upstream_connection *upc);
 
 int h2d_upstream_connection_read(struct h2d_upstream_connection *upc,
@@ -105,7 +110,23 @@ void h2d_upstream_connection_read_notfinish(struct h2d_upstream_connection *upc,
 int h2d_upstream_connection_write(struct h2d_upstream_connection *upc,
 		void *data, int data_len);
 
+static inline bool h2d_upstream_connection_write_blocked(struct h2d_upstream_connection *upc)
+{
+	return loop_stream_is_write_blocked(upc->loop_stream);
+}
+
 int h2d_upstream_conf_stats(void *data, char *buf, int len);
+
+static inline bool h2d_upstream_address_is_down(struct h2d_upstream_address *address)
+{
+	int limit = address->upstream->fails;
+	return limit != 0 && address->fails >= limit;
+}
+
+static inline void h2d_upstream_connection_fail(struct h2d_upstream_connection *upc)
+{
+	upc->address->fails++;
+}
 
 void h2d_upstream_init(void);
 

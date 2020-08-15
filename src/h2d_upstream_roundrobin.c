@@ -30,12 +30,26 @@ static struct h2d_upstream_address *h2d_upstream_roundrobin_pick(
 {
 	struct h2d_upstream_roundrobin_ctx *ctx = upstream->lb_ctx;
 
-	struct h2d_upstream_address *address = ctx->addresses[ctx->index++];
 	if (ctx->index == upstream->address_num) {
 		ctx->index = 0;
 	}
 
-	return address;
+	for (int i = ctx->index; i < upstream->address_num; i++) {
+		struct h2d_upstream_address *address = ctx->addresses[i];
+		if (!h2d_upstream_address_is_down(address)) {
+			ctx->index = i + 1;
+			return address;
+		}
+	}
+	for (int i = 0; i < ctx->index; i++) {
+		struct h2d_upstream_address *address = ctx->addresses[i];
+		if (!h2d_upstream_address_is_down(address)) {
+			ctx->index = i + 1;
+			return address;
+		}
+	}
+
+	return ctx->addresses[ctx->index++]; /* even if it's down */
 }
 
 struct h2d_upstream_loadbalance h2d_upstream_loadbalance_roundrobin = {

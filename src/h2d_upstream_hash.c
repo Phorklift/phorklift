@@ -83,12 +83,13 @@ static struct h2d_upstream_address *h2d_upstream_hash_pick(
 	lua_pop(h2d_L, 1);
 
 	/* pick one address */
-	struct h2d_upstream_hash_vnode *vnodes = upstream->lb_ctx;
+	struct h2d_upstream_hash_vnode *bucket = upstream->lb_ctx;
 	struct h2d_upstream_hash_vnode *vnode = NULL;
-	int low = 0, high = upstream->address_num * H2D_UPSTREAM_HASH_ADDRESS_VNODES - 1;
+	int vnode_num = upstream->address_num * H2D_UPSTREAM_HASH_ADDRESS_VNODES;
+	int low = 0, high = vnode_num - 1;
 	while (low <= high) {
 		int mid = (low + high) / 2;
-		vnode = &vnodes[mid];
+		vnode = &bucket[mid];
 		if (vnode->n == n) {
 			break;
 		}
@@ -99,7 +100,19 @@ static struct h2d_upstream_address *h2d_upstream_hash_pick(
 		}
 	}
 
-	return vnode->address;
+	/* check if down */
+	for (struct h2d_upstream_hash_vnode *i = vnode; i < bucket + vnode_num; i++) {
+		if (!h2d_upstream_address_is_down(i->address)) {
+			return i->address;
+		}
+	}
+	for (struct h2d_upstream_hash_vnode *i = bucket; i < vnode; i++) {
+		if (!h2d_upstream_address_is_down(i->address)) {
+			return i->address;
+		}
+	}
+
+	return vnode->address; /* even if it's down */
 }
 
 struct h2d_upstream_loadbalance h2d_upstream_loadbalance_hash = {

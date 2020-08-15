@@ -289,10 +289,13 @@ void h2d_request_run(struct h2d_request *r, int window)
 		return;
 	}
 	if (ret == H2D_ERROR) {
-		// TODO
-		printf("should not here!!! %d\n", r->state);
-		h2d_request_close(r);
-		return;
+		if (r->state <= H2D_REQUEST_STATE_RESPONSE_HEADERS) {
+			printf("should not be here\n");
+			ret = WUY_HTTP_500;
+		} else {
+			h2d_request_close(r);
+			return;
+		}
 	}
 	if (ret != H2D_OK) { /* returns status code and breaks the normal process */
 		r->resp.status_code = ret;

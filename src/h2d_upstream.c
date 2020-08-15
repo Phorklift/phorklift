@@ -98,7 +98,7 @@ static void h2d_upstream_address_add(struct h2d_upstream_conf *upstream,
 		struct h2d_upstream_hostname *hostname, struct sockaddr *sockaddr,
 		struct h2d_upstream_address *before)
 {
-	struct h2d_upstream_address *address = malloc(sizeof(struct h2d_upstream_address));
+	struct h2d_upstream_address *address = calloc(1, sizeof(struct h2d_upstream_address));
 
 	switch (sockaddr->sa_family) {
 	case AF_INET:
@@ -124,8 +124,6 @@ static void h2d_upstream_address_add(struct h2d_upstream_conf *upstream,
 		abort();
 	}
 
-	address->deleted = false;
-	address->idle_num = 0;
 	wuy_list_init(&address->idle_head);
 	wuy_list_init(&address->active_head);
 	address->upstream = upstream;
@@ -268,6 +266,14 @@ h2d_upstream_get_connection(struct h2d_upstream_conf *upstream, struct h2d_reque
 		return NULL;
 	}
 
+	if (h2d_upstream_address_is_down(address)) {
+		printf("upstream all down!\n");
+		struct h2d_upstream_address *iaddr;
+		wuy_list_iter_type(&upstream->address_head, iaddr, upstream_node) {
+			iaddr->fails = 0;
+		}
+	}
+
 	char tmpbuf[100];
 	wuy_sockaddr_ntop(&address->sockaddr.s, tmpbuf, sizeof(tmpbuf));
 	printf("pick %s\n", tmpbuf);
@@ -284,6 +290,7 @@ h2d_upstream_get_connection(struct h2d_upstream_conf *upstream, struct h2d_reque
 	errno = 0;
 	int fd = wuy_tcp_connect(&address->sockaddr.s);
 	if (fd < 0) {
+		perror("upstream connect");
 		return NULL;
 	}
 
@@ -306,6 +313,34 @@ h2d_upstream_get_connection(struct h2d_upstream_conf *upstream, struct h2d_reque
 	return upc;
 }
 
+struct h2d_upstream_connection *
+h2d_upstream_retry_connection(struct h2d_upstream_connection *old)
+{
+	struct h2d_request *r = old->request;
+	struct h2d_upstream_address *address = old->address;
+	struct h2d_upstream_conf *upstream = address->upstream;
+
+	atomic_fetch_add(&upstream->stats->retry, 1);
+
+	/* mark this down temporarily to avoid picked again */
+	int fails = address->fails;
+	address->fails = upstream->fails;
+
+	/* pick a new connection */
+	struct h2d_upstream_connection *newc = h2d_upstream_get_connection(upstream, r);
+
+	/* recover address's fails, if it was not cleared */
+	if (address->fails != 0) {
+		address->fails = fails;
+	}
+
+	/* close the old connection at last, because it would cause
+	 * the address freed if address->deleted. */
+	h2d_upstream_connection_close(old);
+
+	return newc;
+}
+
 void h2d_upstream_release_connection(struct h2d_upstream_connection *upc)
 {
 	assert(upc->request != NULL);
@@ -314,13 +349,13 @@ void h2d_upstream_release_connection(struct h2d_upstream_connection *upc)
 	struct h2d_upstream_address *address = upc->address;
 
 	/* close the connection */
-	if (loop_stream_is_closed(upc->loop_stream) || upc->preread_buf != NULL) {
+	if (loop_stream_is_closed(upc->loop_stream) || upc->request->state != H2D_REQUEST_STATE_DONE) {
 		h2d_upstream_connection_close(upc);
 		return;
 	}
 
 	/* put the connection into idle pool */
-	if (address->idle_num > 10) {
+	if (address->idle_num > address->upstream->idle_max) {
 		/* close the oldest one if pool is full */
 		struct h2d_upstream_connection *idle;
 		wuy_list_first_type(&address->idle_head, idle, list_node);
@@ -391,13 +426,6 @@ int h2d_upstream_connection_write(struct h2d_upstream_connection *upc,
 {
 	assert(upc->loop_stream != NULL);
 
-	if (loop_stream_is_write_blocked(upc->loop_stream)) {
-		return H2D_AGAIN;
-	}
-	if (data == NULL) {
-		return H2D_OK;
-	}
-
 	int write_len = loop_stream_write(upc->loop_stream, data, data_len);
 	if (write_len < 0) {
 		printf("upstream write fail %d\n", write_len);
@@ -405,7 +433,6 @@ int h2d_upstream_connection_write(struct h2d_upstream_connection *upc,
 	}
 	if (write_len != data_len) { /* blocking happens */
 		printf(" !!! upstream write block!!! %d %d\n", write_len, data_len);
-		h2d_upstream_connection_close(upc);
 		return H2D_ERROR;
 	}
 	return H2D_OK;
@@ -523,9 +550,10 @@ int h2d_upstream_conf_stats(void *data, char *buf, int len)
 	if (stats == NULL) {
 		return 0;
 	}
-	return snprintf(buf, len, "upstream: %d %d %d\n",
+	return snprintf(buf, len, "upstream: %d %d %d %d\n",
 			atomic_load(&stats->total),
 			atomic_load(&stats->reuse),
+			atomic_load(&stats->retry),
 			atomic_load(&stats->pick_fail));
 }
 
@@ -533,6 +561,10 @@ static struct wuy_cflua_command h2d_upstream_conf_commands[] = {
 	{	.name = "idle_max",
 		.type = WUY_CFLUA_TYPE_INTEGER,
 		.offset = offsetof(struct h2d_upstream_conf, idle_max),
+	},
+	{	.name = "fails",
+		.type = WUY_CFLUA_TYPE_INTEGER,
+		.offset = offsetof(struct h2d_upstream_conf, fails),
 	},
 	{	.name = "recv_buffer_size",
 		.type = WUY_CFLUA_TYPE_INTEGER,

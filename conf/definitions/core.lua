@@ -7,6 +7,7 @@ general = {
 		write_timeout = 10,
 		idle_timeout = 10,
 		idle_max = 10,
+		fails = 1,
 		default_port = 80,
 		resolve_interval = 10*60,
 		send_buffer_size = 1024*16,
