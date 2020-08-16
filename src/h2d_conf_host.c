@@ -76,7 +76,6 @@ static struct wuy_cflua_command h2d_conf_host_commands[] = {
 	},
 	{	.name = "ssl",
 		.type = WUY_CFLUA_TYPE_TABLE,
-		.offset = offsetof(struct h2d_conf_host, ssl),
 		.u.table = &(struct wuy_cflua_table) { h2d_conf_host_ssl_commands },
 	},
 	{	.type = WUY_CFLUA_TYPE_END,

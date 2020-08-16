@@ -171,7 +171,6 @@ static int h2d_proxy_do_generate_response_headers(struct h2d_request *r)
 
 static bool h2d_proxy_status_code_retry(struct h2d_request *r)
 {
-	return false;
 	struct h2d_proxy_conf *conf = r->conf_path->module_confs[h2d_proxy_module.index];
 	for (int *p = conf->retry_status_codes; *p != 0; p++) {
 		if (r->resp.status_code == *p) {
@@ -294,13 +293,11 @@ static struct wuy_cflua_command h2d_proxy_conf_commands[] = {
 		.type = WUY_CFLUA_TYPE_INTEGER,
 		.offset = offsetof(struct h2d_proxy_conf, max_retries),
 	},
-	/*
 	{	.name = "retry_status_codes",
 		.type = WUY_CFLUA_TYPE_TABLE,
 		.offset = offsetof(struct h2d_proxy_conf, retry_status_codes),
 		.u.table = WUY_CFLUA_ARRAY_INTEGER_TABLE,
 	},
-	*/
 	{ NULL }
 };
 
