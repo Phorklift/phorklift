@@ -70,6 +70,8 @@ struct h2d_request {
 struct h2d_request *h2d_request_new(struct h2d_connection *c);
 void h2d_request_close(struct h2d_request *r);
 
+void h2d_request_reset_response(struct h2d_request *r);
+
 static inline bool h2d_request_is_subreq(struct h2d_request *r)
 {
 	return r->father != NULL;

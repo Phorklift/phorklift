@@ -17,6 +17,19 @@ struct h2d_request *h2d_request_new(struct h2d_connection *c)
 	return r;
 }
 
+void h2d_request_reset_response(struct h2d_request *r)
+{
+	if (r->resp.status_code == 0) {
+		return;
+	}
+	r->resp.status_code = 0;
+	r->resp.content_length = H2D_CONTENT_LENGTH_INIT;
+	r->resp.content_generate_length = 0;
+	r->resp.sent_length = 0;
+	r->resp.is_body_filtered = false;
+	h2d_header_free_list(&r->resp.headers);
+}
+
 void h2d_request_close(struct h2d_request *r)
 {
 	if (h2d_request_is_subreq(r) && !r->father->closed) {
@@ -317,7 +330,7 @@ void h2d_request_active(struct h2d_request *r)
 {
 	struct h2d_connection *c = r->c;
 	if (h2d_connection_write_blocked(c)) {
-		printf("======== h2d_request_active\n");
+		printf("======== h2d_request_active\n"); // XXX coredump if get here 4times
 		if (c->is_http2) {
 			http2_stream_active_tmp(r->h2s);
 		}

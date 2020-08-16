@@ -174,6 +174,7 @@ static bool h2d_proxy_status_code_retry(struct h2d_request *r)
 	struct h2d_proxy_conf *conf = r->conf_path->module_confs[h2d_proxy_module.index];
 	for (int *p = conf->retry_status_codes; *p != 0; p++) {
 		if (r->resp.status_code == *p) {
+			printf("debug proxy retry_status_codes hit: %d\n", *p);
 			return true;
 		}
 	}
@@ -212,6 +213,8 @@ static int h2d_proxy_generate_response_headers(struct h2d_request *r)
 		if (ctx->retries++ >= conf->max_retries) {
 			return ret;
 		}
+
+		h2d_request_reset_response(r);
 
 		ctx->upc = h2d_upstream_retry_connection(ctx->upc);
 		if (ctx->upc == NULL) {
