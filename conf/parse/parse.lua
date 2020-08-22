@@ -231,7 +231,7 @@ local function h2d_conf_set_metatable(base, new, prefix)
 
 		if is_append then
 			for i = 1,#base do
-				table.insert(new, 1, nil)
+				table.insert(new, 1, base[i])
 			end
 		end
 	end
