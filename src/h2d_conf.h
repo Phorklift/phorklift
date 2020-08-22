@@ -15,6 +15,7 @@ struct h2d_conf_path {
 	struct h2d_module	*content;
 
 	void			*module_confs[H2D_MODULE_NUMBER];
+	int			content_meta_levels[H2D_MODULE_NUMBER];
 };
 
 struct h2d_conf_host {

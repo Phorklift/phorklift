@@ -23,12 +23,21 @@ static bool h2d_conf_path_post(void *data)
 			continue;
 		}
 
-		if (conf_path->content != NULL) {
+		if (conf_path->content == NULL) {
+			conf_path->content = m;
+			continue;
+		}
+
+		/* compare meta_level, pick the smaller */
+		int meta_level_new = conf_path->content_meta_levels[i];
+		int meta_level_old = conf_path->content_meta_levels[conf_path->content->index];
+		if (meta_level_new == meta_level_old) {
 			printf("duplicate content %s %s\n", conf_path->content->name, m->name);
 			return false;
 		}
-
-		conf_path->content = m;
+		if (meta_level_new < meta_level_old) {
+			conf_path->content = m;
+		}
 	}
 
 	if (conf_path->content == NULL) {
