@@ -43,6 +43,7 @@ struct h2d_upstream_address {
 	wuy_list_node_t		upstream_node;
 	wuy_list_node_t		hostname_node;
 	wuy_list_node_t		down_node;
+	double			weight;
 	struct h2d_upstream_conf	*upstream;
 };
 
@@ -50,12 +51,12 @@ struct h2d_upstream_hostname {
 	char			*name; /* must at top */
 	bool			need_resolved;
 	unsigned short		port;
+	double			weight;
 	wuy_list_t		address_head;
 };
 
 struct h2d_upstream_loadbalance {
 	const char			*name;
-	void 				(*init)(struct h2d_upstream_conf *);
 	void 				(*update)(struct h2d_upstream_conf *);
 	struct h2d_upstream_address *	(*pick)(struct h2d_upstream_conf *, struct h2d_request *);
 };
@@ -103,7 +104,10 @@ struct h2d_upstream_conf {
 
 	/* configrations of loadbalances
 	 * Add configrations here if you add a new loadbalance. */
-	wuy_cflua_function_t		hash;
+	struct {
+		wuy_cflua_function_t	key;
+		int			address_vnodes;
+	} hash;
 };
 
 extern struct wuy_cflua_table h2d_upstream_conf_table;

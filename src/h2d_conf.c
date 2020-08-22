@@ -9,6 +9,10 @@
 static const void *h2d_conf_zero_function_pointer;
 bool h2d_conf_is_zero_function(wuy_cflua_function_t f)
 {
+	if (f == 0) {
+		return true;
+	}
+
 	static wuy_cflua_function_t zero = LUA_NOREF;
 	if (zero != LUA_NOREF) {
 		return f == zero;

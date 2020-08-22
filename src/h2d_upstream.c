@@ -73,6 +73,7 @@ void h2d_upstream_address_add(struct h2d_upstream_conf *upstream,
 	wuy_list_init(&address->idle_head);
 	wuy_list_init(&address->active_head);
 	address->upstream = upstream;
+	address->weight = hostname->weight;
 
 	if (before != NULL) {
 		wuy_list_add_before(&before->upstream_node, &address->upstream_node);
@@ -400,7 +401,7 @@ h2d_upstream_conf_loadbalance_select(struct h2d_upstream_conf *conf)
 {
 	/* We have 2 loadbalances now, roundrobin and hash.
 	 * Use hash if conf->hash is set, otherwise roundrobin. */
-	if (!h2d_conf_is_zero_function(conf->hash)) {
+	if (!h2d_conf_is_zero_function(conf->hash.key)) {
 		return &h2d_upstream_loadbalance_hash;
 	} else {
 		return &h2d_upstream_loadbalance_roundrobin;
@@ -434,6 +435,17 @@ static bool h2d_upstream_conf_post(void *data)
 		struct h2d_upstream_hostname *hostname = &conf->hostnames[i];
 
 		wuy_list_init(&hostname->address_head);
+
+		/* parse weight, marked by # */
+		char *wstr = strchr(hostname->name, '#');
+		if (wstr != NULL) {
+			*wstr++ = '\0';
+			hostname->weight = atof(wstr);
+			if (hostname->weight == 0) {
+				printf("invalid weight of %s %s", hostname->name, wstr);
+				return false;
+			}
+		}
 
 		/* it's static address, no need resolve */
 		struct sockaddr sockaddr;
@@ -492,9 +504,6 @@ static bool h2d_upstream_conf_post(void *data)
 
 	/* loadbalance */
 	conf->loadbalance = h2d_upstream_conf_loadbalance_select(conf);
-	if (conf->loadbalance->init != NULL) {
-		conf->loadbalance->init(conf);
-	}
 	conf->loadbalance->update(conf);
 
 	return true;
@@ -514,6 +523,17 @@ int h2d_upstream_conf_stats(void *data, char *buf, int len)
 			atomic_load(&stats->pick_fail));
 }
 
+static struct wuy_cflua_command h2d_upstream_hash_commands[] = {
+	{	.type = WUY_CFLUA_TYPE_FUNCTION,
+		.flags = WUY_CFLUA_FLAG_UNIQ_MEMBER,
+		.offset = offsetof(struct h2d_upstream_conf, hash.key),
+	},
+	{	.name = "address_vnodes",
+		.type = WUY_CFLUA_TYPE_INTEGER,
+		.offset = offsetof(struct h2d_upstream_conf, hash.address_vnodes),
+	},
+	{ NULL }
+};
 static struct wuy_cflua_command h2d_upstream_healthcheck_commands[] = {
 	{	.name = "interval",
 		.type = WUY_CFLUA_TYPE_INTEGER,
@@ -575,8 +595,8 @@ static struct wuy_cflua_command h2d_upstream_conf_commands[] = {
 
 	/* loadbalances */
 	{	.name = "hash",
-		.type = WUY_CFLUA_TYPE_FUNCTION,
-		.offset = offsetof(struct h2d_upstream_conf, hash),
+		.type = WUY_CFLUA_TYPE_TABLE,
+		.u.table = &(struct wuy_cflua_table) { h2d_upstream_hash_commands },
 	},
 	{ NULL }
 };

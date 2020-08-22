@@ -3,11 +3,14 @@
 #include <openssl/md5.h>
 #include "libwuya/wuy_murmurhash.h"
 
-#define H2D_UPSTREAM_HASH_ADDRESS_VNODES 100
-
 struct h2d_upstream_hash_vnode {
 	uint32_t			n;
 	struct h2d_upstream_address	*address;
+};
+
+struct h2d_upstream_hash_ctx {
+	int				vnode_num;
+	struct h2d_upstream_hash_vnode	vnodes[0];
 };
 
 static uint32_t h2d_upstream_hash_vnode_hash(struct h2d_upstream_address *address, int i)
@@ -35,23 +38,38 @@ static int h2d_upstream_hash_vnode_cmp(const void *a, const void *b)
 	return (va->n > vb->n) ? 1 : -1;
 }
 
+static int h2d_upstream_hash_address_vnode_num(struct h2d_upstream_address *address)
+{
+	int vnode_num = address->upstream->hash.address_vnodes;
+	if (address->weight == 0) {
+		return vnode_num;
+	}
+	return (int)(address->weight * vnode_num + 0.5);
+}
 static void h2d_upstream_hash_update(struct h2d_upstream_conf *upstream)
 {
-	int vnode_num = upstream->address_num * H2D_UPSTREAM_HASH_ADDRESS_VNODES;
-	upstream->lb_ctx = realloc(upstream->lb_ctx, sizeof(struct h2d_upstream_hash_vnode) * vnode_num);
-
-	struct h2d_upstream_hash_vnode *vnode = upstream->lb_ctx;
-
+	int vnode_num = 0;
 	struct h2d_upstream_address *address;
 	wuy_list_iter_type(&upstream->address_head, address, upstream_node) {
-		for (int i = 0; i < H2D_UPSTREAM_HASH_ADDRESS_VNODES; i++) {
+		vnode_num += h2d_upstream_hash_address_vnode_num(address);
+	}
+
+	upstream->lb_ctx = realloc(upstream->lb_ctx, sizeof(struct h2d_upstream_hash_ctx) +
+			sizeof(struct h2d_upstream_hash_vnode) * vnode_num);
+
+	struct h2d_upstream_hash_ctx *ctx = upstream->lb_ctx;
+	ctx->vnode_num = vnode_num;
+
+	struct h2d_upstream_hash_vnode *vnode = ctx->vnodes;
+	wuy_list_iter_type(&upstream->address_head, address, upstream_node) {
+		for (int i = 0; i < h2d_upstream_hash_address_vnode_num(address); i++) {
 			vnode->n = h2d_upstream_hash_vnode_hash(address, i);
 			vnode->address = address;
 			vnode++;
 		}
 	}
 
-	qsort(upstream->lb_ctx, vnode_num, sizeof(struct h2d_upstream_hash_vnode),
+	qsort(ctx->vnodes, vnode_num, sizeof(struct h2d_upstream_hash_vnode),
 			h2d_upstream_hash_vnode_cmp);
 }
 
@@ -61,7 +79,7 @@ static struct h2d_upstream_address *h2d_upstream_hash_pick(
 {
 	/* get the hash key */
 	h2d_lua_current_request = r;
-	lua_rawgeti(h2d_L, LUA_REGISTRYINDEX, upstream->hash);
+	lua_rawgeti(h2d_L, LUA_REGISTRYINDEX, upstream->hash.key);
 	if (lua_pcall(h2d_L, 0, 1, 0) != 0) {
 		printf("lua_pcall fail: %s\n", lua_tostring(h2d_L, -1));
 		lua_pop(h2d_L, 1);
@@ -83,13 +101,12 @@ static struct h2d_upstream_address *h2d_upstream_hash_pick(
 	lua_pop(h2d_L, 1);
 
 	/* pick one address */
-	struct h2d_upstream_hash_vnode *bucket = upstream->lb_ctx;
+	struct h2d_upstream_hash_ctx *ctx = upstream->lb_ctx;
 	struct h2d_upstream_hash_vnode *vnode = NULL;
-	int vnode_num = upstream->address_num * H2D_UPSTREAM_HASH_ADDRESS_VNODES;
-	int low = 0, high = vnode_num - 1;
+	int low = 0, high = ctx->vnode_num - 1;
 	while (low <= high) {
 		int mid = (low + high) / 2;
-		vnode = &bucket[mid];
+		vnode = &ctx->vnodes[mid];
 		if (vnode->n == n) {
 			break;
 		}
@@ -101,12 +118,12 @@ static struct h2d_upstream_address *h2d_upstream_hash_pick(
 	}
 
 	/* check if down */
-	for (struct h2d_upstream_hash_vnode *i = vnode; i < bucket + vnode_num; i++) {
+	for (struct h2d_upstream_hash_vnode *i = vnode; i < ctx->vnodes + ctx->vnode_num; i++) {
 		if (h2d_upstream_address_is_pickable(i->address)) {
 			return i->address;
 		}
 	}
-	for (struct h2d_upstream_hash_vnode *i = bucket; i < vnode; i++) {
+	for (struct h2d_upstream_hash_vnode *i = ctx->vnodes; i < vnode; i++) {
 		if (h2d_upstream_address_is_pickable(i->address)) {
 			return i->address;
 		}

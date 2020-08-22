@@ -2,19 +2,23 @@
 general = {
 	upstream = {
 		_array_type = "string",
-		load_balance = "rr",
-		read_timeout = 10,
-		write_timeout = 10,
-		idle_timeout = 10,
+		send_timeout = 10,
+		recv_timeout = 10,
+		idle_timeout = 60,
 		idle_max = 10,
 		fails = 1,
 		default_port = 80,
 		resolve_interval = 10*60,
-		send_buffer_size = 1024*16,
-		recv_buffer_size = 1024*16,
 		ssl_enable = false,
 
-		hash = H2D_ZERO_FUNC,
+		healthcheck = {
+			interval = 60,
+			repeats = 2,
+			request = "",
+			response = "",
+		},
+
+		hash = { _array_type = "function", address_vnodes = 10 },
 	},
 	mask = {
 		_array_type = "number",
