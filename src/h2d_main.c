@@ -87,6 +87,7 @@ static void h2d_worker_entry(struct h2d_conf_listen **listens)
 
 	h2d_loop = loop_new();
 
+	h2d_log_init();
 	h2d_upstream_init();
 	h2d_request_init();
 	h2d_module_worker_init();
