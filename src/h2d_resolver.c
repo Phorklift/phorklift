@@ -41,6 +41,7 @@ uint8_t *h2d_resolver_hostname(const char *hostname, int *plen)
 	struct addrinfo *results;
 	int rr = getaddrinfo(hostname, NULL, &hints, &results); /* blocks here! */
 	if (rr != 0) {
+		printf("getaddrinfo fail: %s %d %d\n", hostname, rr, errno);
 		return NULL;
 	}
 

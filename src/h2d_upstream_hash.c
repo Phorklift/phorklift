@@ -102,17 +102,17 @@ static struct h2d_upstream_address *h2d_upstream_hash_pick(
 
 	/* check if down */
 	for (struct h2d_upstream_hash_vnode *i = vnode; i < bucket + vnode_num; i++) {
-		if (!h2d_upstream_address_is_down(i->address)) {
+		if (h2d_upstream_address_is_pickable(i->address)) {
 			return i->address;
 		}
 	}
 	for (struct h2d_upstream_hash_vnode *i = bucket; i < vnode; i++) {
-		if (!h2d_upstream_address_is_down(i->address)) {
+		if (h2d_upstream_address_is_pickable(i->address)) {
 			return i->address;
 		}
 	}
 
-	return vnode->address; /* even if it's down */
+	return vnode->address;
 }
 
 struct h2d_upstream_loadbalance h2d_upstream_loadbalance_hash = {

@@ -1,100 +1,46 @@
 #include "h2d_main.h"
 
-/* for getaddrinfo() */
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <netdb.h>
-
-// TODO each upstream should has one ssl-ctx, for different ssl configs
-static SSL_CTX *h2d_upstream_ssl_ctx;
-
-static void h2d_upstream_address_free(struct h2d_upstream_address *address)
-{
-	if (wuy_list_empty(&address->active_head) && wuy_list_empty(&address->idle_head)) {
-		free(address);
-	}
-}
+static WUY_LIST(h2d_upstream_address_defer_list);
 
 static void h2d_upstream_connection_close(struct h2d_upstream_connection *upc)
 {
 	loop_stream_close(upc->loop_stream);
-	upc->loop_stream = NULL;
 
 	wuy_list_delete(&upc->list_node);
 
-	struct h2d_upstream_address *address = upc->address;
 	if (upc->request == NULL) {
-		address->idle_num--;
+		upc->address->idle_num--;
 	}
 
 	free(upc->preread_buf);
 	free(upc);
-
-	/* free address if it was deleted */
-	if (address->deleted) {
-		h2d_upstream_address_free(address);
-	}
 }
 
-static void h2d_upstream_address_delete(struct h2d_upstream_address *address)
+static void h2d_upstream_address_defer_free(void *data)
+{
+	struct h2d_upstream_address *address, *safe;
+	wuy_list_iter_safe_type(&h2d_upstream_address_defer_list, address, safe, hostname_node) {
+		if (!wuy_list_empty(&address->active_head) || wuy_list_node_linked(&address->down_node)) {
+			continue;
+		}
+		wuy_list_delete(&address->hostname_node);
+		free(address);
+	}
+}
+void h2d_upstream_address_delete(struct h2d_upstream_address *address)
 {
 	wuy_list_delete(&address->hostname_node);
 	wuy_list_delete(&address->upstream_node);
-	h2d_upstream_address_free(address);
-}
 
-static void h2d_upstream_do_resolve(struct h2d_upstream_conf *upstream)
-{
-	/* pick next hostname */
-	char *name = NULL;
-	while (1) {
-		struct h2d_upstream_hostname *hostname = &upstream->hostnames[upstream->resolve_index++];
-		if (hostname->name != NULL || hostname->need_resolved) {
-			name = hostname->name;
-			break;
-		}
+	struct h2d_upstream_connection *upc;
+	while (wuy_list_pop_type(&address->idle_head, upc, list_node)) {
+		h2d_upstream_connection_close(upc);
 	}
 
-	/* finish resolve all hostnames */
-	if (name == NULL) {
-		upstream->resolve_last = time(NULL);
-		upstream->resolve_index = 0;
-		if (!upstream->resolve_updated) {
-			return;
-		}
-
-		/* clear deleted addresses, just before loadbalance->update() */
-		upstream->address_num = 0;
-		struct h2d_upstream_address *address, *safe;
-		wuy_list_iter_safe_type(&upstream->address_head, address, safe, upstream_node) {
-			if (address->deleted) {
-				h2d_upstream_address_delete(address);
-			} else {
-				upstream->address_num++;
-			}
-		}
-
-		if (upstream->address_num == 0) {
-			printf("!!! no address. no update\n");
-			return;
-		}
-
-		upstream->loadbalance->update(upstream);
-		upstream->resolve_updated = false;
-		return;
-	}
-
-	/* send resolve query */
-	struct h2d_resolver_query query;
-	int name_len = strlen(name);
-	assert(name_len < sizeof(query.hostname));
-	memcpy(query.hostname, name, name_len);
-	query.expire_after = upstream->resolve_interval;
-	loop_stream_write(upstream->resolve_stream, &query,
-			sizeof(query.expire_after) + name_len);
+	wuy_list_append(&h2d_upstream_address_defer_list, &address->hostname_node);
 }
 
-static void h2d_upstream_address_add(struct h2d_upstream_conf *upstream,
+void h2d_upstream_address_add(struct h2d_upstream_conf *upstream,
 		struct h2d_upstream_hostname *hostname, struct sockaddr *sockaddr,
 		struct h2d_upstream_address *before)
 {
@@ -137,94 +83,52 @@ static void h2d_upstream_address_add(struct h2d_upstream_conf *upstream,
 	}
 }
 
-static int h2d_upstream_resolve_on_read(loop_stream_t *s, void *data, int len)
+static bool h2d_upstream_is_active_healthcheck(struct h2d_upstream_conf *upstream)
 {
-	struct h2d_upstream_conf *upstream = loop_stream_get_app_data(s);
-	struct h2d_upstream_hostname *hostname = &upstream->hostnames[upstream->resolve_index-1];
-
-	/* diff */
-	uint8_t *p = data;
-	uint8_t *end = p + len;
-	wuy_list_node_t *node = wuy_list_first(&hostname->address_head);
-	while (p < end && node != NULL) {
-		struct h2d_upstream_address *address = wuy_containerof(node,
-				struct h2d_upstream_address, hostname_node);
-
-		struct sockaddr *newaddr = (struct sockaddr *)p;
-
-		/* compare in the same way with h2d_resolver_addrcmp() */
-		int cmp = wuy_sockaddr_addrcmp(newaddr, &address->sockaddr.s);
-		if (cmp == 0) {
-			p += wuy_sockaddr_size(newaddr);
-			node = wuy_list_next(&hostname->address_head, node);
-			continue;
-		}
-
-		if (cmp < 0) { /* new address */
-			h2d_upstream_address_add(upstream, hostname, newaddr, address);
-			p += wuy_sockaddr_size(newaddr);
-
-		} else {
-			/* delete address.
-			 * We can not free the address now because it is used
-			 * by loadbalance. We just mark it here and free it
-			 * just before loadbalance->update(). */
-			address->deleted = true;
-			node = wuy_list_next(&hostname->address_head, node);
-		}
-
-		upstream->resolve_updated = true;
-	}
-	while (node != NULL) {
-		struct h2d_upstream_address *address = wuy_containerof(node,
-				struct h2d_upstream_address, hostname_node);
-		node = wuy_list_next(&hostname->address_head, node);
-		address->deleted = true;
-		upstream->resolve_updated = true;
-	}
-	while (p < end) {
-		struct sockaddr *newaddr = (struct sockaddr *)p;
-		h2d_upstream_address_add(upstream, hostname, newaddr, NULL);
-		p += wuy_sockaddr_size(newaddr);
-		upstream->resolve_updated = true;
-	}
-
-	/* resolve next hostname */
-	h2d_upstream_do_resolve(upstream);
-
-	return len;
-}
-static loop_stream_ops_t h2d_upstream_resolve_ops = {
-	.on_read = h2d_upstream_resolve_on_read,
-};
-
-static void h2d_upstream_try_resolve(struct h2d_upstream_conf *upstream)
-{
-	if (upstream->resolve_last == 0) {
-		/* all static addresses, no need resolve */
-		return;
-	}
-
-	if (upstream->resolve_stream == NULL) {
-		/* initialize the loop_stream.
-		 * We can not initialize this at h2d_upstream_conf_post() because
-		 * it is called in master process while we need the worker. */
-		int fd = h2d_resolver_connect();
-		upstream->resolve_stream = loop_stream_new(h2d_loop, fd, &h2d_upstream_resolve_ops, false);
-		loop_stream_set_app_data(upstream->resolve_stream, upstream);
-	}
-
-	if (time(NULL) - upstream->resolve_last < upstream->resolve_interval) {
-		return;
-	}
-	if (upstream->resolve_index != 0) { /* in processing already */
-		return;
-	}
-
-	/* begin the resolve */
-	h2d_upstream_do_resolve(upstream);
+	/* If upstream->healthcheck.request/response are set, we do the
+	 * healthcheck by sending the request and checking the response
+	 * periodly, in upstream->healthcheck.interval. We call it active.
+	 *
+	 * Otherwise, we have to do the healthcheck by real requests. The
+	 * address can be picked if it's down for upstream->healthcheck.interval.
+	 * We call it passive. */
+	return upstream->healthcheck.req_len != 0;
 }
 
+void h2d_upstream_connection_fail(struct h2d_upstream_connection *upc)
+{
+	struct h2d_upstream_address *address = upc->address;
+	struct h2d_upstream_conf *upstream = address->upstream;
+
+	if (upstream->fails == 0) { /* configure never down */
+		return;
+	}
+
+	if (address->down_time != 0) { /* down already */
+		if (address->healthchecks > 0) { /* fail in passive healthcheck */
+			printf("upstream address passive healthcheck fail\n");
+			address->healthchecks = 0;
+			address->down_time = time(NULL);
+		}
+		return;
+	}
+
+	address->fails++;
+	if (address->fails < upstream->fails) {
+		printf("upstream address fail %d\n", address->fails);
+		return;
+	}
+
+	/* go down */
+	printf("upstream address go down\n");
+	address->down_time = time(NULL);
+	address->healthchecks = 0;
+
+	if (h2d_upstream_is_active_healthcheck(upstream)) {
+		wuy_list_del_if(&address->down_node);
+		wuy_list_append(&upstream->down_head, &address->down_node);
+	}
+}
 
 static void h2d_upstream_on_active(loop_stream_t *s)
 {
@@ -244,20 +148,31 @@ static void h2d_upstream_on_active(loop_stream_t *s)
 		h2d_upstream_connection_close(upc);
 	}
 }
+static void h2d_upstream_on_close(loop_stream_t *s, enum loop_stream_close_reason r)
+{
+	if (r == LOOP_STREAM_TIMEOUT) {
+		h2d_upstream_on_active(s);
+	}
+}
 static loop_stream_ops_t h2d_upstream_ops = {
 	.on_readable = h2d_upstream_on_active,
 	.on_writable = h2d_upstream_on_active,
-
+	.on_close = h2d_upstream_on_close,
+	.timeout_ms = 10*1000, // TODO
 	H2D_SSL_LOOP_STREAM_UNDERLYINGS,
 };
 
+void h2d_upstream_resolve(struct h2d_upstream_conf *upstream);
+void h2d_upstream_healthcheck(struct h2d_upstream_conf *upstream);
 
 struct h2d_upstream_connection *
 h2d_upstream_get_connection(struct h2d_upstream_conf *upstream, struct h2d_request *r)
 {
 	atomic_fetch_add(&upstream->stats->total, 1);
 
-	h2d_upstream_try_resolve(upstream);
+	/* resolve and healthcheck routines */
+	h2d_upstream_resolve(upstream);
+	h2d_upstream_healthcheck(upstream);
 
 	struct h2d_upstream_address *address = upstream->loadbalance->pick(upstream, r);
 	if (address == NULL) {
@@ -266,18 +181,22 @@ h2d_upstream_get_connection(struct h2d_upstream_conf *upstream, struct h2d_reque
 		return NULL;
 	}
 
-	if (h2d_upstream_address_is_down(address)) {
+	if (!h2d_upstream_address_is_pickable(address)) {
 		printf("upstream all down!\n");
 		struct h2d_upstream_address *iaddr;
 		wuy_list_iter_type(&upstream->address_head, iaddr, upstream_node) {
-			iaddr->fails = 0;
+			iaddr->down_time = 0;
 		}
+	} else if (address->down_time != 0) {
+		printf("upstream address passive healthcheck\n");
+		address->healthchecks++;
 	}
 
 	char tmpbuf[100];
 	wuy_sockaddr_ntop(&address->sockaddr.s, tmpbuf, sizeof(tmpbuf));
 	printf("pick %s\n", tmpbuf);
 
+	/* try to reuse */
 	struct h2d_upstream_connection *upc;
 	if (wuy_list_pop_type(&address->idle_head, upc, list_node)) {
 		wuy_list_append(&address->active_head, &upc->list_node);
@@ -287,20 +206,16 @@ h2d_upstream_get_connection(struct h2d_upstream_conf *upstream, struct h2d_reque
 		return upc;
 	}
 
-	errno = 0;
-	int fd = wuy_tcp_connect(&address->sockaddr.s);
-	if (fd < 0) {
-		perror("upstream connect");
-		return NULL;
-	}
-
-	loop_stream_t *s = loop_stream_new(h2d_loop, fd, &h2d_upstream_ops, errno == EINPROGRESS);
+	/* new connection */
+	loop_stream_t *s = loop_tcp_connect_sockaddr(h2d_loop, &address->sockaddr.s,
+			&h2d_upstream_ops);
 	if (s == NULL) {
 		return NULL;
 	}
+	loop_stream_set_timeout(s, upstream->send_timeout * 1000);
 
 	if (upstream->ssl_enable) {
-		h2d_ssl_stream_set(s, h2d_upstream_ssl_ctx, false);
+		h2d_ssl_stream_set(s, upstream->ssl_ctx, false);
 	}
 
 	upc = calloc(1, sizeof(struct h2d_upstream_connection));
@@ -313,6 +228,7 @@ h2d_upstream_get_connection(struct h2d_upstream_conf *upstream, struct h2d_reque
 	return upc;
 }
 
+/* close @old connection and return a new one */
 struct h2d_upstream_connection *
 h2d_upstream_retry_connection(struct h2d_upstream_connection *old)
 {
@@ -322,21 +238,22 @@ h2d_upstream_retry_connection(struct h2d_upstream_connection *old)
 
 	atomic_fetch_add(&upstream->stats->retry, 1);
 
+	h2d_upstream_connection_close(old);
+
 	/* mark this down temporarily to avoid picked again */
-	int fails = address->fails;
-	address->fails = upstream->fails;
+	time_t down_time;
+	if (address->down_time == 0) {
+		down_time = address->down_time;
+		address->down_time = 1;
+	}
 
 	/* pick a new connection */
 	struct h2d_upstream_connection *newc = h2d_upstream_get_connection(upstream, r);
 
-	/* recover address's fails, if it was not cleared */
-	if (address->fails != 0) {
-		address->fails = fails;
+	/* recover if it was not cleared */
+	if (address->down_time == 1) {
+		address->down_time = down_time;
 	}
-
-	/* close the old connection at last, because it would cause
-	 * the address freed if address->deleted. */
-	h2d_upstream_connection_close(old);
 
 	return newc;
 }
@@ -347,6 +264,13 @@ void h2d_upstream_release_connection(struct h2d_upstream_connection *upc)
 	assert(upc->loop_stream != NULL);
 
 	struct h2d_upstream_address *address = upc->address;
+	struct h2d_upstream_conf *upstream = address->upstream;
+
+	/* the connection maybe in passive healthcheck */
+	if (address->down_time > 0 && address->healthchecks >= upstream->healthcheck.repeats) {
+		printf("upstream address recover from passive healthcheck\n");
+		address->down_time = 0;
+	}
 
 	/* close the connection */
 	if (loop_stream_is_closed(upc->loop_stream) || upc->request->state != H2D_REQUEST_STATE_DONE) {
@@ -355,7 +279,7 @@ void h2d_upstream_release_connection(struct h2d_upstream_connection *upc)
 	}
 
 	/* put the connection into idle pool */
-	if (address->idle_num > address->upstream->idle_max) {
+	if (address->idle_num > upstream->idle_max) {
 		/* close the oldest one if pool is full */
 		struct h2d_upstream_connection *idle;
 		wuy_list_first_type(&address->idle_head, idle, list_node);
@@ -368,7 +292,7 @@ void h2d_upstream_release_connection(struct h2d_upstream_connection *upc)
 	wuy_list_delete(&upc->list_node);
 	wuy_list_append(&address->idle_head, &upc->list_node);
 
-	// TODO loop_stream_set_keepalive()
+	loop_stream_set_timeout(upc->loop_stream, upstream->idle_timeout * 1000);
 }
 
 int h2d_upstream_connection_read(struct h2d_upstream_connection *upc,
@@ -403,6 +327,10 @@ int h2d_upstream_connection_read(struct h2d_upstream_connection *upc,
 		printf("upstream read fail %d\n", read_len);
 		return H2D_ERROR;
 	}
+	if (read_len > 0) { /* update timer */
+		loop_stream_set_timeout(upc->loop_stream,
+				upc->address->upstream->recv_timeout * 1000);
+	}
 
 	int ret_len = buf_pos - (uint8_t *)buffer + read_len;
 	return ret_len == 0 ? H2D_AGAIN : ret_len;
@@ -435,14 +363,33 @@ int h2d_upstream_connection_write(struct h2d_upstream_connection *upc,
 		printf(" !!! upstream write block!!! %d %d\n", write_len, data_len);
 		return H2D_ERROR;
 	}
+
+	/* we assume that the response is expected just after one write */
+	loop_stream_set_timeout(upc->loop_stream,
+			upc->address->upstream->recv_timeout * 1000);
+
 	return H2D_OK;
 }
 
 void h2d_upstream_init(void)
 {
-	h2d_upstream_ssl_ctx = h2d_ssl_ctx_new_client();
+	loop_idle_add(h2d_loop, h2d_upstream_address_defer_free, NULL);
 }
 
+bool h2d_upstream_address_is_pickable(struct h2d_upstream_address *address)
+{
+	if (address->down_time == 0) {
+		return true;
+	}
+	if (h2d_upstream_is_active_healthcheck(address->upstream)) {
+		return false;
+	}
+	if (time(NULL) < address->down_time + address->upstream->healthcheck.interval) {
+		return false;
+	}
+	/* at most one connection is allowed in healthcheck */
+	return wuy_list_empty(&address->active_head);
+}
 
 /* configration */
 
@@ -468,9 +415,19 @@ static bool h2d_upstream_conf_post(void *data)
 		return true;
 	}
 
+	if ((conf->healthcheck.req_len == 0) != (conf->healthcheck.resp_len == 0)) {
+		printf("healthcheck request/response must be set both or neigther\n");
+		return false;
+	}
+
 	conf->stats = wuy_shmem_alloc(sizeof(struct h2d_upstream_stats));
 
 	wuy_list_init(&conf->address_head);
+	wuy_list_init(&conf->down_head);
+
+	if (conf->ssl_enable) {
+		conf->ssl_ctx = h2d_ssl_ctx_new_client();
+	}
 
 	bool need_resolved = false;
 	for (int i = 0; conf->hostnames[i].name != NULL; i++) {
@@ -557,6 +514,27 @@ int h2d_upstream_conf_stats(void *data, char *buf, int len)
 			atomic_load(&stats->pick_fail));
 }
 
+static struct wuy_cflua_command h2d_upstream_healthcheck_commands[] = {
+	{	.name = "interval",
+		.type = WUY_CFLUA_TYPE_INTEGER,
+		.offset = offsetof(struct h2d_upstream_conf, healthcheck.interval),
+	},
+	{	.name = "repeats",
+		.type = WUY_CFLUA_TYPE_INTEGER,
+		.offset = offsetof(struct h2d_upstream_conf, healthcheck.repeats),
+	},
+	{	.name = "request",
+		.type = WUY_CFLUA_TYPE_STRING,
+		.offset = offsetof(struct h2d_upstream_conf, healthcheck.req_str),
+		.u.length_offset = offsetof(struct h2d_upstream_conf, healthcheck.req_len),
+	},
+	{	.name = "response",
+		.type = WUY_CFLUA_TYPE_STRING,
+		.offset = offsetof(struct h2d_upstream_conf, healthcheck.resp_str),
+		.u.length_offset = offsetof(struct h2d_upstream_conf, healthcheck.resp_len),
+	},
+	{ NULL }
+};
 static struct wuy_cflua_command h2d_upstream_conf_commands[] = {
 	{	.name = "idle_max",
 		.type = WUY_CFLUA_TYPE_INTEGER,
@@ -566,13 +544,17 @@ static struct wuy_cflua_command h2d_upstream_conf_commands[] = {
 		.type = WUY_CFLUA_TYPE_INTEGER,
 		.offset = offsetof(struct h2d_upstream_conf, fails),
 	},
-	{	.name = "recv_buffer_size",
+	{	.name = "recv_timeout",
 		.type = WUY_CFLUA_TYPE_INTEGER,
-		.offset = offsetof(struct h2d_upstream_conf, recv_buffer_size),
+		.offset = offsetof(struct h2d_upstream_conf, recv_timeout),
 	},
-	{	.name = "send_buffer_size",
+	{	.name = "send_timeout",
 		.type = WUY_CFLUA_TYPE_INTEGER,
-		.offset = offsetof(struct h2d_upstream_conf, send_buffer_size),
+		.offset = offsetof(struct h2d_upstream_conf, send_timeout),
+	},
+	{	.name = "idle_timeout",
+		.type = WUY_CFLUA_TYPE_INTEGER,
+		.offset = offsetof(struct h2d_upstream_conf, idle_timeout),
 	},
 	{	.name = "default_port",
 		.type = WUY_CFLUA_TYPE_INTEGER,
@@ -585,6 +567,10 @@ static struct wuy_cflua_command h2d_upstream_conf_commands[] = {
 	{	.name = "ssl_enable",
 		.type = WUY_CFLUA_TYPE_BOOLEAN,
 		.offset = offsetof(struct h2d_upstream_conf, ssl_enable),
+	},
+	{	.name = "healthcheck",
+		.type = WUY_CFLUA_TYPE_TABLE,
+		.u.table = &(struct wuy_cflua_table) { h2d_upstream_healthcheck_commands },
 	},
 
 	/* loadbalances */

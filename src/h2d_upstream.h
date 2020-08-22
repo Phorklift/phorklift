@@ -34,12 +34,15 @@ struct h2d_upstream_address {
 	} sockaddr;
 
 	bool			deleted;
+	time_t			down_time;
+	int			healthchecks;
 	int			fails;
 	int			idle_num;
 	wuy_list_t		idle_head;
 	wuy_list_t		active_head;
 	wuy_list_node_t		upstream_node;
 	wuy_list_node_t		hostname_node;
+	wuy_list_node_t		down_node;
 	struct h2d_upstream_conf	*upstream;
 };
 
@@ -60,19 +63,30 @@ struct h2d_upstream_loadbalance {
 struct h2d_upstream_conf {
 	/* configrations */
 	struct h2d_upstream_hostname	*hostnames;
-	int				recv_buffer_size;
-	int				send_buffer_size;
 	int				idle_max;
+	int				idle_timeout;
+	int				recv_timeout;
+	int				send_timeout;
 	int				fails;
 	int				default_port;
 	int				resolve_interval;
-	int				read_timeout; // read or recv?
-	int				write_timeout;
-	int				idle_timeout;
 	bool				ssl_enable;
+
+	struct {
+		int			repeats;
+		int			interval;
+		const char		*req_str;
+		int			req_len;
+		const char		*resp_str;
+		int			resp_len;
+	} healthcheck;
 
 	wuy_list_t			address_head;
 	int				address_num;
+
+	wuy_list_t			down_head;
+
+	SSL_CTX				*ssl_ctx;
 
 	/* resolve */
 	time_t				resolve_last;
@@ -110,23 +124,21 @@ void h2d_upstream_connection_read_notfinish(struct h2d_upstream_connection *upc,
 int h2d_upstream_connection_write(struct h2d_upstream_connection *upc,
 		void *data, int data_len);
 
+void h2d_upstream_connection_fail(struct h2d_upstream_connection *upc);
+
+bool h2d_upstream_address_is_pickable(struct h2d_upstream_address *address);
+
 static inline bool h2d_upstream_connection_write_blocked(struct h2d_upstream_connection *upc)
 {
 	return loop_stream_is_write_blocked(upc->loop_stream);
 }
 
+void h2d_upstream_address_add(struct h2d_upstream_conf *upstream,
+		struct h2d_upstream_hostname *hostname, struct sockaddr *sockaddr,
+		struct h2d_upstream_address *before);
+void h2d_upstream_address_delete(struct h2d_upstream_address *address);
+
 int h2d_upstream_conf_stats(void *data, char *buf, int len);
-
-static inline bool h2d_upstream_address_is_down(struct h2d_upstream_address *address)
-{
-	int limit = address->upstream->fails;
-	return limit != 0 && address->fails >= limit;
-}
-
-static inline void h2d_upstream_connection_fail(struct h2d_upstream_connection *upc)
-{
-	upc->address->fails++;
-}
 
 void h2d_upstream_init(void);
 
