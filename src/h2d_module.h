@@ -5,13 +5,16 @@
 
 #include "h2d_module.list.h"
 
-/* calculate H2D_MODULE_NUMBER in preprocess */
+/* calculate H2D_MODULE_STATIC_NUMBER in preprocess */
 struct _nonuse {
 	#define X(m) char m;
 	H2D_MODULE_X_LIST
 	#undef X
 };
-#define H2D_MODULE_NUMBER (sizeof(struct _nonuse) / sizeof(char))
+#define H2D_MODULE_STATIC_NUMBER (sizeof(struct _nonuse) / sizeof(char))
+
+#define H2D_MODULE_DYNAMIC_MAX	20
+#define H2D_MODULE_MAX		(H2D_MODULE_STATIC_NUMBER + H2D_MODULE_DYNAMIC_MAX)
 
 #include "h2d_request.h"
 
@@ -49,7 +52,7 @@ struct h2d_module {
 	void	(*worker_init)(void);
 };
 
-void h2d_module_master_init(void);
+void h2d_module_master_init(const char *dynamic_dir);
 void h2d_module_master_post(void);
 void h2d_module_worker_init(void);
 
@@ -65,5 +68,7 @@ int h2d_module_filter_process_headers(struct h2d_request *r);
 int h2d_module_filter_process_body(struct h2d_request *r);
 int h2d_module_filter_response_headers(struct h2d_request *r);
 int h2d_module_filter_response_body(struct h2d_request *r, uint8_t *data, int data_len, int buf_len);
+
+extern int h2d_module_number;
 
 #endif

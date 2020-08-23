@@ -14,8 +14,8 @@ struct h2d_conf_path {
 
 	struct h2d_module	*content;
 
-	void			*module_confs[H2D_MODULE_NUMBER];
-	int			content_meta_levels[H2D_MODULE_NUMBER];
+	void			*module_confs[H2D_MODULE_MAX];
+	int			content_meta_levels[H2D_MODULE_MAX];
 };
 
 struct h2d_conf_host {
@@ -31,7 +31,7 @@ struct h2d_conf_host {
 		int		ticket_timeout;
 	} ssl;
 
-	void			*module_confs[H2D_MODULE_NUMBER];
+	void			*module_confs[H2D_MODULE_MAX];
 };
 
 struct h2d_conf_listen {
@@ -68,7 +68,7 @@ struct h2d_conf_listen {
 		loop_group_timer_t	*recv_timer_group;
 	} network;
 
-	void			*module_confs[H2D_MODULE_NUMBER];
+	void			*module_confs[H2D_MODULE_MAX];
 };
 
 extern lua_State *h2d_L;

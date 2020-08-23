@@ -12,7 +12,7 @@ static bool h2d_conf_path_post(void *data)
 	struct h2d_conf_path *conf_path = data;
 
 	int i;
-	for (i = 0; i < H2D_MODULE_NUMBER; i++) {
+	for (i = 0; i < h2d_module_number; i++) {
 		void *mod_conf = conf_path->module_confs[i];
 		if (mod_conf == NULL) {
 			continue;

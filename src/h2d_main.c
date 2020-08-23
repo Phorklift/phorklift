@@ -14,6 +14,7 @@ static const char *opt_worker_user = NULL;
 static const char *opt_pid_file = "logs/h2tpd.pid";
 static const char *opt_defaults_file = "conf/defaults.lua";
 static const char *opt_conf_file = "conf/h2tpd.lua";
+static const char *opt_dynamic_dir = "dynamics/";
 
 static void h2d_getopt(int argc, char *const *argv)
 {
@@ -23,17 +24,18 @@ static void h2d_getopt(int argc, char *const *argv)
 		"    -w NUM      set worker processes number, 0 means no worker [4]\n"
 		"    -p PREFIX   change directory []\n"
 		"    -i PID      set pid file [logs/h2tpd.pid]\n"
-		"    -d DEFAULT  set user defaults file [conf/defaults.lua]\n"
+		"    -d DIR      set dynamic module directory [dynamics/]\n"
+		"    -f DEFAULT  set user defaults file [conf/defaults.lua]\n"
 		"    -c CONF     set configuration file [conf/h2tpd.lua]\n"
 		"    -v          show version and quit\n"
 		"    -h          show this help and quit\n";
 
 	int opt;
 	char *endptr;
-	while ((opt = getopt(argc, argv, "u:w:p:i:d:c:vh")) != -1) {
+	while ((opt = getopt(argc, argv, "u:w:p:i:d:f:c:vh")) != -1) {
 		switch (opt) {
 		case 'u':
-			opt_worker_user = strdup(optarg);
+			opt_worker_user = optarg;
 			break;
 		case 'w':
 			opt_worker_num = strtol(optarg, &endptr, 0);
@@ -49,13 +51,16 @@ static void h2d_getopt(int argc, char *const *argv)
 			}
 			break;
 		case 'i':
-			opt_pid_file = strdup(optarg);
+			opt_pid_file = optarg;
 			break;
 		case 'd':
-			opt_defaults_file = strdup(optarg);
+			opt_dynamic_dir = optarg;
+			break;
+		case 'f':
+			opt_defaults_file = optarg;
 			break;
 		case 'c':
-			opt_conf_file = strdup(optarg);
+			opt_conf_file = optarg;
 			break;
 		case 'v':
 			printf("version: %s\n", H2D_VERSION);
@@ -161,7 +166,7 @@ int main(int argc, char * const *argv)
 	h2d_http2_init();
 	h2d_resolver_init();
 
-	h2d_module_master_init();
+	h2d_module_master_init(opt_dynamic_dir);
 
 	struct h2d_conf_listen **listens = h2d_conf_parse(opt_defaults_file, opt_conf_file);
 

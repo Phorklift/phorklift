@@ -6,7 +6,8 @@ static struct h2d_log *tmp_log;
 
 struct h2d_request *h2d_request_new(struct h2d_connection *c)
 {
-	struct h2d_request *r = calloc(1, sizeof(struct h2d_request));
+	struct h2d_request *r = calloc(1, sizeof(struct h2d_request)
+			+ sizeof(void *) * h2d_module_number);
 	if (r == NULL) {
 		return NULL;
 	}

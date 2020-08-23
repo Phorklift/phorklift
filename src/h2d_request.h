@@ -64,7 +64,10 @@ struct h2d_request {
 	struct h2d_conf_host	*conf_host;
 	struct h2d_conf_path	*conf_path;
 
-	void 			*module_ctxs[H2D_MODULE_NUMBER];
+	/* #module_ctxs should be $h2d_module_number.
+	 * However it's not known in compiling because of dynamic
+	 * modules, so set 0 by now. */
+	void 			*module_ctxs[0];
 };
 
 struct h2d_request *h2d_request_new(struct h2d_connection *c);

@@ -1,6 +1,6 @@
 CFLAGS = -g -Wall -O2
 LDFLAGS = -Llibloop -Llibhttp2 -Llibwuya
-LDLIBS = -lloop -lhttp2 -lwuya -lpthread
+LDLIBS = -lloop -lhttp2 -lwuya -lpthread -ldl
 LDLIBS += -lluajit-5.1 # use `-llua5.1` for original Lua
 LDLIBS += -lssl -lcrypto
 
