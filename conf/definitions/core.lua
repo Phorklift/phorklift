@@ -7,6 +7,8 @@ general = {
 		idle_timeout = 60,
 		idle_max = 10,
 		fails = 1,
+		max_retries = 3,
+		retry_status_codes = { _array_type="number", 500, 501, 502, 503, 504},
 		default_port = 80,
 		resolve_interval = 10*60,
 		ssl_enable = false,

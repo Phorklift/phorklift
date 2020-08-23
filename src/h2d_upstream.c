@@ -372,6 +372,97 @@ int h2d_upstream_connection_write(struct h2d_upstream_connection *upc,
 	return H2D_OK;
 }
 
+static int h2d_upstream_do_generate_response_headers(struct h2d_request *r,
+		struct h2d_upstream_ctx *ctx, parse_f parse)
+{
+	if (!ctx->has_sent_request) {
+		if (h2d_upstream_connection_write_blocked(ctx->upc)) {// remove this check if h2d_upstream_connection_write() can return H2D_AGAIN
+			return H2D_AGAIN;
+		}
+		int ret = h2d_upstream_connection_write(ctx->upc, ctx->req_buf, ctx->req_len);
+		if (ret != H2D_OK) {
+			return ret;
+		}
+		ctx->has_sent_request = true;
+	}
+
+	char buffer[4096];
+	int read_len = h2d_upstream_connection_read(ctx->upc, buffer, sizeof(buffer));
+	if (read_len < 0) {
+		return read_len;
+	}
+
+	bool is_done;
+	int proc_len = parse(r, buffer, read_len, &is_done);
+	if (proc_len < 0) {
+		return H2D_ERROR;
+	}
+	if (!is_done) {
+		// TODO read again
+		printf("too long response header\n");
+		return H2D_ERROR;
+	}
+
+	h2d_upstream_connection_read_notfinish(ctx->upc, buffer + proc_len, read_len - proc_len);
+	return H2D_OK;
+}
+
+static bool h2d_upstream_status_code_retry(struct h2d_request *r,
+		struct h2d_upstream_conf *upstream)
+{
+	for (int *p = upstream->retry_status_codes; *p != 0; p++) {
+		if (r->resp.status_code == *p) {
+			printf("debug retry_status_codes hit: %d\n", *p);
+			return true;
+		}
+	}
+	return false;
+}
+
+/* wrapper of generate_response_headers with retry */
+int h2d_upstream_generate_response_headers(struct h2d_request *r,
+		struct h2d_upstream_ctx *ctx, parse_f parse)
+{
+	struct h2d_upstream_conf *upstream = ctx->upc->address->upstream;
+
+	while (1) {
+		int ret = h2d_upstream_do_generate_response_headers(r, ctx, parse);
+		if (ret == H2D_AGAIN) {
+			return ret;
+		}
+		if (ret == H2D_OK && !h2d_upstream_status_code_retry(r, upstream)) {
+			free(ctx->req_buf);
+			ctx->req_buf = NULL;
+			return H2D_OK;
+		}
+
+		/* increase connection's address fails */
+		h2d_upstream_connection_fail(ctx->upc);
+
+		/* retry */
+		printf("retry %d %d\n", ctx->retries, upstream->max_retries);
+		if (ctx->retries < 0 || ++ctx->retries >= upstream->max_retries) {
+			return ret;
+		}
+
+		h2d_request_reset_response(r);
+
+		ctx->upc = h2d_upstream_retry_connection(ctx->upc);
+		if (ctx->upc == NULL) {
+			return WUY_HTTP_500;
+		}
+		ctx->has_sent_request = false;
+	}
+}
+
+void h2d_upstream_ctx_free(struct h2d_upstream_ctx *ctx)
+{
+	free(ctx->req_buf);
+	if (ctx->upc != NULL) {
+		h2d_upstream_release_connection(ctx->upc);
+	}
+}
+
 void h2d_upstream_init(void)
 {
 	loop_idle_add(h2d_loop, h2d_upstream_address_defer_free, NULL);
@@ -563,6 +654,15 @@ static struct wuy_cflua_command h2d_upstream_conf_commands[] = {
 	{	.name = "fails",
 		.type = WUY_CFLUA_TYPE_INTEGER,
 		.offset = offsetof(struct h2d_upstream_conf, fails),
+	},
+	{	.name = "max_retries",
+		.type = WUY_CFLUA_TYPE_INTEGER,
+		.offset = offsetof(struct h2d_upstream_conf, max_retries),
+	},
+	{	.name = "retry_status_codes",
+		.type = WUY_CFLUA_TYPE_TABLE,
+		.offset = offsetof(struct h2d_upstream_conf, retry_status_codes),
+		.u.table = WUY_CFLUA_ARRAY_INTEGER_TABLE,
 	},
 	{	.name = "recv_timeout",
 		.type = WUY_CFLUA_TYPE_INTEGER,

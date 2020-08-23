@@ -69,6 +69,8 @@ struct h2d_upstream_conf {
 	int				recv_timeout;
 	int				send_timeout;
 	int				fails;
+	int				max_retries;
+	int				*retry_status_codes;
 	int				default_port;
 	int				resolve_interval;
 	bool				ssl_enable;
@@ -109,6 +111,21 @@ struct h2d_upstream_conf {
 		int			address_vnodes;
 	} hash;
 };
+
+struct h2d_upstream_ctx {
+	bool				has_sent_request;
+	int				retries;
+	char				*req_buf;
+	int				req_len;
+	struct h2d_upstream_connection	*upc;
+};
+
+typedef int (*parse_f)(struct h2d_request *r,
+		const char *buffer, int buf_len, bool *is_done);
+
+int h2d_upstream_generate_response_headers(struct h2d_request *r,
+		struct h2d_upstream_ctx *ctx, parse_f parse);
+void h2d_upstream_ctx_free(struct h2d_upstream_ctx *ctx);
 
 extern struct wuy_cflua_table h2d_upstream_conf_table;
 
