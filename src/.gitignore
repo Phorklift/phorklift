@@ -1,2 +1,3 @@
+h2d_parse_lua.c
 *.o
 h2tpd

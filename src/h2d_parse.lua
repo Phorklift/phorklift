@@ -159,7 +159,7 @@ dofile(h2d_conf_defaults_file)
 -- build metatable
 function h2d_build_metatable(t)
 	for k,v in pairs(t) do
-		if type(v) == "table" then
+		if type(v) == "table" and k ~= '__index' then
 			h2d_build_metatable(v)
 		end
 	end
