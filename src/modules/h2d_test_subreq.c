@@ -16,7 +16,7 @@ static int h2d_test_subreq_filter_response_headers(struct h2d_request *r)
 		return H2D_OK;
 	}
 
-	r->resp.is_body_filtered = true;
+	r->resp.content_length = H2D_CONTENT_LENGTH_INIT;
 	return H2D_OK;
 }
 static int h2d_test_subreq_filter_response_body(struct h2d_request *r, uint8_t *data, int data_len, int buf_len)

@@ -64,10 +64,7 @@ static int h2d_http1_request_headers(struct h2d_request *r, const char *buffer, 
 
 static bool h2d_http1_response_is_chunked(struct h2d_request *r)
 {
-	if (r->req.version == 0) {
-		return false;
-	}
-	return r->resp.is_body_filtered || (r->resp.content_length == H2D_CONTENT_LENGTH_INIT);
+	return r->req.version != 0 && r->resp.content_length == H2D_CONTENT_LENGTH_INIT;
 }
 int h2d_http1_response_headers(struct h2d_request *r)
 {

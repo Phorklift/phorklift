@@ -35,7 +35,8 @@ struct h2d_request {
 		size_t			content_length;
 		size_t			content_generate_length;
 		size_t			sent_length;
-		bool			is_body_filtered;
+		uint8_t			*broken_body_buf;
+		int			broken_body_len;
 	} resp;
 
 	enum {

@@ -29,7 +29,6 @@ void h2d_request_reset_response(struct h2d_request *r)
 	r->resp.content_length = H2D_CONTENT_LENGTH_INIT;
 	r->resp.content_generate_length = 0;
 	r->resp.sent_length = 0;
-	r->resp.is_body_filtered = false;
 	h2d_header_free_list(&r->resp.headers);
 }
 
@@ -64,6 +63,7 @@ void h2d_request_close(struct h2d_request *r)
 	h2d_header_free_list(&r->req.headers);
 	h2d_header_free_list(&r->resp.headers);
 	free(r->req.body_buf);
+	free(r->resp.broken_body_buf);
 	free(r);
 }
 
@@ -164,13 +164,15 @@ static inline int h2d_request_simple_response_body(enum wuy_http_status_code cod
 
 static int h2d_request_response_headers(struct h2d_request *r)
 {
-	if (r->is_broken) {
-		r->resp.content_length = h2d_request_simple_response_body(r->resp.status_code, NULL, 0);
-	} else {
+	if (!r->is_broken) {
 		int ret = r->conf_path->content->content.response_headers(r);
 		if (ret != H2D_OK) {
 			return ret;
 		}
+	} else if (r->resp.broken_body_len != 0) {
+		r->resp.content_length = r->resp.broken_body_len;
+	} else {
+		r->resp.content_length = h2d_request_simple_response_body(r->resp.status_code, NULL, 0);
 	}
 
 	int ret = h2d_module_filter_response_headers(r);
@@ -215,10 +217,13 @@ static int h2d_request_response_body(struct h2d_request *r)
 	if (r->resp.content_generate_length >= r->resp.content_length) {
 		goto skip_generate;
 	}
-	if (r->is_broken) {
-		body_len = h2d_request_simple_response_body(r->resp.status_code, (char *)buf_pos, buf_len);
-	} else {
+	if (!r->is_broken) {
 		body_len = r->conf_path->content->content.response_body(r, buf_pos, buf_len);
+	} else if (r->resp.broken_body_len != 0) {
+		memcpy(buf_pos, r->resp.broken_body_buf, r->resp.broken_body_len);
+		body_len = r->resp.broken_body_len;
+	} else {
+		body_len = h2d_request_simple_response_body(r->resp.status_code, (char *)buf_pos, buf_len);
 	}
 
 	if (body_len < 0) {
@@ -239,18 +244,11 @@ static int h2d_request_response_body(struct h2d_request *r)
 
 skip_generate:
 
-	/* filter
-	 * @is_body_filtered maybe set in h2d_request_response_headers() */
-	if (r->resp.is_body_filtered) {
-		body_len = h2d_module_filter_response_body(r, buf_pos, body_len, buf_len);
-		if (body_len < 0) {
-			return body_len;
-		}
-
-		/* body filters may suspend or generate more data, so ... TODO */
-		is_body_finished = false;
+	/* filter */
+	body_len = h2d_module_filter_response_body(r, buf_pos, body_len, buf_len);
+	if (body_len < 0) {
+		return body_len;
 	}
-
 	if (body_len == 0) {
 		is_body_finished = true;
 	}

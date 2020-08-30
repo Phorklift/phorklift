@@ -275,12 +275,12 @@ int h2d_module_filter_response_body(struct h2d_request *r, uint8_t *data, int da
 	for (i = 0; i < h2d_module_number; i++) {
 		struct h2d_module *m = h2d_modules[i];
 		if (m->filters.response_body != NULL) {
-			int ret = m->filters.response_body(r, data, data_len, buf_len);
-			if (ret != H2D_OK) {
-				return ret;
+			data_len = m->filters.response_body(r, data, data_len, buf_len);
+			if (data_len < 0) {
+				return data_len;
 			}
 		}
 	}
 
-	return H2D_OK;
+	return data_len;
 }
