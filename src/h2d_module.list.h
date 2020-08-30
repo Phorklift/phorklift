@@ -5,4 +5,5 @@
 	X(h2d_acl_module) \
 	X(h2d_test_subreq_module) \
 	X(h2d_stats_module) \
+	X(h2d_cache_module) \
 

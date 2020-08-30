@@ -36,6 +36,9 @@ static inline struct h2d_header *h2d_header_new(const char *name_str, int name_l
 	return h;
 }
 
+#define h2d_header_add_lite(list, name, value) \
+	h2d_header_add(list, name, sizeof(name)-1, value, sizeof(value)-1)
+
 static inline struct h2d_header *h2d_header_add(wuy_slist_t *list,
 		const char *name_str, int name_len,
 		const char *value_str, int value_len)
@@ -48,6 +51,17 @@ static inline struct h2d_header *h2d_header_add(wuy_slist_t *list,
 	return h;
 }
 
+static inline struct h2d_header *h2d_header_get(wuy_slist_t *list, const char *name)
+{
+	struct h2d_header *h;
+	wuy_slist_iter_type(list, h, list_node) {
+		if (strcasecmp(h->str, name) == 0) {
+			return h;
+		}
+	}
+	return NULL;
+}
+
 #define h2d_header_iter(list, h) wuy_slist_iter_type(list, h, list_node)
 
 static inline void h2d_header_free_list(wuy_slist_t *list)
@@ -55,6 +69,14 @@ static inline void h2d_header_free_list(wuy_slist_t *list)
 	struct h2d_header *h;
 	while (wuy_slist_pop_type(list, h, list_node) != NULL) {
 		free(h);
+	}
+}
+
+static inline void h2d_header_dup_list(wuy_slist_t *to, wuy_slist_t *from)
+{
+	struct h2d_header *h;
+	wuy_slist_iter_type(from, h, list_node) {
+		h2d_header_add(to, h->str, h->name_len, h2d_header_value(h), h->value_len);
 	}
 }
 

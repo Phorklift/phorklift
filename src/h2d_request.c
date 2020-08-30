@@ -63,7 +63,6 @@ void h2d_request_close(struct h2d_request *r)
 	h2d_header_free_list(&r->req.headers);
 	h2d_header_free_list(&r->resp.headers);
 	free(r->req.body_buf);
-	free(r->resp.broken_body_buf);
 	free(r);
 }
 
