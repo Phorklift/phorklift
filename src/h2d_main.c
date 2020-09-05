@@ -12,7 +12,6 @@
 static int opt_worker_num = 4;
 static const char *opt_worker_user = NULL;
 static const char *opt_pid_file = "logs/h2tpd.pid";
-static const char *opt_defaults_file = "conf/defaults.lua";
 static const char *opt_conf_file = "conf/h2tpd.lua";
 static const char *opt_dynamic_dir = "dynamics/";
 
@@ -32,7 +31,7 @@ static void h2d_getopt(int argc, char *const *argv)
 
 	int opt;
 	char *endptr;
-	while ((opt = getopt(argc, argv, "u:w:p:i:d:f:c:vh")) != -1) {
+	while ((opt = getopt(argc, argv, "u:w:p:i:d:c:vh")) != -1) {
 		switch (opt) {
 		case 'u':
 			opt_worker_user = optarg;
@@ -55,9 +54,6 @@ static void h2d_getopt(int argc, char *const *argv)
 			break;
 		case 'd':
 			opt_dynamic_dir = optarg;
-			break;
-		case 'f':
-			opt_defaults_file = optarg;
 			break;
 		case 'c':
 			opt_conf_file = optarg;
@@ -168,7 +164,7 @@ int main(int argc, char * const *argv)
 
 	h2d_module_master_init(opt_dynamic_dir);
 
-	struct h2d_conf_listen **listens = h2d_conf_parse(opt_defaults_file, opt_conf_file);
+	struct h2d_conf_listen **listens = h2d_conf_parse(opt_conf_file);
 
 	h2d_module_master_post();
 

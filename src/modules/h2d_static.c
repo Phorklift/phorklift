@@ -137,6 +137,7 @@ static struct wuy_cflua_command h2d_static_conf_commands[] = {
 	{	.name = "index",
 		.type = WUY_CFLUA_TYPE_STRING,
 		.offset = offsetof(struct h2d_static_conf, index),
+		.default_value.s = "/index.html",
 	},
 	{ NULL }
 };

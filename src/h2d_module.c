@@ -203,7 +203,7 @@ struct h2d_module *h2d_module_content_is_enabled(int i, void *conf)
 		break;
 	case WUY_CFLUA_TYPE_FUNCTION:
 		func = *(wuy_cflua_function_t *)ptr;
-		is_enabled = func != 0 && !h2d_conf_is_zero_function(func);
+		is_enabled = wuy_cflua_is_function_set(func);
 		break;
 	default:
 		abort();

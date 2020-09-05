@@ -410,6 +410,9 @@ static int h2d_upstream_do_generate_response_headers(struct h2d_request *r,
 static bool h2d_upstream_status_code_retry(struct h2d_request *r,
 		struct h2d_upstream_conf *upstream)
 {
+	if (upstream->retry_status_codes == NULL) {
+		return false;
+	}
 	for (int *p = upstream->retry_status_codes; *p != 0; p++) {
 		if (r->resp.status_code == *p) {
 			printf("debug retry_status_codes hit: %d\n", *p);
@@ -492,7 +495,7 @@ h2d_upstream_conf_loadbalance_select(struct h2d_upstream_conf *conf)
 {
 	/* We have 2 loadbalances now, roundrobin and hash.
 	 * Use hash if conf->hash is set, otherwise roundrobin. */
-	if (!h2d_conf_is_zero_function(conf->hash.key)) {
+	if (wuy_cflua_is_function_set(conf->hash.key)) {
 		return &h2d_upstream_loadbalance_hash;
 	} else {
 		return &h2d_upstream_loadbalance_roundrobin;
@@ -622,6 +625,8 @@ static struct wuy_cflua_command h2d_upstream_hash_commands[] = {
 	{	.name = "address_vnodes",
 		.type = WUY_CFLUA_TYPE_INTEGER,
 		.offset = offsetof(struct h2d_upstream_conf, hash.address_vnodes),
+		.default_value.n = 100,
+		.limits.n = WUY_CFLUA_LIMITS_POSITIVE,
 	},
 	{ NULL }
 };
@@ -629,10 +634,14 @@ static struct wuy_cflua_command h2d_upstream_healthcheck_commands[] = {
 	{	.name = "interval",
 		.type = WUY_CFLUA_TYPE_INTEGER,
 		.offset = offsetof(struct h2d_upstream_conf, healthcheck.interval),
+		.default_value.n = 60,
+		.limits.n = WUY_CFLUA_LIMITS_POSITIVE,
 	},
 	{	.name = "repeats",
 		.type = WUY_CFLUA_TYPE_INTEGER,
 		.offset = offsetof(struct h2d_upstream_conf, healthcheck.repeats),
+		.default_value.n = 3,
+		.limits.n = WUY_CFLUA_LIMITS_POSITIVE,
 	},
 	{	.name = "request",
 		.type = WUY_CFLUA_TYPE_STRING,
@@ -650,14 +659,20 @@ static struct wuy_cflua_command h2d_upstream_conf_commands[] = {
 	{	.name = "idle_max",
 		.type = WUY_CFLUA_TYPE_INTEGER,
 		.offset = offsetof(struct h2d_upstream_conf, idle_max),
+		.default_value.n = 100,
+		.limits.n = WUY_CFLUA_LIMITS_NON_NEGATIVE,
 	},
 	{	.name = "fails",
 		.type = WUY_CFLUA_TYPE_INTEGER,
 		.offset = offsetof(struct h2d_upstream_conf, fails),
+		.default_value.n = 1,
+		.limits.n = WUY_CFLUA_LIMITS_NON_NEGATIVE,
 	},
 	{	.name = "max_retries",
 		.type = WUY_CFLUA_TYPE_INTEGER,
 		.offset = offsetof(struct h2d_upstream_conf, max_retries),
+		.default_value.n = 1,
+		.limits.n = WUY_CFLUA_LIMITS_NON_NEGATIVE,
 	},
 	{	.name = "retry_status_codes",
 		.type = WUY_CFLUA_TYPE_TABLE,
@@ -667,22 +682,32 @@ static struct wuy_cflua_command h2d_upstream_conf_commands[] = {
 	{	.name = "recv_timeout",
 		.type = WUY_CFLUA_TYPE_INTEGER,
 		.offset = offsetof(struct h2d_upstream_conf, recv_timeout),
+		.default_value.n = 10,
+		.limits.n = WUY_CFLUA_LIMITS_POSITIVE,
 	},
 	{	.name = "send_timeout",
 		.type = WUY_CFLUA_TYPE_INTEGER,
 		.offset = offsetof(struct h2d_upstream_conf, send_timeout),
+		.default_value.n = 10,
+		.limits.n = WUY_CFLUA_LIMITS_POSITIVE,
 	},
 	{	.name = "idle_timeout",
 		.type = WUY_CFLUA_TYPE_INTEGER,
 		.offset = offsetof(struct h2d_upstream_conf, idle_timeout),
+		.default_value.n = 60,
+		.limits.n = WUY_CFLUA_LIMITS_POSITIVE,
 	},
 	{	.name = "default_port",
 		.type = WUY_CFLUA_TYPE_INTEGER,
 		.offset = offsetof(struct h2d_upstream_conf, default_port),
+		.default_value.n = 80,
+		.limits.n = WUY_CFLUA_LIMITS_NON_NEGATIVE,
 	},
 	{	.name = "resolve_interval",
 		.type = WUY_CFLUA_TYPE_INTEGER,
 		.offset = offsetof(struct h2d_upstream_conf, resolve_interval),
+		.default_value.n = 60,
+		.limits.n = WUY_CFLUA_LIMITS_NON_NEGATIVE,
 	},
 	{	.name = "ssl_enable",
 		.type = WUY_CFLUA_TYPE_BOOLEAN,

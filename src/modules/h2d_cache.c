@@ -36,7 +36,7 @@ static int h2d_cache_process_headers(struct h2d_request *r)
 	}
 
 	struct h2d_cache_item *item;
-	if (h2d_conf_is_zero_function(conf->key)) {
+	if (wuy_cflua_is_function_set(conf->key)) {
 		item = wuy_dict_get(conf->cache, r->req.url);
 
 	} else {
@@ -84,7 +84,7 @@ static int h2d_cache_response_headers(struct h2d_request *r)
 
 	struct h2d_cache_item *item = malloc(sizeof(struct h2d_cache_item) + r->resp.content_length);
 
-	if (h2d_conf_is_zero_function(conf->key)) {
+	if (wuy_cflua_is_function_set(conf->key)) {
 		item->key = strdup(r->req.url);
 	} else {
 		h2d_lua_current_request = r;
@@ -138,6 +138,7 @@ static struct wuy_cflua_command h2d_cache_conf_commands[] = {
 	{	.type = WUY_CFLUA_TYPE_INTEGER,
 		.flags = WUY_CFLUA_FLAG_UNIQ_MEMBER,
 		.offset = offsetof(struct h2d_cache_conf, size),
+		.limits.n = WUY_CFLUA_LIMITS_NON_NEGATIVE,
 	},
 	{	.name = "key",
 		.type = WUY_CFLUA_TYPE_FUNCTION,
@@ -146,14 +147,18 @@ static struct wuy_cflua_command h2d_cache_conf_commands[] = {
 	{	.name = "max_length",
 		.type = WUY_CFLUA_TYPE_INTEGER,
 		.offset = offsetof(struct h2d_cache_conf, max_length),
+		.default_value.n = 100*1024,
+		.limits.n = WUY_CFLUA_LIMITS_NON_NEGATIVE,
 	},
 	{	.name = "default_expire",
 		.type = WUY_CFLUA_TYPE_INTEGER,
 		.offset = offsetof(struct h2d_cache_conf, default_expire),
+		.limits.n = WUY_CFLUA_LIMITS_NON_NEGATIVE,
 	},
 	{	.name = "force_expire",
 		.type = WUY_CFLUA_TYPE_INTEGER,
 		.offset = offsetof(struct h2d_cache_conf, force_expire),
+		.limits.n = WUY_CFLUA_LIMITS_NON_NEGATIVE,
 	},
 	{	.name = "include_types",
 		.type = WUY_CFLUA_TYPE_STRING,

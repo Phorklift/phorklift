@@ -73,9 +73,7 @@ struct h2d_conf_listen {
 
 extern lua_State *h2d_L;
 
-struct h2d_conf_listen **h2d_conf_parse(const char *defaults_file, const char *conf_file);
-
-bool h2d_conf_is_zero_function(wuy_cflua_function_t f);
+struct h2d_conf_listen **h2d_conf_parse(const char *conf_file);
 
 struct h2d_conf_host *h2d_conf_listen_search_hostname(
 		struct h2d_conf_listen *conf_listen, const char *name);

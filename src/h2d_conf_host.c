@@ -33,7 +33,7 @@ static bool h2d_conf_host_post(void *data)
 	/* ssl */
 	const char *cert = conf_host->ssl.certificate;
 	const char *pkey = conf_host->ssl.private_key;
-	if (cert[0] != '\0' || pkey[0] != '\0') {
+	if (cert != NULL || pkey != NULL) {
 		conf_host->ssl.ctx = h2d_ssl_ctx_new_server(cert, pkey);
 		if (conf_host->ssl.ctx == NULL) {
 			printf("fail in load certificate or private_key: %s %s\n", cert, pkey);
@@ -60,6 +60,8 @@ static struct wuy_cflua_command h2d_conf_host_ssl_commands[] = {
 	{	.name = "ticket_timeout",
 		.type = WUY_CFLUA_TYPE_INTEGER,
 		.offset = offsetof(struct h2d_conf_host, ssl.ticket_timeout),
+		.default_value.n = 86400,
+		.limits.n = WUY_CFLUA_LIMITS_NON_NEGATIVE,
 	},
 	{ NULL }
 };
