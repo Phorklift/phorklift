@@ -13,7 +13,7 @@ static int opt_worker_num = 4;
 static const char *opt_worker_user = NULL;
 static const char *opt_pid_file = "logs/h2tpd.pid";
 static const char *opt_conf_file = "conf/h2tpd.lua";
-static const char *opt_dynamic_dir = "dynamics/";
+static const char *opt_dynamic_dir = NULL;
 
 static void h2d_getopt(int argc, char *const *argv)
 {

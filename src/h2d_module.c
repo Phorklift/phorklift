@@ -97,17 +97,19 @@ void h2d_module_master_init(const char *dynamic_dir)
 	h2d_module_number = H2D_MODULE_STATIC_NUMBER;
 
 	/* load dynamic modules */
-	DIR *dir = opendir(dynamic_dir);
-	if (dir == NULL) {
-		perror("open dynamic directory");
-		exit(H2D_EXIT_MODULE_INIT);
-	}
+	if (dynamic_dir != NULL) {
+		DIR *dir = opendir(dynamic_dir);
+		if (dir == NULL) {
+			perror("open dynamic directory");
+			exit(H2D_EXIT_MODULE_INIT);
+		}
 
-	struct dirent *ent;
-	while ((ent = readdir(dir)) != NULL) {
-		h2d_module_dynamic_add(dynamic_dir, ent->d_name);
+		struct dirent *ent;
+		while ((ent = readdir(dir)) != NULL) {
+			h2d_module_dynamic_add(dynamic_dir, ent->d_name);
+		}
+		closedir(dir);
 	}
-	closedir(dir);
 
 	/* init modules */
 	int i;
