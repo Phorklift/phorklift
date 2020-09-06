@@ -4,18 +4,17 @@
 
 #include "h2d_main.h"
 
+/* This holds the global lua state.
+ * This is persistent because of the functions defined in config file. */
+lua_State *h2d_L;
+
 /* say nothing. for wuy_cflua_strerror() print. */
 static int h2d_conf_name(void *data, char *buf, int size)
 {
 	return 0;
 }
 
-/* This holds the global lua state.
- * This is persistent because of the functions defined in config file. */
-lua_State *h2d_L;
-
-/* defined in h2d_parse_lua.c */
-extern const char *h2d_parse_lua_str;
+#include "h2d_parse_lua.h" /* defines h2d_parse_lua_str */
 struct h2d_conf_listen **h2d_conf_parse(const char *conf_file)
 {
 	h2d_L = lua_open();
