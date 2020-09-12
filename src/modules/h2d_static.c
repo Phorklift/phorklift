@@ -17,6 +17,8 @@ struct h2d_static_conf {
 
 	const char	*index;
 
+	struct h2d_log	*log;
+
 	struct h2d_static_stats	*stats;
 };
 
@@ -44,21 +46,25 @@ static int h2d_static_generate_response_headers(struct h2d_request *r)
 		}
 	}
 
+	h2d_request_log_at(r, conf->log, H2D_LOG_DEBUG, "open file %s", r->req.url);
+
 	int fd = openat(conf->dirfd, r->req.url + 1, O_RDONLY);
 	if (fd < 0) {
 		atomic_fetch_add(&conf->stats->ret404, 1);
-		printf("error to open file: %s\n", r->req.url);
+		h2d_request_log_at(r, conf->log, H2D_LOG_INFO, "error to open file %s %s",
+				r->req.url, strerror(errno));
 		return WUY_HTTP_404;
 	}
 
 	struct stat st_buf;
 	fstat(fd, &st_buf);
 
-	printf("Modified: %ld . %ld .\n", if_modified_since, st_buf.st_mtime);
 	h2d_header_add(&r->resp.headers, "Last-Modified", 13,
 			wuy_http_date_make(st_buf.st_mtime),
 			WUY_HTTP_DATE_LENGTH);
 
+	h2d_request_log_at(r, conf->log, H2D_LOG_DEBUG, "check if-modified-since %ld %ld",
+			if_modified_since, st_buf.st_mtime);
 	if (if_modified_since == st_buf.st_mtime) {
 		close(fd);
 		atomic_fetch_add(&conf->stats->ret304, 1);
@@ -76,13 +82,15 @@ static int h2d_static_generate_response_headers(struct h2d_request *r)
 }
 static int h2d_static_generate_response_body(struct h2d_request *r, uint8_t *buf, int len)
 {
+	struct h2d_static_conf *conf = r->conf_path->module_confs[h2d_static_module.index];
 	struct h2d_static_ctx *ctx = r->module_ctxs[h2d_static_module.index];
 
 	int ret = read(ctx->fd, buf, len);
 	if (ret < 0) {
-		perror("read file fail");
+		h2d_request_log_at(r, conf->log, H2D_LOG_ERROR, "read fail %s", strerror(errno));
 		return -1;
 	}
+	h2d_request_log_at(r, conf->log, H2D_LOG_DEBUG, "read file %ld", ret);
 	return ret;
 }
 
@@ -138,6 +146,11 @@ static struct wuy_cflua_command h2d_static_conf_commands[] = {
 		.type = WUY_CFLUA_TYPE_STRING,
 		.offset = offsetof(struct h2d_static_conf, index),
 		.default_value.s = "/index.html",
+	},
+	{	.name = "log",
+		.type = WUY_CFLUA_TYPE_TABLE,
+		.offset = offsetof(struct h2d_static_conf, log),
+		.u.table = &h2d_log_conf_table,
 	},
 	{ NULL }
 };

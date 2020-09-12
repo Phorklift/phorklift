@@ -3,6 +3,10 @@
 struct h2d_conf_path *h2d_conf_host_search_pathname(
 		struct h2d_conf_host *conf_host, const char *name)
 {
+	if (conf_host->paths == NULL) {
+		return conf_host->default_path;
+	}
+
 	struct h2d_conf_path *conf_path;
 	for (int i = 0; (conf_path = conf_host->paths[i]) != NULL; i++) {
 		char *pathname;
@@ -25,7 +29,9 @@ static bool h2d_conf_host_post(void *data)
 {
 	struct h2d_conf_host *conf_host = data;
 
-	if (conf_host->paths == NULL) {
+	if (conf_host->paths == NULL /* no Path() */
+			&& conf_host->hostnames != NULL /* not default_host */
+			&& conf_host->default_path->content == NULL) { /* default_path->content not set */
 		printf("No path is defined in host\n");
 		return false;
 	}
@@ -74,6 +80,11 @@ static struct wuy_cflua_command h2d_conf_host_commands[] = {
 	},
 	{	.type = WUY_CFLUA_TYPE_TABLE,
 		.offset = offsetof(struct h2d_conf_host, paths),
+		.u.table = &h2d_conf_path_table,
+	},
+	{	.name = "_default_next",
+		.type = WUY_CFLUA_TYPE_TABLE,
+		.offset = offsetof(struct h2d_conf_host, default_path),
 		.u.table = &h2d_conf_path_table,
 	},
 	{	.name = "ssl",

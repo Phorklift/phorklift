@@ -10,6 +10,9 @@ enum h2d_log_level {
 };
 
 struct h2d_log {
+	const char		*conf_filename;
+	const char		*conf_level;
+
 	enum h2d_log_level	level;
 	struct h2d_log_file	*file;
 };
@@ -32,5 +35,7 @@ void h2d_log_write(struct h2d_log *log, enum h2d_log_level level, const char *fm
 struct h2d_log *h2d_log_new(const char *filename, enum h2d_log_level level);
 
 void h2d_log_init(void);
+
+extern struct wuy_cflua_table h2d_log_conf_table; 
 
 #endif

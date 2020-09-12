@@ -12,6 +12,10 @@ struct h2d_conf_listen_hostname {
 struct h2d_conf_host *h2d_conf_listen_search_hostname(
 		struct h2d_conf_listen *conf_listen, const char *name)
 {
+	if (conf_listen->host_dict == NULL) {
+		return conf_listen->default_host;
+	}
+
 	if (name == NULL) {
 		return conf_listen->host_default;
 	}
@@ -98,8 +102,11 @@ static bool h2d_conf_listen_post(void *data)
 	struct h2d_conf_listen *conf_listen = data;
 
 	if (conf_listen->hosts == NULL) {
-		printf("error: No host defined in listen\n");
-		return false;
+		if (conf_listen->default_host->default_path->content == NULL) {
+			printf("error: No host defined in listen\n");
+			return false;
+		}
+		return true;
 	}
 
 	/* build hostname:conf_host dict */
@@ -202,6 +209,11 @@ static struct wuy_cflua_command h2d_conf_listen_commands[] = {
 	},
 	{	.type = WUY_CFLUA_TYPE_TABLE,
 		.offset = offsetof(struct h2d_conf_listen, hosts),
+		.u.table = &h2d_conf_host_table,
+	},
+	{	.name = "_default_next",
+		.type = WUY_CFLUA_TYPE_TABLE,
+		.offset = offsetof(struct h2d_conf_listen, default_host),
 		.u.table = &h2d_conf_host_table,
 	},
 	{	.name = "http1",

@@ -90,6 +90,22 @@ static int h2d_log_strlevel(char *buffer, enum h2d_log_level level)
 	default: abort();
 	}
 }
+static enum h2d_log_level h2d_log_parse_level(const char *str)
+{
+	if (strcmp(str, "debug") == 0) {
+		return H2D_LOG_DEBUG;
+	} else if (strcmp(str, "info") == 0) {
+		return H2D_LOG_INFO;
+	} else if (strcmp(str, "warn") == 0) {
+		return H2D_LOG_WARN;
+	} else if (strcmp(str, "error") == 0) {
+		return H2D_LOG_ERROR;
+	} else if (strcmp(str, "fatal") == 0) {
+		return H2D_LOG_FATAL;
+	} else {
+		return -1;
+	}
+}
 
 static void h2d_log_file_flush(struct h2d_log_file *file)
 {
@@ -167,3 +183,59 @@ void h2d_log_init(void)
 	h2d_log_pid = getpid();
 	loop_idle_add(h2d_loop, h2d_log_routine, NULL);
 }
+
+static bool h2d_log_conf_post(void *data)
+{
+	struct h2d_log *log = data;
+
+	log->level = h2d_log_parse_level(log->conf_level);
+	if (log->level < 0) {
+		printf("invalid log level\n");
+		return false;
+	}
+
+	if (log->conf_filename == NULL) {
+		log->conf_filename = "derror.log";
+	}
+
+	/* search file */
+	struct h2d_log_file *file;
+	wuy_list_iter_type(&h2d_log_file_list, file, list_node) {
+		if (strcmp(file->name, log->conf_filename) == 0) {
+			log->file = file;
+			return true;
+		}
+	}
+
+	/* open new file */
+	file = malloc(sizeof(struct h2d_log_file));
+	file->fd = open(log->conf_filename, O_WRONLY | O_APPEND | O_CREAT, 0644);
+	if (file->fd < 0) {
+		printf("error in open log file %s %s\n", log->conf_filename, strerror(errno));
+		return false;
+	}
+	file->name = log->conf_filename;
+	file->pos = file->buffer;
+	wuy_list_append(&h2d_log_file_list, &file->list_node);
+
+	log->file = file;
+	return true;
+}
+
+static struct wuy_cflua_command h2d_log_conf_commands[] = {
+	{	.type = WUY_CFLUA_TYPE_STRING,
+		.flags = WUY_CFLUA_FLAG_UNIQ_MEMBER,
+		.offset = offsetof(struct h2d_log, conf_filename),
+	},
+	{	.name = "level",
+		.type = WUY_CFLUA_TYPE_STRING,
+		.offset = offsetof(struct h2d_log, conf_level),
+		.default_value.s = "error",
+	},
+	{ NULL },
+};
+struct wuy_cflua_table h2d_log_conf_table = {
+	.commands = h2d_log_conf_commands,
+	.size = sizeof(struct h2d_log),
+	.post = h2d_log_conf_post,
+};

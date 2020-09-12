@@ -12,6 +12,8 @@ struct h2d_conf_path {
 
 	bool			(*req_hook)(void);
 
+	struct h2d_log		*error_log;
+
 	struct h2d_module	*content;
 
 	void			*module_confs[H2D_MODULE_MAX];
@@ -22,6 +24,7 @@ struct h2d_conf_host {
 	char			**hostnames;
 
 	struct h2d_conf_path	**paths;
+	struct h2d_conf_path	*default_path;
 
 	struct {
 		SSL_CTX		*ctx;
@@ -40,6 +43,7 @@ struct h2d_conf_listen {
 	SSL_CTX			*ssl_ctx;
 
 	struct h2d_conf_host	**hosts;
+	struct h2d_conf_host	*default_host;
 
 	wuy_dict_t		*host_dict;
 	struct h2d_conf_host	*host_default;

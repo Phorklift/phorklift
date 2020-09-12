@@ -40,7 +40,7 @@ static bool h2d_conf_path_post(void *data)
 		}
 	}
 
-	if (conf_path->content == NULL) {
+	if (conf_path->content == NULL && conf_path->pathnames != NULL) {
 		printf("no content set, %s\n", conf_path->pathnames[0]);
 		return false;
 	}
@@ -53,6 +53,11 @@ static struct wuy_cflua_command h2d_conf_path_commands[] = {
 		.type = WUY_CFLUA_TYPE_TABLE,
 		.offset = offsetof(struct h2d_conf_path, pathnames),
 		.u.table = WUY_CFLUA_ARRAY_STRING_TABLE,
+	},
+	{	.name = "error_log",
+		.type = WUY_CFLUA_TYPE_TABLE,
+		.offset = offsetof(struct h2d_conf_path, error_log),
+		.u.table = &h2d_log_conf_table,
 	},
 	{	.type = WUY_CFLUA_TYPE_END,
 		.u.next = h2d_module_next_path_command,
