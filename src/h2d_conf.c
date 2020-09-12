@@ -14,13 +14,13 @@ static int h2d_conf_name(void *data, char *buf, int size)
 	return 0;
 }
 
-#include "h2d_parse_lua.h" /* defines h2d_parse_lua_str */
+#include "h2d_conf_parse_lua.h" /* defines h2d_conf_parse_lua_str */
 struct h2d_conf_listen **h2d_conf_parse(const char *conf_file)
 {
 	h2d_L = lua_open();
 	luaL_openlibs(h2d_L);
 
-	int ret = luaL_loadstring(h2d_L, h2d_parse_lua_str);
+	int ret = luaL_loadstring(h2d_L, h2d_conf_parse_lua_str);
 	if (ret != 0) {
 		printf("load conf/parse/parse.lua fail: %d\n", ret);
 		exit(H2D_EXIT_CONF);
