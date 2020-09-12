@@ -112,8 +112,7 @@ void h2d_module_master_init(const char *dynamic_dir)
 	}
 
 	/* init modules */
-	int i;
-	for (i = 0; i < h2d_module_number; i++) {
+	for (int i = 0; i < h2d_module_number; i++) {
 		struct h2d_module *m = h2d_modules[i];
 		m->index = i;
 
@@ -153,26 +152,19 @@ void h2d_module_worker_init(void)
 	}
 }
 
-struct h2d_module *h2d_module_content_is_enabled(int i, void *conf)
+bool h2d_module_command_is_set(struct wuy_cflua_command *cmd, void *conf)
 {
-	struct h2d_module *m = h2d_modules[i];
-	bool is_enabled;
-
-	if (m->content.response_headers == NULL) {
-		return NULL;
-	}
-	if (m->command_path.type == WUY_CFLUA_TYPE_END) {
-		abort();
+	if (cmd->type == WUY_CFLUA_TYPE_END) {
+		return false;
 	}
 
 	/* simple type, not table */
-	if (m->command_path.type != WUY_CFLUA_TYPE_TABLE) {
-		is_enabled = conf != NULL;
-		goto out;
+	if (cmd->type != WUY_CFLUA_TYPE_TABLE) {
+		return conf != NULL;
 	}
 
 	/* table type, check the first command */
-	struct wuy_cflua_command *first = &m->command_path.u.table->commands[0];
+	struct wuy_cflua_command *first = &cmd->u.table->commands[0];
 	if (first->name != NULL) {
 		/* must be array-member */
 		abort();
@@ -182,36 +174,35 @@ struct h2d_module *h2d_module_content_is_enabled(int i, void *conf)
 
 	/* it's multi-value array */
 	if ((first->flags & WUY_CFLUA_FLAG_UNIQ_MEMBER) == 0) {
-		is_enabled = *(char **)ptr != NULL;
-		goto out;
+		return *(char **)ptr != NULL;
 	}
 
 	/* it's single value */
-	const char *pstr;
-	wuy_cflua_function_t func;
 	switch (first->type) {
 	case WUY_CFLUA_TYPE_BOOLEAN:
-		is_enabled = *(bool *)ptr;
-		break;
+		return *(bool *)ptr;
 	case WUY_CFLUA_TYPE_DOUBLE:
-		is_enabled = *(double *)ptr != 0;
-		break;
+		return *(double *)ptr != 0;
 	case WUY_CFLUA_TYPE_INTEGER:
-		is_enabled = *(int *)ptr != 0;
-		break;
+		return *(int *)ptr != 0;
 	case WUY_CFLUA_TYPE_STRING:
-		pstr = *(char **)ptr;
-		is_enabled = pstr != NULL && pstr[0] != '\0';
-		break;
+		return *(char **)ptr != NULL;
 	case WUY_CFLUA_TYPE_FUNCTION:
-		func = *(wuy_cflua_function_t *)ptr;
-		is_enabled = wuy_cflua_is_function_set(func);
-		break;
+		return wuy_cflua_is_function_set(*(wuy_cflua_function_t *)ptr);
 	default:
 		abort();
 	}
-out:
-	return is_enabled ? m : NULL;
+}
+
+struct h2d_module *h2d_module_content_is_enabled(int i, void *conf)
+{
+	struct h2d_module *m = h2d_modules[i];
+
+	if (m->content.response_headers == NULL) {
+		return NULL;
+	}
+
+	return h2d_module_command_is_set(&m->command_path, conf) ? m : NULL;
 }
 
 void h2d_module_request_ctx_free(struct h2d_request *r)

@@ -7,3 +7,7 @@
 	X(h2d_stats_module) \
 	X(h2d_cache_module) \
 
+#define H2D_UPSTREAM_LOADBALANCE_X_LIST \
+	X(h2d_upstream_roundrobin) \
+	X(h2d_upstream_hash) \
+

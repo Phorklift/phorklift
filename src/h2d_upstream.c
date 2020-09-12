@@ -1,5 +1,17 @@
 #include "h2d_main.h"
 
+#define X(lb) extern struct h2d_upstream_loadbalance lb;
+H2D_UPSTREAM_LOADBALANCE_X_LIST
+#undef X
+static struct h2d_upstream_loadbalance *h2d_upstream_loadbalances[H2D_UPSTREAM_LOADBALANCE_MAX] =
+{
+	#define X(lb) &lb,
+	H2D_UPSTREAM_LOADBALANCE_X_LIST
+	#undef X
+};
+
+static int h2d_upstream_loadbalance_number;
+
 static WUY_LIST(h2d_upstream_address_defer_list);
 
 static void h2d_upstream_connection_close(struct h2d_upstream_connection *upc)
@@ -466,9 +478,22 @@ void h2d_upstream_ctx_free(struct h2d_upstream_ctx *ctx)
 	}
 }
 
-void h2d_upstream_init(void)
+void h2d_upstream_worker_init(void)
 {
 	loop_idle_add(h2d_loop, h2d_upstream_address_defer_free, NULL);
+}
+
+void h2d_upstream_init(void)
+{
+	h2d_upstream_loadbalance_number = H2D_UPSTREAM_LOADBALANCE_STATIC_NUMBER;
+
+	// TODO load dynamic loadbalance here
+
+	for (int i = 0; i < h2d_upstream_loadbalance_number; i++) {
+		struct h2d_upstream_loadbalance *lb = h2d_upstream_loadbalances[i];
+		lb->index = i;
+		lb->command.offset = offsetof(struct h2d_upstream_conf, lb_confs) + sizeof(void *) * i;
+	}
 }
 
 bool h2d_upstream_address_is_pickable(struct h2d_upstream_address *address)
@@ -488,18 +513,44 @@ bool h2d_upstream_address_is_pickable(struct h2d_upstream_address *address)
 
 /* configration */
 
-extern struct h2d_upstream_loadbalance h2d_upstream_loadbalance_hash;
-extern struct h2d_upstream_loadbalance h2d_upstream_loadbalance_roundrobin;
-static struct h2d_upstream_loadbalance *
-h2d_upstream_conf_loadbalance_select(struct h2d_upstream_conf *conf)
+static bool h2d_upstream_conf_loadbalance_select(struct h2d_upstream_conf *conf)
 {
-	/* We have 2 loadbalances now, roundrobin and hash.
-	 * Use hash if conf->hash is set, otherwise roundrobin. */
-	if (wuy_cflua_is_function_set(conf->hash.key)) {
-		return &h2d_upstream_loadbalance_hash;
-	} else {
-		return &h2d_upstream_loadbalance_roundrobin;
+	for (int i = 1; i < h2d_upstream_loadbalance_number; i++) {
+		struct h2d_upstream_loadbalance *lb = h2d_upstream_loadbalances[i];
+		if (h2d_module_command_is_set(&lb->command, conf->lb_confs[i])) {
+			if (conf->loadbalance != NULL) {
+				printf("duplicate loadbalance\n");
+				return false;
+			}
+			conf->loadbalance = lb;
+		}
 	}
+
+	/* default is roundrobing which is the first lb */
+	if (conf->loadbalance == NULL) {
+		conf->loadbalance = h2d_upstream_loadbalances[0];
+	}
+
+	conf->loadbalance->update(conf);
+	return true;
+}
+
+static struct wuy_cflua_command *h2d_upstream_next_command(struct wuy_cflua_command *cmd)
+{
+	int index = 0;
+	if (cmd->type != WUY_CFLUA_TYPE_END || cmd->u.next == NULL) {
+		struct h2d_upstream_loadbalance *lb = wuy_containerof(cmd,
+				struct h2d_upstream_loadbalance, command);
+		index = lb->index + 1;
+	}
+
+	for (; index < h2d_upstream_loadbalance_number; index++) {
+		struct wuy_cflua_command *next = &h2d_upstream_loadbalances[index]->command;
+		if (next->type != WUY_CFLUA_TYPE_END) {
+			return next;
+		}
+	}
+	return NULL;
 }
 
 static bool h2d_upstream_conf_post(void *data)
@@ -597,10 +648,7 @@ static bool h2d_upstream_conf_post(void *data)
 	}
 
 	/* loadbalance */
-	conf->loadbalance = h2d_upstream_conf_loadbalance_select(conf);
-	conf->loadbalance->update(conf);
-
-	return true;
+	return h2d_upstream_conf_loadbalance_select(conf);
 }
 
 int h2d_upstream_conf_stats(void *data, char *buf, int len)
@@ -617,19 +665,6 @@ int h2d_upstream_conf_stats(void *data, char *buf, int len)
 			atomic_load(&stats->pick_fail));
 }
 
-static struct wuy_cflua_command h2d_upstream_hash_commands[] = {
-	{	.type = WUY_CFLUA_TYPE_FUNCTION,
-		.flags = WUY_CFLUA_FLAG_UNIQ_MEMBER,
-		.offset = offsetof(struct h2d_upstream_conf, hash.key),
-	},
-	{	.name = "address_vnodes",
-		.type = WUY_CFLUA_TYPE_INTEGER,
-		.offset = offsetof(struct h2d_upstream_conf, hash.address_vnodes),
-		.default_value.n = 100,
-		.limits.n = WUY_CFLUA_LIMITS_POSITIVE,
-	},
-	{ NULL }
-};
 static struct wuy_cflua_command h2d_upstream_healthcheck_commands[] = {
 	{	.name = "interval",
 		.type = WUY_CFLUA_TYPE_INTEGER,
@@ -717,13 +752,9 @@ static struct wuy_cflua_command h2d_upstream_conf_commands[] = {
 		.type = WUY_CFLUA_TYPE_TABLE,
 		.u.table = &(struct wuy_cflua_table) { h2d_upstream_healthcheck_commands },
 	},
-
-	/* loadbalances */
-	{	.name = "hash",
-		.type = WUY_CFLUA_TYPE_TABLE,
-		.u.table = &(struct wuy_cflua_table) { h2d_upstream_hash_commands },
+	{	.type = WUY_CFLUA_TYPE_END,
+		.u.next = h2d_upstream_next_command,
 	},
-	{ NULL }
 };
 
 struct wuy_cflua_table h2d_upstream_conf_table = {

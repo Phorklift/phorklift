@@ -5,6 +5,17 @@
 #include <netinet/in.h>
 #include <sys/un.h>
 
+/* calculate H2D_UPSTREAM_LOADBALANCE_STATIC_NUMBER in preprocess */
+struct _ups_nonuse {
+	#define X(m) char m;
+	H2D_UPSTREAM_LOADBALANCE_X_LIST
+	#undef X
+};
+#define H2D_UPSTREAM_LOADBALANCE_STATIC_NUMBER (sizeof(struct _ups_nonuse) / sizeof(char))
+
+#define H2D_UPSTREAM_LOADBALANCE_DYNAMIC_MAX	20
+#define H2D_UPSTREAM_LOADBALANCE_MAX		(H2D_MODULE_STATIC_NUMBER + H2D_MODULE_DYNAMIC_MAX)
+
 struct h2d_upstream_stats {
 	atomic_int		total;
 	atomic_int		reuse;
@@ -57,6 +68,8 @@ struct h2d_upstream_hostname {
 
 struct h2d_upstream_loadbalance {
 	const char			*name;
+	int				index;
+	struct wuy_cflua_command	command;
 	void 				(*update)(struct h2d_upstream_conf *);
 	struct h2d_upstream_address *	(*pick)(struct h2d_upstream_conf *, struct h2d_request *);
 };
@@ -102,14 +115,7 @@ struct h2d_upstream_conf {
 
 	/* loadbalances */
 	struct h2d_upstream_loadbalance	*loadbalance;
-	void				*lb_ctx;
-
-	/* configrations of loadbalances
-	 * Add configrations here if you add a new loadbalance. */
-	struct {
-		wuy_cflua_function_t	key;
-		int			address_vnodes;
-	} hash;
+	void				*lb_confs[H2D_UPSTREAM_LOADBALANCE_MAX];
 };
 
 struct h2d_upstream_ctx {
@@ -162,5 +168,6 @@ void h2d_upstream_address_delete(struct h2d_upstream_address *address);
 int h2d_upstream_conf_stats(void *data, char *buf, int len);
 
 void h2d_upstream_init(void);
+void h2d_upstream_worker_init(void);
 
 #endif

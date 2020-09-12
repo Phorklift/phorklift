@@ -60,6 +60,8 @@ struct wuy_cflua_command *h2d_module_next_listen_command(struct wuy_cflua_comman
 struct wuy_cflua_command *h2d_module_next_host_command(struct wuy_cflua_command *cmd);
 struct wuy_cflua_command *h2d_module_next_path_command(struct wuy_cflua_command *cmd);
 
+bool h2d_module_command_is_set(struct wuy_cflua_command *cmd, void *conf);
+
 int h2d_module_path_stats(void **confs, char *buf, int len);
 
 struct h2d_module *h2d_module_content_is_enabled(int i, void *conf);

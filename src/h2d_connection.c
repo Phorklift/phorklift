@@ -200,7 +200,8 @@ static bool h2d_connection_on_accept(loop_tcp_listen_t *loop_listen,
 {
 	struct h2d_conf_listen *conf_listen = loop_tcp_listen_get_app_data(loop_listen);
 
-	if (conf_listen->network.current >= conf_listen->network.connections) {
+	if (conf_listen->network.connections != 0 &&
+			conf_listen->network.current >= conf_listen->network.connections) {
 		if (!h2d_connection_free_idle(conf_listen)) {
 			return false;
 		}
