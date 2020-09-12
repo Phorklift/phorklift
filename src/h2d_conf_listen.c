@@ -17,7 +17,7 @@ struct h2d_conf_host *h2d_conf_listen_search_hostname(
 	}
 
 	if (name == NULL) {
-		return conf_listen->host_default;
+		return conf_listen->host_wildcard;
 	}
 
 	struct h2d_conf_listen_hostname *node = wuy_dict_get(conf_listen->host_dict, name);
@@ -25,7 +25,7 @@ struct h2d_conf_host *h2d_conf_listen_search_hostname(
 		return node->conf_host;
 	}
 
-	return conf_listen->host_default;
+	return conf_listen->host_wildcard;
 }
 
 static bool h2d_conf_listen_add_hostname(struct h2d_conf_listen *conf_listen,
@@ -36,13 +36,13 @@ static bool h2d_conf_listen_add_hostname(struct h2d_conf_listen *conf_listen,
 		return false;
 	}
 
-	/* default hostname */
+	/* wildcard hostname */
 	if (strcmp(name, "*") == 0) {
-		if (conf_listen->host_default != NULL) {
-			printf("duplicate default host\n");
+		if (conf_listen->host_wildcard != NULL) {
+			printf("duplicate wildcard host\n");
 			return false;
 		}
-		conf_listen->host_default = conf_host;
+		conf_listen->host_wildcard = conf_host;
 		return true;
 	}
 
@@ -138,8 +138,8 @@ static bool h2d_conf_listen_post(void *data)
 			return false;
 		}
 
-		if (conf_listen->host_default != NULL) {
-			conf_listen->ssl_ctx = conf_listen->host_default->ssl.ctx;
+		if (conf_listen->host_wildcard != NULL) {
+			conf_listen->ssl_ctx = conf_listen->host_wildcard->ssl.ctx;
 		} else {
 			conf_listen->ssl_ctx = h2d_ssl_ctx_new_server(NULL, NULL);
 		}

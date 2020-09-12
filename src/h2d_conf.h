@@ -46,7 +46,7 @@ struct h2d_conf_listen {
 	struct h2d_conf_host	*default_host;
 
 	wuy_dict_t		*host_dict;
-	struct h2d_conf_host	*host_default;
+	struct h2d_conf_host	*host_wildcard;
 
 	struct {
 		int		idle_timeout;
