@@ -27,7 +27,16 @@ struct h2d_module h2d_cache_module;
 
 #define H2D_CACHE_CTX_HIT ((struct h2d_cache_item *)0x1)
 
-extern struct h2d_request *h2d_lua_current_request;
+static const char *h2d_cache_key(struct h2d_request *r)
+{
+	struct h2d_cache_conf *conf = r->conf_path->module_confs[h2d_cache_module.index];
+
+	if (!wuy_cflua_is_function_set(conf->key)) {
+		return r->req.url;
+	}
+	return h2d_lua_api_call_lstring(r, conf->key, NULL);
+}
+
 static int h2d_cache_process_headers(struct h2d_request *r)
 {
 	struct h2d_cache_conf *conf = r->conf_path->module_confs[h2d_cache_module.index];
@@ -35,22 +44,12 @@ static int h2d_cache_process_headers(struct h2d_request *r)
 		return H2D_OK;
 	}
 
-	struct h2d_cache_item *item;
-	if (wuy_cflua_is_function_set(conf->key)) {
-		item = wuy_dict_get(conf->cache, r->req.url);
-
-	} else {
-		h2d_lua_current_request = r;
-		lua_rawgeti(h2d_L, LUA_REGISTRYINDEX, conf->key);
-		if (lua_pcall(h2d_L, 0, 1, 0) != 0) {
-			printf("lua_pcall fail: %s\n", lua_tostring(h2d_L, -1));
-			lua_pop(h2d_L, 1);
-			return WUY_HTTP_500;
-		}
-		item = wuy_dict_get(conf->cache, lua_tostring(h2d_L, -1));
-		lua_pop(h2d_L, 1);
+	const char *key = h2d_cache_key(r);
+	if (key == NULL) {
+		return H2D_OK;
 	}
 
+	struct h2d_cache_item *item = wuy_dict_get(conf->cache, key);
 	if (item == NULL) {
 		return H2D_OK;
 	}
@@ -82,22 +81,15 @@ static int h2d_cache_response_headers(struct h2d_request *r)
 		return H2D_OK;
 	}
 
-	struct h2d_cache_item *item = malloc(sizeof(struct h2d_cache_item) + r->resp.content_length);
-
-	if (wuy_cflua_is_function_set(conf->key)) {
-		item->key = strdup(r->req.url);
-	} else {
-		h2d_lua_current_request = r;
-		lua_rawgeti(h2d_L, LUA_REGISTRYINDEX, conf->key);
-		if (lua_pcall(h2d_L, 0, 1, 0) != 0) {
-			printf("lua_pcall fail: %s\n", lua_tostring(h2d_L, -1));
-			lua_pop(h2d_L, 1);
-			return WUY_HTTP_500;
-		}
-		item->key = strdup(lua_tostring(h2d_L, -1));
-		lua_pop(h2d_L, 1);
+	const char *key = h2d_cache_key(r);
+	if (key == NULL) {
+		return H2D_OK;
 	}
 
+
+	struct h2d_cache_item *item = malloc(sizeof(struct h2d_cache_item) + r->resp.content_length);
+
+	item->key = strdup(key);
 	item->status_code = r->resp.status_code;
 	item->content_length = r->resp.content_length;
 	wuy_slist_init(&item->headers);

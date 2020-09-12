@@ -78,22 +78,16 @@ static void h2d_upstream_hash_update(struct h2d_upstream_conf *upstream)
 			h2d_upstream_hash_vnode_cmp);
 }
 
-extern struct h2d_request *h2d_lua_current_request;
 static struct h2d_upstream_address *h2d_upstream_hash_pick(
 		struct h2d_upstream_conf *upstream, struct h2d_request *r)
 {
 	struct h2d_upstream_hash_conf *conf = upstream->lb_confs[h2d_upstream_hash.index];
 
-	/* get the hash key */
-	h2d_lua_current_request = r;
-	lua_rawgeti(h2d_L, LUA_REGISTRYINDEX, conf->key);
-	if (lua_pcall(h2d_L, 0, 1, 0) != 0) {
-		printf("lua_pcall fail: %s\n", lua_tostring(h2d_L, -1));
-		lua_pop(h2d_L, 1);
+	size_t key_len;
+	const char *key_str = h2d_lua_api_call_lstring(r, conf->key, &key_len);
+	if (key_str == NULL) {
 		return NULL;
 	}
-	size_t key_len;
-	const char *key_str = lua_tolstring(h2d_L, -1, &key_len);
 
 	/* calculate hash value */
 	union {
@@ -102,10 +96,6 @@ static struct h2d_upstream_address *h2d_upstream_hash_pick(
 	} u;
 	wuy_murmurhash(key_str, key_len, u.out);
 	uint32_t n = u.ret;
-
-	/* pop after calculating, because the returned key_str maybe
-	 * freed by Lua GC in lua_pop() */
-	lua_pop(h2d_L, 1);
 
 	/* pick one address */
 	struct h2d_upstream_hash_vnode *vnode = NULL;

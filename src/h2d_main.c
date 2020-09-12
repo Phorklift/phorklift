@@ -89,7 +89,6 @@ static void h2d_worker_entry(struct h2d_conf_listen **listens)
 	h2d_loop = loop_new();
 
 	h2d_log_init();
-	h2d_upstream_worker_init();
 	h2d_request_init();
 	h2d_module_worker_init();
 
@@ -168,6 +167,8 @@ int main(int argc, char * const *argv)
 	struct h2d_conf_listen **listens = h2d_conf_parse(opt_conf_file);
 
 	h2d_module_master_post();
+
+	h2d_lua_api_init();
 
 	if (opt_worker_num == 0) {
 		h2d_worker_entry(listens);
