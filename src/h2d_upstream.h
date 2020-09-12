@@ -101,6 +101,7 @@ struct h2d_upstream_conf {
 	int				address_num;
 
 	wuy_list_t			down_head;
+	wuy_list_t			deleted_address_defer;
 
 	SSL_CTX				*ssl_ctx;
 
@@ -160,14 +161,8 @@ static inline bool h2d_upstream_connection_write_blocked(struct h2d_upstream_con
 	return loop_stream_is_write_blocked(upc->loop_stream);
 }
 
-void h2d_upstream_address_add(struct h2d_upstream_conf *upstream,
-		struct h2d_upstream_hostname *hostname, struct sockaddr *sockaddr,
-		struct h2d_upstream_address *before);
-void h2d_upstream_address_delete(struct h2d_upstream_address *address);
-
 int h2d_upstream_conf_stats(void *data, char *buf, int len);
 
 void h2d_upstream_init(void);
-void h2d_upstream_worker_init(void);
 
 #endif

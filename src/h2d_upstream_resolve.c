@@ -1,5 +1,69 @@
 #include "h2d_main.h"
 
+static void h2d_upstream_address_defer_free(struct h2d_upstream_conf *upstream)
+{
+	struct h2d_upstream_address *address, *safe;
+	wuy_list_iter_safe_type(&upstream->deleted_address_defer, address, safe, hostname_node) {
+		if (!wuy_list_empty(&address->active_head) || !wuy_list_empty(&address->idle_head)
+				|| wuy_list_node_linked(&address->down_node)) {
+			continue;
+		}
+		wuy_list_delete(&address->hostname_node);
+		free(address);
+	}
+}
+
+static void h2d_upstream_address_delete(struct h2d_upstream_address *address)
+{
+	wuy_list_delete(&address->hostname_node);
+	wuy_list_delete(&address->upstream_node);
+	wuy_list_append(&address->upstream->deleted_address_defer, &address->hostname_node);
+}
+
+static void h2d_upstream_address_add(struct h2d_upstream_conf *upstream,
+		struct h2d_upstream_hostname *hostname, struct sockaddr *sockaddr,
+		struct h2d_upstream_address *before)
+{
+	struct h2d_upstream_address *address = calloc(1, sizeof(struct h2d_upstream_address));
+
+	switch (sockaddr->sa_family) {
+	case AF_INET:
+		address->sockaddr.sin = *((struct sockaddr_in *)sockaddr);
+		if (hostname->port != 0) {
+			address->sockaddr.sin.sin_port = htons(hostname->port);
+		}
+		break;
+
+	case AF_INET6:
+		address->sockaddr.sin6 = *((struct sockaddr_in6 *)sockaddr);
+		if (hostname->port != 0) {
+			address->sockaddr.sin6.sin6_port = htons(hostname->port);
+		}
+		break;
+
+	case AF_UNIX:
+		address->sockaddr.sun = *((struct sockaddr_un *)sockaddr);
+		break;
+
+	default:
+		printf("sa_family: %d\n", sockaddr->sa_family);
+		abort();
+	}
+
+	wuy_list_init(&address->idle_head);
+	wuy_list_init(&address->active_head);
+	address->upstream = upstream;
+	address->weight = hostname->weight;
+
+	if (before != NULL) {
+		wuy_list_add_before(&before->upstream_node, &address->upstream_node);
+		wuy_list_add_before(&before->hostname_node, &address->hostname_node);
+	} else {
+		wuy_list_append(&upstream->address_head, &address->upstream_node);
+		wuy_list_append(&hostname->address_head, &address->hostname_node);
+	}
+}
+
 static void h2d_upstream_resolve_hostname(struct h2d_upstream_conf *upstream)
 {
 	/* pick next hostname */
@@ -142,6 +206,85 @@ void h2d_upstream_resolve(struct h2d_upstream_conf *upstream)
 		return;
 	}
 
+	h2d_upstream_address_defer_free(upstream);
+
 	/* begin the resolve */
 	h2d_upstream_resolve_hostname(upstream);
+}
+
+bool h2d_upstream_conf_resolve_init(struct h2d_upstream_conf *conf)
+{
+	bool need_resolved = false;
+	for (int i = 0; conf->hostnames[i].name != NULL; i++) {
+		struct h2d_upstream_hostname *hostname = &conf->hostnames[i];
+
+		wuy_list_init(&hostname->address_head);
+
+		/* parse weight, marked by # */
+		char *wstr = strchr(hostname->name, '#');
+		if (wstr != NULL) {
+			*wstr++ = '\0';
+			hostname->weight = atof(wstr);
+			if (hostname->weight == 0) {
+				printf("invalid weight of %s %s", hostname->name, wstr);
+				return false;
+			}
+		}
+
+		/* it's static address, no need resolve */
+		struct sockaddr sockaddr;
+		if (wuy_sockaddr_pton(hostname->name, &sockaddr, conf->default_port)) {
+			hostname->need_resolved = false;
+			hostname->port = 0;
+			h2d_upstream_address_add(conf, hostname, &sockaddr, NULL);
+			conf->address_num++;
+			continue;
+		}
+
+		/* it's hostname, resolve it */
+		need_resolved = true;
+		hostname->need_resolved = true;
+		hostname->port = conf->default_port;
+
+		/* parse the port */
+		char *pport = strchr(hostname->name, ':');
+		if (pport != NULL) {
+			hostname->port = atoi(pport + 1);
+			if (hostname->port == 0) {
+				printf("invalid port %s\n", hostname->name);
+				return false;
+			}
+			*pport = '\0';
+		}
+
+		/* resolve the hostname */
+		int length;
+		uint8_t *buffer = h2d_resolver_hostname(hostname->name, &length);
+		if (buffer == NULL) {
+			printf("resolve fail %s\n", hostname->name);
+			return false;
+		}
+
+		uint8_t *p = buffer;
+		while (p < buffer + length) {
+			struct sockaddr *sa = (struct sockaddr *)p;
+			h2d_upstream_address_add(conf, hostname, sa, NULL);
+			p += wuy_sockaddr_size(sa);
+			conf->address_num++;
+		}
+
+		free(buffer);
+	}
+
+	if (conf->address_num == 0) {
+		printf("no address for upstream\n");
+		return false;
+	}
+
+	/* resolve stream */
+	if (need_resolved && conf->resolve_interval > 0) {
+		conf->resolve_last = time(NULL);
+	}
+
+	return true;
 }
