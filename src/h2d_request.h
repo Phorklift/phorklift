@@ -52,6 +52,7 @@ struct h2d_request {
 	bool			is_broken; //TODO may put in h2d_request_run()?
 
 	int			filter_step_process_headers;
+	int			filter_step_process_body;
 
 	struct h2d_request	*father; /* only for subreq */
 	struct h2d_request	*subr; /* only for subreq */
@@ -88,5 +89,38 @@ void h2d_request_active(struct h2d_request *r);
 void h2d_request_init(void);
 
 struct h2d_request *h2d_request_subreq_new(struct h2d_request *father);
+
+/* used only for h2d_request_log and h2d_request_log_at */
+static inline struct h2d_log *h2d_request_get_log(struct h2d_request *r)
+{
+	if (r->conf_path != NULL) {
+		return r->conf_path->error_log;
+	}
+	if (r->conf_host != NULL) {
+		return r->conf_host->default_path->error_log;
+	}
+	return r->c->conf_listen->default_host->default_path->error_log;
+}
+
+#define h2d_request_do_log(log, level, fmt, ...) \
+	if (level >= H2D_LOG_ERROR && r->req.url) { \
+		h2d_log_write(log, level, "%s " fmt, r->req.url, ##__VA_ARGS__); \
+	} else { \
+		h2d_log_write(log, level, fmt, ##__VA_ARGS__); \
+	}
+
+#define h2d_request_log_at(r, log, level2, fmt, ...) \
+	do { \
+		if (level2 < log->level) break; \
+		struct h2d_log *_log = log->file ? log : h2d_request_get_log(r); \
+		h2d_request_do_log(_log, level2, fmt, ##__VA_ARGS__); \
+	} while(0)
+
+#define h2d_request_log(r, level2, fmt, ...) \
+	do { \
+		struct h2d_log *_log = h2d_request_get_log(r); \
+		if (level2 < _log->level) break; \
+		h2d_request_do_log(_log, level2, fmt, ##__VA_ARGS__); \
+	} while(0)
 
 #endif

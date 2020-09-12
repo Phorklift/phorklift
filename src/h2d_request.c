@@ -69,7 +69,7 @@ void h2d_request_close(struct h2d_request *r)
 static int h2d_request_process_headers(struct h2d_request *r)
 {
 	/* locate host */
-	if (r->conf_host == NULL) { /* already set if subrequest */
+	if (r->conf_host == NULL) {
 		const char *host = NULL;
 		struct h2d_header *h;
 		h2d_header_iter(&r->req.headers, h) {
@@ -90,19 +90,23 @@ static int h2d_request_process_headers(struct h2d_request *r)
 		}
 	}
 
+	// h2d_request_log(r, H2D_LOG_DEBUG, "debug only");
+
 	/* locate path */
-	if (r->req.url == NULL) {
-		h2d_log_debug(tmp_log, "no path");
-		return H2D_ERROR;
-	}
-	r->conf_path = h2d_conf_host_search_pathname(r->conf_host, r->req.url);
 	if (r->conf_path == NULL) {
-		h2d_log_debug(tmp_log, "no path matched %s", r->req.url);
-		// return WUY_HTTP_404;
-		return H2D_ERROR;
+		if (r->req.url == NULL) {
+			h2d_log_debug(tmp_log, "no path");
+			return H2D_ERROR;
+		}
+		r->conf_path = h2d_conf_host_search_pathname(r->conf_host, r->req.url);
+		if (r->conf_path == NULL) {
+			h2d_log_debug(tmp_log, "no path matched %s", r->req.url);
+			// return WUY_HTTP_404;
+			return H2D_ERROR;
+		}
 	}
 
-	/* done */
+	/* begin process */
 	int ret = h2d_module_filter_process_headers(r);
 	if (ret != H2D_OK) {
 		return ret;
