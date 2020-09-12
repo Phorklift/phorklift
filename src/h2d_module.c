@@ -18,6 +18,11 @@ static struct h2d_module *h2d_modules[H2D_MODULE_MAX] =
 	#undef X
 };
 
+static struct h2d_module *h2d_module_process_headers[H2D_MODULE_MAX];
+static struct h2d_module *h2d_module_process_body[H2D_MODULE_MAX];
+static struct h2d_module *h2d_module_response_headers[H2D_MODULE_MAX];
+static struct h2d_module *h2d_module_response_body[H2D_MODULE_MAX];
+
 static struct wuy_cflua_command *h2d_module_next_command(struct wuy_cflua_command *cmd, unsigned offset)
 {
 	int index = 0;
@@ -58,6 +63,40 @@ int h2d_module_path_stats(void **confs, char *buf, int len)
 		}
 	}
 	return pos - buf;
+}
+
+static int h2d_module_filter_cmp(const struct h2d_module *ma,
+		const struct h2d_module *mb, double ranka, double rankb)
+{
+	if (ranka == rankb) {
+		return ma->index - mb->index;
+	} else {
+		return ranka < rankb ? -1 : 1;
+	}
+}
+static int h2d_module_cmp_process_headers(const void *a, const void *b)
+{
+	const struct h2d_module *ma = *(const struct h2d_module **)a;
+	const struct h2d_module *mb = *(const struct h2d_module **)b;
+	return h2d_module_filter_cmp(ma, mb, ma->filters.rank_process_headers, mb->filters.rank_process_headers);
+}
+static int h2d_module_cmp_process_body(const void *a, const void *b)
+{
+	const struct h2d_module *ma = *(const struct h2d_module **)a;
+	const struct h2d_module *mb = *(const struct h2d_module **)b;
+	return h2d_module_filter_cmp(ma, mb, ma->filters.rank_process_body, mb->filters.rank_process_body);
+}
+static int h2d_module_cmp_response_headers(const void *a, const void *b)
+{
+	const struct h2d_module *ma = *(const struct h2d_module **)a;
+	const struct h2d_module *mb = *(const struct h2d_module **)b;
+	return h2d_module_filter_cmp(ma, mb, ma->filters.rank_response_headers, mb->filters.rank_response_headers);
+}
+static int h2d_module_cmp_response_body(const void *a, const void *b)
+{
+	const struct h2d_module *ma = *(const struct h2d_module **)a;
+	const struct h2d_module *mb = *(const struct h2d_module **)b;
+	return h2d_module_filter_cmp(ma, mb, ma->filters.rank_response_body, mb->filters.rank_response_body);
 }
 
 static void h2d_module_dynamic_add(const char *dirname, const char *filename)
@@ -112,6 +151,7 @@ void h2d_module_master_init(const char *dynamic_dir)
 	}
 
 	/* init modules */
+	int iph = 0, ipb = 0, irh = 0, irb = 0;
 	for (int i = 0; i < h2d_module_number; i++) {
 		struct h2d_module *m = h2d_modules[i];
 		m->index = i;
@@ -123,11 +163,53 @@ void h2d_module_master_init(const char *dynamic_dir)
 
 		m->command_path.meta_level_offset = offsetof(struct h2d_conf_path, content_meta_levels) + sizeof(int) * i;
 
+		if (m->filters.process_headers) {
+			h2d_module_process_headers[iph++] = m;
+		}
+		if (m->filters.process_body) {
+			h2d_module_process_body[ipb++] = m;
+		}
+		if (m->filters.response_headers) {
+			h2d_module_response_headers[irh++] = m;
+		}
+		if (m->filters.response_body) {
+			h2d_module_response_body[irb++] = m;
+		}
+
 		if (m->master_init != NULL) {
 			m->master_init();
 		}
 	}
+
+	qsort(h2d_module_process_headers, iph, sizeof(struct h2d_module *), h2d_module_cmp_process_headers);
+	qsort(h2d_module_process_body, ipb, sizeof(struct h2d_module *), h2d_module_cmp_process_body);
+	qsort(h2d_module_response_headers, irh, sizeof(struct h2d_module *), h2d_module_cmp_response_headers);
+	qsort(h2d_module_response_body, irb, sizeof(struct h2d_module *), h2d_module_cmp_response_body);
+
+	/* debug log */
+	printf("process_headers: ");
+	for (int i = 0; i < iph; i++) {
+		struct h2d_module *m = h2d_module_process_headers[i];
+		printf("%s(%g) -> ", m->name, m->filters.rank_process_headers);
+	}
+	printf("\nprocess_body: ");
+	for (int i = 0; i < ipb; i++) {
+		struct h2d_module *m = h2d_module_process_body[i];
+		printf("%s(%g) -> ", m->name, m->filters.rank_process_body);
+	}
+	printf("\nresponse_headers: ");
+	for (int i = 0; i < irh; i++) {
+		struct h2d_module *m = h2d_module_response_headers[i];
+		printf("%s(%g) -> ", m->name, m->filters.rank_response_headers);
+	}
+	printf("\nresponse_body: ");
+	for (int i = 0; i < irb; i++) {
+		struct h2d_module *m = h2d_module_response_body[i];
+		printf("%s(%g) -> ", m->name, m->filters.rank_response_body);
+	}
+	printf("\n");
 }
+
 void h2d_module_master_post(void)
 {
 	int i;
@@ -219,61 +301,58 @@ void h2d_module_request_ctx_free(struct h2d_request *r)
 
 int h2d_module_filter_process_headers(struct h2d_request *r)
 {
-	while (r->filter_step_process_headers < h2d_module_number) {
-		struct h2d_module *m = h2d_modules[r->filter_step_process_headers];
-		if (m->filters.process_headers != NULL) {
-			int ret = m->filters.process_headers(r);
-			if (ret != H2D_OK) {
-				return ret;
-			}
+	while (1) {
+		struct h2d_module *m = h2d_module_process_headers[r->filter_step_process_headers];
+		if (m == NULL) {
+			return H2D_OK;
+		}
+		int ret = m->filters.process_headers(r);
+		if (ret != H2D_OK) {
+			return ret;
 		}
 		r->filter_step_process_headers++;
 	}
-
-	return H2D_OK;
 }
 int h2d_module_filter_process_body(struct h2d_request *r)
 {
-	int i;
-	for (i = 0; i < h2d_module_number; i++) {
-		struct h2d_module *m = h2d_modules[i];
-		if (m->filters.process_body != NULL) {
-			int ret = m->filters.process_body(r);
-			if (ret != H2D_OK) {
-				return ret;
-			}
+	while (1) {
+		struct h2d_module *m = h2d_module_process_body[r->filter_step_process_body];
+		if (m == NULL) {
+			return H2D_OK;
 		}
+		int ret = m->filters.process_body(r);
+		if (ret != H2D_OK) {
+			return ret;
+		}
+		r->filter_step_process_body++;
 	}
-
-	return H2D_OK;
 }
 int h2d_module_filter_response_headers(struct h2d_request *r)
 {
-	int i;
-	for (i = 0; i < h2d_module_number; i++) {
-		struct h2d_module *m = h2d_modules[i];
-		if (m->filters.response_headers != NULL) {
-			int ret = m->filters.response_headers(r);
-			if (ret != H2D_OK) {
-				return ret;
-			}
+	int i = 0;
+	while (1) {
+		struct h2d_module *m = h2d_module_response_headers[i++];
+		if (m == NULL) {
+			return H2D_OK;
+		}
+		int ret = m->filters.response_headers(r);
+		if (ret != H2D_OK) {
+			return ret;
 		}
 	}
-
-	return H2D_OK;
 }
 int h2d_module_filter_response_body(struct h2d_request *r, uint8_t *data, int data_len, int buf_len)
 {
-	int i;
-	for (i = 0; i < h2d_module_number; i++) {
-		struct h2d_module *m = h2d_modules[i];
-		if (m->filters.response_body != NULL) {
-			data_len = m->filters.response_body(r, data, data_len, buf_len);
-			if (data_len < 0) {
-				return data_len;
-			}
+	int i = 0;
+	while (1) {
+		struct h2d_module *m = h2d_module_response_body[i++];
+		if (m == NULL) {
+			break;
+		}
+		data_len = m->filters.response_body(r, data, data_len, buf_len);
+		if (data_len < 0) {
+			return data_len;
 		}
 	}
-
 	return data_len;
 }
