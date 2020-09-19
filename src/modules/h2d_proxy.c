@@ -37,6 +37,9 @@ static int h2d_proxy_build_request_headers(struct h2d_request *r, char *buffer)
 
 	pos += sprintf(pos, "%s %s HTTP/1.1\r\n", wuy_http_string_method(r->req.method), r->req.url);
 
+	if (r->req.host != NULL) {
+		pos += sprintf(pos, "Host: %s\r\n", r->req.host);
+	}
 	if (r->req.content_length != H2D_CONTENT_LENGTH_INIT) {
 		pos += sprintf(pos, "Content-Length: %ld\r\n", r->req.content_length);
 	}

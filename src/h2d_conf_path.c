@@ -3,6 +3,9 @@
 static int h2d_conf_path_name(void *data, char *buf, int size)
 {
 	struct h2d_conf_path *conf_path = data;
+	if (conf_path->pathnames == NULL) {
+		return 0;
+	}
 	return snprintf(buf, size, "Path(%s)>", conf_path->pathnames[0]);
 }
 

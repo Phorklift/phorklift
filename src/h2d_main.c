@@ -73,12 +73,11 @@ static void h2d_getopt(int argc, char *const *argv)
 
 loop_t *h2d_loop = NULL;
 
-static int h2d_worker_fds[2];
 static void h2d_signal_worker_quit(int signo)
 {
 	loop_kill(h2d_loop);
 }
-static void h2d_worker_entry(struct h2d_conf_listen **listens)
+static void h2d_worker_entry(struct h2d_conf_listen **listens, int notify_fd)
 {
 	printf("start worker: %d\n", getpid());
 
@@ -95,12 +94,11 @@ static void h2d_worker_entry(struct h2d_conf_listen **listens)
 	h2d_connection_listen(listens);
 
 	/* notify master */
-	char n = 1;
-	if (write(h2d_worker_fds[1], &n, 1) < 0) {
-		perror("fail in notify master");
+	if (notify_fd >= 0) {
+		char n = 1;
+		assert(write(notify_fd, &n, 1));
+		close(notify_fd);
 	}
-	close(h2d_worker_fds[0]);
-	close(h2d_worker_fds[1]);
 
 	/* go to work! */
 	loop_run(h2d_loop);
@@ -124,9 +122,8 @@ static void h2d_signal_dispatch(int signo)
 
 static pid_t h2d_worker_new(struct h2d_conf_listen **listens)
 {
-	if (pipe(h2d_worker_fds) < 0) {
-		return -1;
-	}
+	int notify_fds[2];
+	assert(pipe(notify_fds) == 0);
 
 	pid_t pid = fork();
 	if (pid < 0) {
@@ -134,15 +131,16 @@ static pid_t h2d_worker_new(struct h2d_conf_listen **listens)
 		return -1;
 	}
 	if (pid == 0) {
-		h2d_worker_entry(listens);
+		close(notify_fds[0]);
+		h2d_worker_entry(listens, notify_fds[1]);
 		exit(0);
 	}
 
 	/* wait the notification */
 	char c;
-	int len = read(h2d_worker_fds[0], &c, 1);
-	close(h2d_worker_fds[0]);
-	close(h2d_worker_fds[1]);
+	close(notify_fds[1]);
+	int len = read(notify_fds[0], &c, 1);
+	close(notify_fds[0]);
 	if (len < 1) {
 		return -1;
 	}
@@ -171,7 +169,7 @@ int main(int argc, char * const *argv)
 	h2d_lua_api_init();
 
 	if (opt_worker_num == 0) {
-		h2d_worker_entry(listens);
+		h2d_worker_entry(listens, -1);
 		return 0;
 	}
 
@@ -195,15 +193,14 @@ int main(int argc, char * const *argv)
 
 		if (WIFEXITED(status)) {
 			printf("worker %d exit with %d\n", pid, WEXITSTATUS(status));
-			continue;
+
 		} else if (WIFSIGNALED(status)) {
-			printf("worker %d signal with %d\n", pid, WTERMSIG(status));
+			printf("worker %d is terminated by signal %d\n", pid, WTERMSIG(status));
+			h2d_worker_new(listens);
+
 		} else {
 			printf("worker %d quit!\n", pid);
-			continue;
 		}
-
-		h2d_worker_new(listens);
 	}
 
 	return 0;

@@ -27,6 +27,12 @@ Return: Listen array
 
 --
 H2D_ARRAY_APPEND = {}
+KiB = 1024
+MiB = 1024*1024
+GiB = 1024*1024*1024
+Minute = 60
+Hour = 3600
+Day = 86400
 
 -- input arguments
 local h2d_listen_default, h2d_conf_file = ...
@@ -41,7 +47,7 @@ h2d_listen_default[1] = nil
 h2d_host_default[1] = nil
 
 -- build metatable
-function h2d_build_metatable(t)
+local function h2d_build_metatable(t)
 	for k,v in pairs(t) do
 		if type(v) == "table" and k ~= '__index' then
 			h2d_build_metatable(v)

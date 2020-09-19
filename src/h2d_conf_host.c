@@ -22,6 +22,9 @@ struct h2d_conf_path *h2d_conf_host_search_pathname(
 static int h2d_conf_host_name(void *data, char *buf, int size)
 {
 	struct h2d_conf_host *conf_host = data;
+	if (conf_host->hostnames == NULL) {
+		return 0;
+	}
 	return snprintf(buf, size, "Host(%s)>", conf_host->hostnames[0]);
 }
 

@@ -46,13 +46,18 @@ static int h2d_static_generate_response_headers(struct h2d_request *r)
 		}
 	}
 
-	h2d_request_log_at(r, conf->log, H2D_LOG_DEBUG, "open file %s", r->req.url);
+	const char *filename = r->req.uri.path + 1;
+	if (filename[0] == '\0') {
+		// TODO /index.html
+	}
 
-	int fd = openat(conf->dirfd, r->req.url + 1, O_RDONLY);
+	h2d_request_log_at(r, conf->log, H2D_LOG_DEBUG, "open file %s", filename);
+
+	int fd = openat(conf->dirfd, filename, O_RDONLY);
 	if (fd < 0) {
 		atomic_fetch_add(&conf->stats->ret404, 1);
 		h2d_request_log_at(r, conf->log, H2D_LOG_INFO, "error to open file %s %s",
-				r->req.url, strerror(errno));
+				filename, strerror(errno));
 		return WUY_HTTP_404;
 	}
 

@@ -195,7 +195,7 @@ static bool h2d_log_conf_post(void *data)
 	}
 
 	if (log->conf_filename == NULL) {
-		log->conf_filename = "derror.log";
+		log->conf_filename = "error.log";
 	}
 
 	/* search file */
