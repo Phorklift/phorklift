@@ -119,6 +119,19 @@ static int h2d_lua_api_sleep(lua_State *L)
 	return lua_yield(L, 0);
 }
 
+static int h2d_lua_api_uri_raw(lua_State *L)
+{
+	struct h2d_request *r = h2d_lua_api_current_request;
+	lua_pushstring(L, r->req.uri.raw);
+	return 1;
+}
+static int h2d_lua_api_uri_path(lua_State *L)
+{
+	struct h2d_request *r = h2d_lua_api_current_request;
+	lua_pushstring(L, r->req.uri.path);
+	return 1;
+}
+
 static int h2d_lua_api_url(lua_State *L)
 {
 	struct h2d_request *r = h2d_lua_api_current_request;
@@ -183,6 +196,8 @@ static int h2d_lua_api_subrequest(lua_State *L)
 
 static const struct luaL_Reg h2d_lua_api_list [] = {
 	{ "url", h2d_lua_api_url },
+	{ "uri_raw", h2d_lua_api_uri_raw},
+	{ "uri_path", h2d_lua_api_uri_path },
 	{ "headers", h2d_lua_api_headers },
 	{ "sleep", h2d_lua_api_sleep },
 	{ "subrequest", h2d_lua_api_subrequest },

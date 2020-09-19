@@ -18,7 +18,9 @@ static int h2d_http1_request_headers(struct h2d_request *r, const char *buffer, 
 			return H2D_AGAIN;
 		}
 
-		r->req.url = strndup(url_str, url_len);
+		if (!h2d_request_set_uri(r, url_str, url_len)) {
+			return H2D_ERROR;
+		}
 
 		buf_pos += proc_len;
 	}
@@ -46,6 +48,12 @@ static int h2d_http1_request_headers(struct h2d_request *r, const char *buffer, 
 		/* handle some */
 		if (memcmp(name_str, "Content-Length", 14) == 0) {
 			r->req.content_length = atoi(value_str);
+			continue;
+		}
+		if (memcmp(name_str, "Host", 4) == 0) {
+			if (!h2d_request_set_host(r, value_str, value_len)) {
+				return H2D_ERROR;
+			}
 			continue;
 		}
 		if (memcmp(name_str, "Connection", 10) == 0) {

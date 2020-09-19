@@ -44,11 +44,9 @@ static bool h2d_http2_hook_stream_header(http2_stream_t *h2s, const char *name_s
 	/* parse this one header */
 	if (name_str[0] == ':') {
 		if (h2d_litestr_equal(name_str, name_len, ":path")) {
-			r->req.url = strndup(value_str, value_len);
-			return true;
+			return h2d_request_set_uri(r, value_str, value_len);
 		} else if (h2d_litestr_equal(name_str, name_len, ":authority")) {
-			name_str = "Host";
-			name_len = 4;
+			return h2d_request_set_host(r, value_str, value_len);
 		} else if (h2d_litestr_equal(name_str, name_len, ":scheme")) {
 			return true;
 		} else if (h2d_litestr_equal(name_str, name_len, ":method")) {

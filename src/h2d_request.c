@@ -61,25 +61,73 @@ void h2d_request_close(struct h2d_request *r)
 
 	h2d_header_free_list(&r->req.headers);
 	h2d_header_free_list(&r->resp.headers);
+	free((void *)r->req.uri.raw);
+	free((void *)r->req.uri.path);
+	free((void *)r->req.host);
 	free(r->req.body_buf);
 	free(r);
+}
+
+bool h2d_request_set_host(struct h2d_request *r, const char *host_str, int host_len)
+{
+	if (r->req.host != NULL) {
+		if (strncasecmp(r->req.host, host_str, host_len) != 0) {
+			return false;
+		}
+		return true;
+	}
+
+	r->req.host = strndup(host_str, host_len);
+	// TODO set lower case
+	return true;
+}
+
+bool h2d_request_set_uri(struct h2d_request *r, const char *uri_str, int uri_len)
+{
+	r->req.uri.raw = strndup(uri_str, uri_len);
+
+	/* parse uri into host:path:query:fragment */
+	const char *host, *fragment;
+	int path_len = wuy_http_uri(r->req.uri.raw, uri_len, &host,
+			&r->req.uri.path_pos, &r->req.uri.query_pos, &fragment);
+	if (path_len < 0) {
+		printf("invalid request uri !!!!\n");
+		return false;
+	}
+
+	r->req.uri.path_len = path_len;
+
+	if (r->req.uri.query_pos != NULL) {
+		r->req.uri.query_len = (fragment ? fragment : uri_str+uri_len)
+				- r->req.uri.query_pos;
+	}
+
+	if (host != NULL) {
+		if (!h2d_request_set_host(r, host, r->req.uri.path_pos - host)) {
+			return false;
+		}
+	}
+
+	/* decode path */
+	char *decode = malloc(path_len + 1);
+	path_len = wuy_http_decode_path(decode, r->req.uri.path_pos, path_len);
+	if (path_len < 0) {
+		free(decode);
+		printf("invalid request uri path!!!!\n");
+		return false;
+	}
+
+	r->req.uri.path = decode;
+
+	r->req.url = r->req.uri.raw; // tmp
+	return true;
 }
 
 static int h2d_request_process_headers(struct h2d_request *r)
 {
 	/* locate host */
 	if (r->conf_host == NULL) {
-		const char *host = NULL;
-		struct h2d_header *h;
-		h2d_header_iter(&r->req.headers, h) {
-			if (strcmp(h->str, "Host") == 0) {
-				r->req.host = h;
-				host = h2d_header_value(h);
-				break;
-			}
-		}
-
-		r->conf_host = h2d_conf_listen_search_hostname(r->c->conf_listen, host);
+		r->conf_host = h2d_conf_listen_search_hostname(r->c->conf_listen, r->req.host);
 		if (r->conf_host == NULL) {
 			h2d_request_log(r, H2D_LOG_DEBUG, "invalid host");
 			return H2D_ERROR;

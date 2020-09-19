@@ -14,11 +14,22 @@ struct h2d_request {
 	struct {
 		enum wuy_http_method	method;
 		int			version;
-		char			*url;
 		size_t			content_length;
 
+		struct {
+			const char	*raw;
+			const char	*path;
+
+			const char	*path_pos;
+			const char	*query_pos;
+			int		path_len;
+			int		query_len;
+		} uri;
+
+		const char *url; // tmp
+
+		const char		*host;
 		wuy_slist_t		headers;
-		struct h2d_header	*host;
 
 		wuy_http_chunked_t	chunked;
 
@@ -75,6 +86,9 @@ struct h2d_request {
 
 struct h2d_request *h2d_request_new(struct h2d_connection *c);
 void h2d_request_close(struct h2d_request *r);
+
+bool h2d_request_set_uri(struct h2d_request *r, const char *uri_str, int uri_len);
+bool h2d_request_set_host(struct h2d_request *r, const char *host_str, int host_len);
 
 void h2d_request_reset_response(struct h2d_request *r);
 
