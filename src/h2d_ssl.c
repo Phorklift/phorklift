@@ -12,11 +12,14 @@ struct h2d_ssl_ticket_secret {
 	uint8_t		hmac_key[16];
 };
 
+#define H2D_SSL_EX_DATA			0
+#define H2D_SSL_CTX_EX_TICKET_SECRET	0
+#define H2D_SSL_CTX_EX_STATS		1
+
 static struct h2d_ssl_stats *h2d_ssl_get_stats(SSL *ssl)
 {
 	SSL_CTX *ssl_ctx = SSL_get_SSL_CTX(ssl);
-	struct h2d_ssl_conf *conf = SSL_CTX_get_app_data(ssl_ctx);
-	return conf->stats;
+	return SSL_CTX_get_ex_data(ssl_ctx, H2D_SSL_CTX_EX_STATS);
 }
 
 static int h2d_ssl_alpn_callback(SSL *ssl, const unsigned char **out,
@@ -36,7 +39,7 @@ static int h2d_ssl_alpn_callback(SSL *ssl, const unsigned char **out,
 
 	if (*outlen == 2 && (*out)[0] == 'h' && (*out)[1] == '2') {
 		atomic_fetch_add(&stats->alpn_h2, 1);
-		h2d_http2_connection_init(SSL_get_ex_data(ssl, 0));
+		h2d_http2_connection_init(SSL_get_ex_data(ssl, H2D_SSL_EX_DATA));
 	} else {
 		atomic_fetch_add(&stats->alpn_miss, 1);
 	}
@@ -53,7 +56,7 @@ static int h2d_ssl_sni_callback(SSL *ssl, int *ad, void *arg)
 		return SSL_TLSEXT_ERR_OK;
 	}
 
-	struct h2d_connection *c = SSL_get_ex_data(ssl, 0);
+	struct h2d_connection *c = SSL_get_ex_data(ssl, H2D_SSL_EX_DATA);
 	c->ssl_sni_conf_host = h2d_conf_listen_search_hostname(c->conf_listen, name);
 	if (c->ssl_sni_conf_host == NULL) {
 		printf("ssl SNI fail\n");
@@ -77,7 +80,8 @@ static int h2d_ssl_ticket_callback(SSL *ssl, unsigned char *name,
 	struct h2d_ssl_stats *stats = h2d_ssl_get_stats(ssl);
 
 	SSL_CTX *ssl_ctx = SSL_get_SSL_CTX(ssl);
-	struct h2d_ssl_ticket_secret *secret = SSL_CTX_get_app_data(ssl_ctx);
+	struct h2d_ssl_ticket_secret *secret = SSL_CTX_get_ex_data(ssl_ctx,
+			H2D_SSL_CTX_EX_TICKET_SECRET);
 
 	const EVP_MD *digest = EVP_sha256();
 	const EVP_CIPHER *cipher = EVP_aes_128_cbc();
@@ -164,8 +168,8 @@ static SSL_CTX *h2d_ssl_ctx_new_server(const char *cert_fname, const char *pkey_
 			return NULL;
 		}
 	}
-	SSL_CTX_set_app_data(ctx, secret);
 	SSL_CTX_set_tlsext_ticket_key_cb(ctx, h2d_ssl_ticket_callback);
+	SSL_CTX_set_ex_data(ctx, H2D_SSL_CTX_EX_TICKET_SECRET, secret);
 
 	return ctx;
 }
@@ -184,7 +188,8 @@ void h2d_ssl_stream_set(loop_stream_t *s, SSL_CTX *ctx, bool is_server)
 	SSL_set_fd(ssl, loop_stream_fd(s));
 	if (is_server) {
 		SSL_set_accept_state(ssl);
-		SSL_set_ex_data(ssl, 0, loop_stream_get_app_data(s));
+		struct h2d_connection *c = loop_stream_get_app_data(s);
+		SSL_set_ex_data(ssl, H2D_SSL_EX_DATA, c);
 	} else {
 		SSL_set_connect_state(ssl);
 	}
@@ -291,6 +296,7 @@ static bool h2d_ssl_conf_post(void *data)
 	}
 
 	conf->stats = wuy_shmem_alloc(sizeof(struct h2d_ssl_stats));
+	SSL_CTX_set_ex_data(conf->ctx, H2D_SSL_CTX_EX_STATS, conf->stats);
 
 	return true;
 }
