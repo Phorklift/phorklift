@@ -36,41 +36,8 @@ static bool h2d_conf_host_post(void *data)
 		return false;
 	}
 
-	/* ssl */
-	const char *cert = conf_host->ssl.certificate;
-	const char *pkey = conf_host->ssl.private_key;
-	if (cert != NULL || pkey != NULL) {
-		conf_host->ssl.ctx = h2d_ssl_ctx_new_server(cert, pkey);
-		if (conf_host->ssl.ctx == NULL) {
-			printf("fail in load certificate or private_key: %s %s\n", cert, pkey);
-			return false;
-		}
-	}
-
 	return true;
 }
-
-static struct wuy_cflua_command h2d_conf_host_ssl_commands[] = {
-	{	.name = "certificate",
-		.type = WUY_CFLUA_TYPE_STRING,
-		.offset = offsetof(struct h2d_conf_host, ssl.certificate),
-	},
-	{	.name = "private_key",
-		.type = WUY_CFLUA_TYPE_STRING,
-		.offset = offsetof(struct h2d_conf_host, ssl.private_key),
-	},
-	{	.name = "ticket_secret",
-		.type = WUY_CFLUA_TYPE_STRING,
-		.offset = offsetof(struct h2d_conf_host, ssl.ticket_secret),
-	},
-	{	.name = "ticket_timeout",
-		.type = WUY_CFLUA_TYPE_INTEGER,
-		.offset = offsetof(struct h2d_conf_host, ssl.ticket_timeout),
-		.default_value.n = 86400,
-		.limits.n = WUY_CFLUA_LIMITS_NON_NEGATIVE,
-	},
-	{ NULL }
-};
 
 static struct wuy_cflua_command h2d_conf_host_commands[] = {
 	{	.name = "_hostnames",
@@ -89,7 +56,8 @@ static struct wuy_cflua_command h2d_conf_host_commands[] = {
 	},
 	{	.name = "ssl",
 		.type = WUY_CFLUA_TYPE_TABLE,
-		.u.table = &(struct wuy_cflua_table) { h2d_conf_host_ssl_commands },
+		.offset = offsetof(struct h2d_conf_host, ssl),
+		.u.table = &h2d_ssl_conf_table,
 	},
 	{	.type = WUY_CFLUA_TYPE_END,
 		.u.next = h2d_module_next_host_command,

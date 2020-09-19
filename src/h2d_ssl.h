@@ -3,7 +3,30 @@
 
 #include <openssl/ossl_typ.h>
 
-SSL_CTX *h2d_ssl_ctx_new_server(const char *cert_fname, const char *pkey_fname);
+struct h2d_ssl_stats {
+	atomic_int	total;
+	atomic_int	alpn_h2;
+	atomic_int	alpn_miss;
+	atomic_int	alpn_fail;
+	atomic_int	sni_ok;
+	atomic_int	sni_miss;
+	atomic_int	ticket_sign;
+	atomic_int	ticket_reuse;
+};
+struct h2d_ssl_conf {
+	const char	*certificate;
+	const char	*private_key;
+	const char	*ticket_secret;
+	const char	*ciphers;
+
+	SSL_CTX		*ctx;
+
+	struct h2d_ssl_stats	*stats;
+};
+
+extern struct wuy_cflua_table h2d_ssl_conf_table;
+
+SSL_CTX *h2d_ssl_ctx_empty_server(void);
 SSL_CTX *h2d_ssl_ctx_new_client(void);
 
 void h2d_ssl_stream_set(loop_stream_t *s, SSL_CTX *ctx, bool is_server);

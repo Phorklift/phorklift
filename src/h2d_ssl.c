@@ -1,24 +1,44 @@
 #include <openssl/ssl.h>
 #include <openssl/x509.h>
 #include <openssl/pem.h>
+#include <openssl/rand.h>
 #include <openssl/err.h>
 
 #include "h2d_main.h"
+
+struct h2d_ssl_ticket_secret {
+	uint8_t		name[16];
+	uint8_t		aes_key[16];
+	uint8_t		hmac_key[16];
+};
+
+static struct h2d_ssl_stats *h2d_ssl_get_stats(SSL *ssl)
+{
+	SSL_CTX *ssl_ctx = SSL_get_SSL_CTX(ssl);
+	struct h2d_ssl_conf *conf = SSL_CTX_get_app_data(ssl_ctx);
+	return conf->stats;
+}
 
 static int h2d_ssl_alpn_callback(SSL *ssl, const unsigned char **out,
 		unsigned char *outlen, const unsigned char *in,
 		unsigned int inlen, void *arg)
 {
+	struct h2d_ssl_stats *stats = h2d_ssl_get_stats(ssl);
+
 #define ALPN_ADVERTISE       (unsigned char *)"\x02h2\x08http/1.1"
 	int ret = SSL_select_next_proto((unsigned char **)out, outlen, ALPN_ADVERTISE,
 			sizeof(ALPN_ADVERTISE) - 1, in, inlen);
 	if (ret != OPENSSL_NPN_NEGOTIATED) {
 		printf("ssl NPN fail\n");
+		atomic_fetch_add(&stats->alpn_fail, 1);
 		return SSL_TLSEXT_ERR_NOACK;
 	}
 
 	if (*outlen == 2 && (*out)[0] == 'h' && (*out)[1] == '2') {
+		atomic_fetch_add(&stats->alpn_h2, 1);
 		h2d_http2_connection_init(SSL_get_ex_data(ssl, 0));
+	} else {
+		atomic_fetch_add(&stats->alpn_miss, 1);
 	}
 
 	return SSL_TLSEXT_ERR_OK;
@@ -26,6 +46,8 @@ static int h2d_ssl_alpn_callback(SSL *ssl, const unsigned char **out,
 
 static int h2d_ssl_sni_callback(SSL *ssl, int *ad, void *arg)
 {
+	struct h2d_ssl_stats *stats = h2d_ssl_get_stats(ssl);
+
 	const char *name = SSL_get_servername(ssl, TLSEXT_NAMETYPE_host_name);
 	if (name == NULL) {
 		return SSL_TLSEXT_ERR_OK;
@@ -35,32 +57,115 @@ static int h2d_ssl_sni_callback(SSL *ssl, int *ad, void *arg)
 	c->ssl_sni_conf_host = h2d_conf_listen_search_hostname(c->conf_listen, name);
 	if (c->ssl_sni_conf_host == NULL) {
 		printf("ssl SNI fail\n");
+		atomic_fetch_add(&stats->sni_miss, 1);
 		*ad = SSL_AD_INTERNAL_ERROR;
 		return SSL_TLSEXT_ERR_ALERT_FATAL;
 	}
 
-	if (c->ssl_sni_conf_host->ssl.ctx != c->conf_listen->ssl_ctx) {
+	atomic_fetch_add(&stats->sni_ok, 1);
+	if (c->ssl_sni_conf_host->ssl->ctx != c->conf_listen->ssl_ctx) {
 		// SSL_set_ssl_ctx(ssl, c->ssl_sni_conf_host->ssl.ctx);
 	}
 
 	return SSL_TLSEXT_ERR_OK;
 }
 
-SSL_CTX *h2d_ssl_ctx_new_server(const char *cert_fname, const char *pkey_fname)
+static int h2d_ssl_ticket_callback(SSL *ssl, unsigned char *name,
+		unsigned char *iv, EVP_CIPHER_CTX *ectx,
+		HMAC_CTX *hctx, int enc)
+{
+	struct h2d_ssl_stats *stats = h2d_ssl_get_stats(ssl);
+
+	SSL_CTX *ssl_ctx = SSL_get_SSL_CTX(ssl);
+	struct h2d_ssl_ticket_secret *secret = SSL_CTX_get_app_data(ssl_ctx);
+
+	const EVP_MD *digest = EVP_sha256();
+	const EVP_CIPHER *cipher = EVP_aes_128_cbc();
+
+	if (enc == 1) { /* encrypt session ticket */
+		if (RAND_bytes(iv, EVP_CIPHER_iv_length(cipher)) != 1) {
+			return -1;
+		}
+		if (EVP_EncryptInit_ex(ectx, cipher, NULL, secret->aes_key, iv) != 1) {
+			return -1;
+		}
+		if (HMAC_Init_ex(hctx, secret->hmac_key, 16, digest, NULL) != 1) {
+			return -1;
+		}
+		atomic_fetch_add(&stats->ticket_sign, 1);
+		memcpy(name, secret->name, 16);
+		return 1;
+
+	} else {
+		if (memcmp(name, secret->name, 16) != 0) {
+			return -1;
+		}
+		if (HMAC_Init_ex(hctx, secret->hmac_key, 16, digest, NULL) != 1) {
+			return -1;
+		}
+		if (EVP_DecryptInit_ex(ectx, cipher, NULL, secret->aes_key, iv) != 1) {
+			return -1;
+		}
+		atomic_fetch_add(&stats->ticket_reuse, 1);
+		return 1; /* TODO: renew? */;
+	}
+}
+
+static SSL_CTX *h2d_ssl_new_empty_server_ctx(void)
 {
 	SSL_CTX *ctx = SSL_CTX_new(SSLv23_server_method());
 	SSL_CTX_set_ecdh_auto(ctx, 1);
 	SSL_CTX_set_alpn_select_cb(ctx, h2d_ssl_alpn_callback, NULL);
 	SSL_CTX_set_tlsext_servername_callback(ctx, h2d_ssl_sni_callback);
+	return ctx;
+}
 
-	if (cert_fname != NULL) {
-		if (SSL_CTX_use_certificate_chain_file(ctx, cert_fname) != 1) {
+SSL_CTX *h2d_ssl_ctx_empty_server(void)
+{
+	static SSL_CTX *empty = NULL;
+	if (empty == NULL) {
+		empty = h2d_ssl_new_empty_server_ctx();
+	}
+	return empty;
+}
+
+static SSL_CTX *h2d_ssl_ctx_new_server(const char *cert_fname, const char *pkey_fname,
+		const char *ticket_secret_fname, const char *cipher)
+{
+	SSL_CTX *ctx = h2d_ssl_new_empty_server_ctx();
+
+	if (SSL_CTX_use_certificate_chain_file(ctx, cert_fname) != 1) {
+		printf("fail in load certificate: %s\n", cert_fname);
+		return NULL;
+	}
+	if (SSL_CTX_use_PrivateKey_file(ctx, pkey_fname, SSL_FILETYPE_PEM) != 1) {
+		printf("fail in load private_key: %s\n", pkey_fname);
+		return NULL;
+	}
+
+#define H2D_SECRET_SIZE sizeof(struct h2d_ssl_ticket_secret)
+	struct h2d_ssl_ticket_secret *secret = malloc(H2D_SECRET_SIZE + 1);
+	if (ticket_secret_fname != NULL) {
+		FILE *fp = fopen(ticket_secret_fname, "r");
+		if (fp == NULL) {
+			printf("fail in open ticket_secret file: %s\n", ticket_secret_fname);
 			return NULL;
 		}
-		if (SSL_CTX_use_PrivateKey_file(ctx, pkey_fname, SSL_FILETYPE_PEM) != 1) {
+
+		size_t len = fread(secret, H2D_SECRET_SIZE + 1, 1, fp);
+		if (len != H2D_SECRET_SIZE) {
+			printf("fail in load ticket_secret: %ld\n", len);
+			return NULL;
+		}
+		fclose(fp);
+	} else {
+		if (!RAND_bytes((unsigned char *)secret, H2D_SECRET_SIZE)) {
+			printf("fail in generate random ticket_secret\n");
 			return NULL;
 		}
 	}
+	SSL_CTX_set_app_data(ctx, secret);
+	SSL_CTX_set_tlsext_ticket_key_cb(ctx, h2d_ssl_ticket_callback);
 
 	return ctx;
 }
@@ -159,3 +264,68 @@ void h2d_ssl_init(void)
 	SSL_load_error_strings();
 	OpenSSL_add_ssl_algorithms();
 }
+
+
+/* configuration */
+
+static bool h2d_ssl_conf_post(void *data)
+{
+	struct h2d_ssl_conf *conf = data;
+
+	if (conf->certificate == NULL) {
+		if (conf->private_key != NULL) {
+			printf("ssl certificate miss.\n");
+			return false;
+		}
+		return true;
+	}
+	if (conf->private_key == NULL) {
+		printf("ssl private_key miss.\n");
+		return false;
+	}
+
+	conf->ctx = h2d_ssl_ctx_new_server(conf->certificate, conf->private_key,
+			conf->ticket_secret, conf->ciphers);
+	if (conf->ctx == NULL) {
+		return false;
+	}
+
+	conf->stats = wuy_shmem_alloc(sizeof(struct h2d_ssl_stats));
+
+	return true;
+}
+
+static struct wuy_cflua_command h2d_ssl_conf_commands[] = {
+	{	.name = "certificate",
+		.type = WUY_CFLUA_TYPE_STRING,
+		.offset = offsetof(struct h2d_ssl_conf, certificate),
+	},
+	{	.name = "private_key",
+		.type = WUY_CFLUA_TYPE_STRING,
+		.offset = offsetof(struct h2d_ssl_conf, private_key),
+	},
+	{	.name = "ciphers",
+		.type = WUY_CFLUA_TYPE_STRING,
+		.offset = offsetof(struct h2d_ssl_conf, ciphers),
+		.default_value.s = "HIGH", // TODO
+	},
+	{	.name = "ticket_secret",
+		.type = WUY_CFLUA_TYPE_STRING,
+		.offset = offsetof(struct h2d_ssl_conf, ticket_secret),
+	},
+	/*
+	{	.name = "ticket_timeout",
+		.type = WUY_CFLUA_TYPE_INTEGER,
+		.offset = offsetof(struct h2d_ssl_conf, ticket_timeout),
+		.default_value.n = 86400,
+		.limits.n = WUY_CFLUA_LIMITS_NON_NEGATIVE,
+	},
+	*/
+	{ NULL }
+};
+
+struct wuy_cflua_table h2d_ssl_conf_table = {
+	.commands = h2d_ssl_conf_commands,
+	.size = sizeof(struct h2d_ssl_conf),
+	.post = h2d_ssl_conf_post,
+};

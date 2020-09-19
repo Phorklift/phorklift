@@ -26,13 +26,7 @@ struct h2d_conf_host {
 	struct h2d_conf_path	**paths;
 	struct h2d_conf_path	*default_path;
 
-	struct {
-		SSL_CTX		*ctx;
-		const char	*certificate;
-		const char	*private_key;
-		const char	*ticket_secret;
-		int		ticket_timeout;
-	} ssl;
+	struct h2d_ssl_conf	*ssl;
 
 	void			*module_confs[H2D_MODULE_MAX];
 };

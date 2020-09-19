@@ -124,7 +124,7 @@ static bool h2d_conf_listen_post(void *data)
 			}
 		}
 
-		if (conf_host->ssl.ctx != NULL) {
+		if (conf_host->ssl->ctx != NULL) {
 			is_ssl = true;
 		} else {
 			is_plain = true;
@@ -138,10 +138,12 @@ static bool h2d_conf_listen_post(void *data)
 			return false;
 		}
 
-		if (conf_listen->host_wildcard != NULL) {
-			conf_listen->ssl_ctx = conf_listen->host_wildcard->ssl.ctx;
+		if (conf_listen->default_host->ssl->ctx != NULL) {
+			conf_listen->ssl_ctx = conf_listen->default_host->ssl->ctx;
+		} else if (conf_listen->host_wildcard != NULL) {
+			conf_listen->ssl_ctx = conf_listen->host_wildcard->ssl->ctx;
 		} else {
-			conf_listen->ssl_ctx = h2d_ssl_ctx_new_server(NULL, NULL);
+			conf_listen->ssl_ctx = h2d_ssl_ctx_empty_server();
 		}
 	}
 
