@@ -22,6 +22,10 @@ void h2d_connection_close(struct h2d_connection *c)
 		h2d_request_close(c->u.request);
 	}
 
+	if (c->loop_stream == NULL) {
+		goto skip_subr;
+	}
+
 	if (c->send_buffer != NULL) {
 		loop_stream_write(c->loop_stream, c->send_buffer,
 				c->send_buf_pos - c->send_buffer);
@@ -32,6 +36,7 @@ void h2d_connection_close(struct h2d_connection *c)
 	loop_group_timer_node_delete(c->recv_timer);
 	loop_group_timer_node_delete(c->send_timer);
 
+skip_subr:
 	h2d_connection_put_defer(c);
 }
 

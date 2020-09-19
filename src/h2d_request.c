@@ -2,8 +2,6 @@
 
 static WUY_LIST(h2d_request_defer_run_list);
 
-static struct h2d_log *tmp_log;
-
 struct h2d_request *h2d_request_new(struct h2d_connection *c)
 {
 	struct h2d_request *r = calloc(1, sizeof(struct h2d_request)
@@ -14,6 +12,7 @@ struct h2d_request *h2d_request_new(struct h2d_connection *c)
 
 	wuy_slist_init(&r->req.headers);
 	wuy_slist_init(&r->resp.headers);
+	wuy_list_init(&r->subr_head);
 	r->resp.content_length = H2D_CONTENT_LENGTH_INIT;
 
 	r->c = c;
@@ -36,7 +35,7 @@ void h2d_request_close(struct h2d_request *r)
 {
 	if (h2d_request_is_subreq(r) && !r->father->closed) {
 		/* father should close me */
-		h2d_log_debug(tmp_log, "sub wake up father: %p -> %p", r, r->father);
+		h2d_request_log(r, H2D_LOG_DEBUG, "sub wake up father: %p -> %p", r, r->father);
 		h2d_request_active(r->father);
 		return;
 	}
@@ -46,10 +45,10 @@ void h2d_request_close(struct h2d_request *r)
 	}
 	r->closed = true;
 
-	h2d_log_debug(tmp_log, "request done: %s", r->req.url);
+	h2d_request_log(r, H2D_LOG_DEBUG, "request done: %s", r->req.url);
 
-	if (r->subr != NULL) {
-		h2d_log_debug(tmp_log, "!!!!!!!!! subrequest %p subr:%p", r, r->subr);
+	if (!wuy_list_empty(&r->subr_head)) {
+		h2d_request_log(r, H2D_LOG_DEBUG, "!!!!!!!!! subruest %p", r);
 	}
 
 	if (r->h2s != NULL) { /* HTTP/2 */
@@ -82,11 +81,11 @@ static int h2d_request_process_headers(struct h2d_request *r)
 
 		r->conf_host = h2d_conf_listen_search_hostname(r->c->conf_listen, host);
 		if (r->conf_host == NULL) {
-			h2d_log_debug(tmp_log, "invalid host");
+			h2d_request_log(r, H2D_LOG_DEBUG, "invalid host");
 			return H2D_ERROR;
 		}
 		if (r->c->ssl_sni_conf_host != NULL && r->conf_host != r->c->ssl_sni_conf_host) {
-			h2d_log_debug(tmp_log, "wanring: ssl_sni_conf_host not match");
+			h2d_request_log(r, H2D_LOG_DEBUG, "wanring: ssl_sni_conf_host not match");
 		}
 	}
 
@@ -95,12 +94,12 @@ static int h2d_request_process_headers(struct h2d_request *r)
 	/* locate path */
 	if (r->conf_path == NULL) {
 		if (r->req.url == NULL) {
-			h2d_log_debug(tmp_log, "no path");
+			h2d_request_log(r, H2D_LOG_DEBUG, "no path");
 			return H2D_ERROR;
 		}
 		r->conf_path = h2d_conf_host_search_pathname(r->conf_host, r->req.url);
 		if (r->conf_path == NULL) {
-			h2d_log_debug(tmp_log, "no path matched %s", r->req.url);
+			h2d_request_log(r, H2D_LOG_DEBUG, "no path matched %s", r->req.url);
 			// return WUY_HTTP_404;
 			return H2D_ERROR;
 		}
@@ -184,7 +183,7 @@ static int h2d_request_response_headers(struct h2d_request *r)
 	}
 
 	if (h2d_request_is_subreq(r)) {
-		/* subrequest does not send response headers out */
+		/* subruest does not send response headers out */
 		return H2D_OK;
 	}
 
@@ -275,7 +274,7 @@ void h2d_request_run(struct h2d_request *r, int window)
 		return;
 	}
 
-	h2d_log_debug(tmp_log, "{{{ h2d_request_run %d %p %s", r->state, r, r->req.url);
+	h2d_request_log(r, H2D_LOG_DEBUG, "{{{ h2d_request_run %d %p %s", r->state, r, r->req.url);
 
 	int ret;
 	switch (r->state) {
@@ -300,14 +299,14 @@ void h2d_request_run(struct h2d_request *r, int window)
 		abort();
 	}
 
-	h2d_log_debug(tmp_log, "}}} %p: state:%d ret:%d", r, r->state, ret);
+	h2d_request_log(r, H2D_LOG_DEBUG, "}}} %p: state:%d ret:%d", r, r->state, ret);
 
 	if (ret == H2D_AGAIN) {
 		return;
 	}
 	if (ret == H2D_ERROR) {
 		if (r->state <= H2D_REQUEST_STATE_RESPONSE_HEADERS) {
-			h2d_log_error(tmp_log, "should not be here");
+			h2d_request_log(r, H2D_LOG_ERROR, "should not be here");
 			ret = WUY_HTTP_500;
 		} else {
 			h2d_request_close(r);
@@ -334,39 +333,40 @@ void h2d_request_active(struct h2d_request *r)
 {
 	struct h2d_connection *c = r->c;
 	if (h2d_connection_write_blocked(c)) {
-		h2d_log_debug(tmp_log, "======== h2d_request_active"); // XXX coredump if get here 4times
+		h2d_request_log(r, H2D_LOG_DEBUG, "======== h2d_request_active"); // XXX coredump if get here 4times
 		if (c->is_http2) {
 			http2_stream_active_tmp(r->h2s);
 		}
 		return;
 	}
 
-	// XXX timer -> epoll-block -> idle, so pending subreqs will not run
-	h2d_log_debug(tmp_log, "active %s", r->req.url);
+	// XXX timer -> epoll-block -> idle, so pending subrs will not run
+	h2d_request_log(r, H2D_LOG_DEBUG, "active %s", r->req.url);
 
 	// TODO change to:   if (not linked) append;
 	wuy_list_del_if(&r->list_node); // TODO need delete?
 	wuy_list_append(&h2d_request_defer_run_list, &r->list_node);
 }
 
-struct h2d_request *h2d_request_subreq_new(struct h2d_request *father)
+struct h2d_request *h2d_request_subrequest(struct h2d_request *father)
 {
 	/* fake connection */
 	struct h2d_connection *c = calloc(1, sizeof(struct h2d_connection));
 	c->conf_listen = father->c->conf_listen;
 
-	/* subrequest */
-	struct h2d_request *subreq = h2d_request_new(c);
-	subreq->conf_host = father->conf_host;
-	subreq->state = H2D_REQUEST_STATE_PROCESS_HEADERS;
-	subreq->father = father;
-	father->subr = subreq;
-	c->u.request = subreq;
+	/* subruest */
+	struct h2d_request *subr = h2d_request_new(c);
+	subr->conf_host = father->conf_host;
+	subr->state = H2D_REQUEST_STATE_PROCESS_HEADERS;
+	subr->father = father;
+	wuy_list_append(&father->subr_head, &subr->subr_node);
 
-	h2d_log_debug(tmp_log, "h2d_request_subreq_new %p -> %p", father, subreq);
+	c->u.request = subr;
 
-	h2d_request_active(subreq);
-	return subreq;
+	h2d_request_log(father, H2D_LOG_DEBUG, "h2d_request_subr_new %p -> %p", father, subr);
+
+	h2d_request_active(subr);
+	return subr;
 }
 
 static void h2d_request_defer_run(void *data)
@@ -379,6 +379,5 @@ static void h2d_request_defer_run(void *data)
 
 void h2d_request_init(void)
 {
-	tmp_log = h2d_log_new("error.log", H2D_LOG_DEBUG);
 	loop_idle_add(h2d_loop, h2d_request_defer_run, NULL);
 }

@@ -28,7 +28,7 @@ static int h2d_test_subreq_filter_response_body(struct h2d_request *r, uint8_t *
 
 	struct h2d_request *subr = r->module_ctxs[h2d_test_subreq_module.index];
 	if (subr == NULL) {
-		subr = h2d_request_subreq_new(r);
+		subr = h2d_request_subrequest(r);
 		subr->req.url = strndup((char *)data, data_len - 1);
 		printf("subr: %s\n", subr->req.url);
 
@@ -40,7 +40,6 @@ static int h2d_test_subreq_filter_response_body(struct h2d_request *r, uint8_t *
 		subr->c->send_buf_pos = subr->c->send_buffer;
 		r->module_ctxs[h2d_test_subreq_module.index] = (void *)1;
 
-		r->subr = NULL;
 		subr->father = NULL;
 		h2d_request_close(subr);
 
