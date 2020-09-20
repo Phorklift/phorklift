@@ -6,7 +6,7 @@ struct h2d_proxy_conf {
 };
 
 struct h2d_proxy_ctx {
-	struct h2d_upstream_ctx		upstream;
+	struct h2d_upstream_retry_ctx	retry_ctx;
 	wuy_http_chunked_t		chunked;
 };
 
@@ -138,8 +138,8 @@ static int h2d_proxy_generate_response_headers(struct h2d_request *r)
 
 	/* get upstream connection */
 	struct h2d_proxy_conf *conf = r->conf_path->module_confs[h2d_proxy_module.index];
-	ctx->upstream.upc = h2d_upstream_get_connection(&conf->upstream, r);
-	if (ctx->upstream.upc == NULL) {
+	ctx->retry_ctx.upc = h2d_upstream_get_connection(&conf->upstream, r);
+	if (ctx->retry_ctx.upc == NULL) {
 		return WUY_HTTP_500;
 	}
 
@@ -147,11 +147,11 @@ static int h2d_proxy_generate_response_headers(struct h2d_request *r)
 	char *req_buf = malloc(4096 + r->req.body_len); // TODO
 	int req_len = h2d_proxy_build_request_headers(r, req_buf);
 	memcpy(req_buf + req_len, r->req.body_buf, r->req.body_len);
-	ctx->upstream.req_buf = req_buf;
-	ctx->upstream.req_len = req_len + r->req.body_len;
+	ctx->retry_ctx.req_buf = req_buf;
+	ctx->retry_ctx.req_len = req_len + r->req.body_len;
 
 run:
-	return h2d_upstream_generate_response_headers(r, &ctx->upstream,
+	return h2d_upstream_generate_response_headers(r, &ctx->retry_ctx,
 			h2d_proxy_parse_response_headers);
 }
 
@@ -161,7 +161,7 @@ static int h2d_proxy_generate_response_body(struct h2d_request *r, uint8_t *buff
 
 	/* plain case */
 	if (!wuy_http_chunked_is_enabled(&ctx->chunked)) {
-		return h2d_upstream_connection_read(ctx->upstream.upc, buffer, buf_len);
+		return h2d_upstream_connection_read(ctx->retry_ctx.upc, buffer, buf_len);
 	}
 
 	/* chunked encoding case */
@@ -170,7 +170,7 @@ static int h2d_proxy_generate_response_body(struct h2d_request *r, uint8_t *buff
 	}
 
 	uint8_t raw_buffer[buf_len];
-	int read_len = h2d_upstream_connection_read(ctx->upstream.upc, raw_buffer, buf_len);
+	int read_len = h2d_upstream_connection_read(ctx->retry_ctx.upc, raw_buffer, buf_len);
 	if (read_len < 0) {
 		return read_len;
 	}
@@ -195,7 +195,7 @@ static int h2d_proxy_generate_response_body(struct h2d_request *r, uint8_t *buff
 static void h2d_proxy_ctx_free(struct h2d_request *r)
 {
 	struct h2d_proxy_ctx *ctx = r->module_ctxs[h2d_proxy_module.index];
-	h2d_upstream_ctx_free(&ctx->upstream);
+	h2d_upstream_retry_ctx_free(&ctx->retry_ctx);
 	free(ctx);
 }
 

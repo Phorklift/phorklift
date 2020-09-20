@@ -315,7 +315,7 @@ int h2d_upstream_connection_write(struct h2d_upstream_connection *upc,
 }
 
 static int h2d_upstream_do_generate_response_headers(struct h2d_request *r,
-		struct h2d_upstream_ctx *ctx, parse_f parse)
+		struct h2d_upstream_retry_ctx *ctx, parse_f parse)
 {
 	if (!ctx->has_sent_request) {
 		if (h2d_upstream_connection_write_blocked(ctx->upc)) {// remove this check if h2d_upstream_connection_write() can return H2D_AGAIN
@@ -366,7 +366,7 @@ static bool h2d_upstream_status_code_retry(struct h2d_request *r,
 
 /* wrapper of generate_response_headers with retry */
 int h2d_upstream_generate_response_headers(struct h2d_request *r,
-		struct h2d_upstream_ctx *ctx, parse_f parse)
+		struct h2d_upstream_retry_ctx *ctx, parse_f parse)
 {
 	struct h2d_upstream_conf *upstream = ctx->upc->address->upstream;
 
@@ -400,7 +400,7 @@ int h2d_upstream_generate_response_headers(struct h2d_request *r,
 	}
 }
 
-void h2d_upstream_ctx_free(struct h2d_upstream_ctx *ctx)
+void h2d_upstream_retry_ctx_free(struct h2d_upstream_retry_ctx *ctx)
 {
 	free(ctx->req_buf);
 	if (ctx->upc != NULL) {

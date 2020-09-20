@@ -119,7 +119,7 @@ struct h2d_upstream_conf {
 	void				*lb_confs[H2D_UPSTREAM_LOADBALANCE_MAX];
 };
 
-struct h2d_upstream_ctx {
+struct h2d_upstream_retry_ctx {
 	bool				has_sent_request;
 	int				retries;
 	char				*req_buf;
@@ -131,8 +131,8 @@ typedef int (*parse_f)(struct h2d_request *r,
 		const char *buffer, int buf_len, bool *is_done);
 
 int h2d_upstream_generate_response_headers(struct h2d_request *r,
-		struct h2d_upstream_ctx *ctx, parse_f parse);
-void h2d_upstream_ctx_free(struct h2d_upstream_ctx *ctx);
+		struct h2d_upstream_retry_ctx *ctx, parse_f parse);
+void h2d_upstream_retry_ctx_free(struct h2d_upstream_retry_ctx *ctx);
 
 extern struct wuy_cflua_table h2d_upstream_conf_table;
 
