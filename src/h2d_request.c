@@ -45,7 +45,7 @@ void h2d_request_close(struct h2d_request *r)
 	}
 	r->closed = true;
 
-	h2d_request_log(r, H2D_LOG_DEBUG, "request done: %s", r->req.url);
+	h2d_request_log(r, H2D_LOG_DEBUG, "request done: %s", r->req.uri.raw);
 
 	if (!wuy_list_empty(&r->subr_head)) {
 		h2d_request_log(r, H2D_LOG_DEBUG, "!!!!!!!!! subruest %p", r);
@@ -118,8 +118,6 @@ bool h2d_request_set_uri(struct h2d_request *r, const char *uri_str, int uri_len
 	}
 
 	r->req.uri.path = decode;
-
-	r->req.url = r->req.uri.raw; // tmp
 	return true;
 }
 
@@ -141,13 +139,13 @@ static int h2d_request_process_headers(struct h2d_request *r)
 
 	/* locate path */
 	if (r->conf_path == NULL) {
-		if (r->req.url == NULL) {
+		if (r->req.uri.raw == NULL) {
 			h2d_request_log(r, H2D_LOG_DEBUG, "no path");
 			return H2D_ERROR;
 		}
-		r->conf_path = h2d_conf_host_search_pathname(r->conf_host, r->req.url);
+		r->conf_path = h2d_conf_host_search_pathname(r->conf_host, r->req.uri.raw);
 		if (r->conf_path == NULL) {
-			h2d_request_log(r, H2D_LOG_DEBUG, "no path matched %s", r->req.url);
+			h2d_request_log(r, H2D_LOG_DEBUG, "no path matched %s", r->req.uri.raw);
 			// return WUY_HTTP_404;
 			return H2D_ERROR;
 		}
@@ -322,7 +320,7 @@ void h2d_request_run(struct h2d_request *r, int window)
 		return;
 	}
 
-	h2d_request_log(r, H2D_LOG_DEBUG, "{{{ h2d_request_run %d %p %s", r->state, r, r->req.url);
+	h2d_request_log(r, H2D_LOG_DEBUG, "{{{ h2d_request_run %d %p %s", r->state, r, r->req.uri.raw);
 
 	int ret;
 	switch (r->state) {
@@ -389,7 +387,7 @@ void h2d_request_active(struct h2d_request *r)
 	}
 
 	// XXX timer -> epoll-block -> idle, so pending subrs will not run
-	h2d_request_log(r, H2D_LOG_DEBUG, "active %s", r->req.url);
+	h2d_request_log(r, H2D_LOG_DEBUG, "active %s", r->req.uri.raw);
 
 	// TODO change to:   if (not linked) append;
 	wuy_list_del_if(&r->list_node); // TODO need delete?

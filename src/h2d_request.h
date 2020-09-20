@@ -26,8 +26,6 @@ struct h2d_request {
 			int		query_len;
 		} uri;
 
-		const char *url; // tmp
-
 		const char		*host;
 		wuy_slist_t		headers;
 
@@ -118,8 +116,8 @@ static inline struct h2d_log *h2d_request_get_log(struct h2d_request *r)
 }
 
 #define h2d_request_do_log(r, log, level, fmt, ...) \
-	if (level >= H2D_LOG_ERROR && r->req.url) { \
-		h2d_log_write(log, level, "%s " fmt, r->req.url, ##__VA_ARGS__); \
+	if (level >= H2D_LOG_ERROR && r->req.uri.raw) { \
+		h2d_log_write(log, level, "%s " fmt, r->req.uri.raw, ##__VA_ARGS__); \
 	} else { \
 		h2d_log_write(log, level, fmt, ##__VA_ARGS__); \
 	}

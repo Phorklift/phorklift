@@ -32,7 +32,7 @@ static const char *h2d_cache_key(struct h2d_request *r)
 	struct h2d_cache_conf *conf = r->conf_path->module_confs[h2d_cache_module.index];
 
 	if (!wuy_cflua_is_function_set(conf->key)) {
-		return r->req.url;
+		return r->req.uri.raw;
 	}
 	return h2d_lua_api_call_lstring(r, conf->key, NULL);
 }
