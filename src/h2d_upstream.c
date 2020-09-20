@@ -513,18 +513,16 @@ static bool h2d_upstream_conf_post(void *data)
 	return true;
 }
 
-int h2d_upstream_conf_stats(void *data, char *buf, int len)
+void h2d_upstream_conf_stats(struct h2d_upstream_conf *conf, wuy_json_ctx_t *json)
 {
-	struct h2d_upstream_conf *conf = data;
 	struct h2d_upstream_stats *stats = conf->stats;
-	if (stats == NULL) {
-		return 0;
-	}
-	return snprintf(buf, len, "upstream: %d %d %d %d\n",
-			atomic_load(&stats->total),
-			atomic_load(&stats->reuse),
-			atomic_load(&stats->retry),
-			atomic_load(&stats->pick_fail));
+
+	wuy_json_object_object(json, "upstream");
+	wuy_json_object_int(json, "total", atomic_load(&stats->total));
+	wuy_json_object_int(json, "reuse", atomic_load(&stats->reuse));
+	wuy_json_object_int(json, "retry", atomic_load(&stats->retry));
+	wuy_json_object_int(json, "pick_fail", atomic_load(&stats->pick_fail));
+	wuy_json_object_close(json);
 }
 
 static struct wuy_cflua_command h2d_upstream_healthcheck_commands[] = {

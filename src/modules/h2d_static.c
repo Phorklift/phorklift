@@ -129,17 +129,19 @@ static bool h2d_static_conf_post(void *data)
 	return true;
 }
 
-static int h2d_static_conf_stats(void *data, char *buf, int len)
+static void h2d_static_conf_stats(void *data, wuy_json_ctx_t *json)
 {
 	struct h2d_static_conf *conf = data;
 	struct h2d_static_stats *stats = conf->stats;
 	if (stats == NULL) {
-		return 0;
+		return;
 	}
-	return snprintf(buf, len, "static: %d %d %d\n",
-			atomic_load(&stats->total),
-			atomic_load(&stats->ret404),
-			atomic_load(&stats->ret304));
+
+	wuy_json_object_object(json, "static");
+	wuy_json_object_int(json, "total", atomic_load(&stats->total));
+	wuy_json_object_int(json, "ret404", atomic_load(&stats->ret404));
+	wuy_json_object_int(json, "ret304", atomic_load(&stats->ret304));
+	wuy_json_object_close(json);
 }
 
 static struct wuy_cflua_command h2d_static_conf_commands[] = {

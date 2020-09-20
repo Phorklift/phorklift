@@ -199,10 +199,15 @@ static void h2d_proxy_ctx_free(struct h2d_request *r)
 	free(ctx);
 }
 
-static int h2d_proxy_conf_stats(void *data, char *buf, int len)
+static void h2d_proxy_conf_stats(void *data, wuy_json_ctx_t *json)
 {
 	struct h2d_proxy_conf *conf = data;
-	return h2d_upstream_conf_stats(&conf->upstream, buf, len);
+	if (conf->upstream.stats == NULL) {
+		return;
+	}
+	wuy_json_object_object(json, "proxy");
+	h2d_upstream_conf_stats(&conf->upstream, json);
+	wuy_json_object_close(json);
 }
 
 /* configuration */

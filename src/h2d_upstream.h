@@ -161,7 +161,7 @@ static inline bool h2d_upstream_connection_write_blocked(struct h2d_upstream_con
 	return loop_stream_is_write_blocked(upc->loop_stream);
 }
 
-int h2d_upstream_conf_stats(void *data, char *buf, int len);
+void h2d_upstream_conf_stats(struct h2d_upstream_conf *conf, wuy_json_ctx_t *json);
 
 void h2d_upstream_init(void);
 

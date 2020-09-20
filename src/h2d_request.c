@@ -98,7 +98,7 @@ bool h2d_request_set_uri(struct h2d_request *r, const char *uri_str, int uri_len
 	r->req.uri.path_len = path_len;
 
 	if (r->req.uri.query_pos != NULL) {
-		r->req.uri.query_len = (fragment ? fragment : uri_str+uri_len)
+		r->req.uri.query_len = (fragment ? fragment : r->req.uri.raw+uri_len)
 				- r->req.uri.query_pos;
 	}
 

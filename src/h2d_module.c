@@ -52,17 +52,32 @@ struct wuy_cflua_command *h2d_module_next_path_command(struct wuy_cflua_command 
 	return h2d_module_next_command(cmd, offsetof(struct h2d_module, command_path));
 }
 
-int h2d_module_path_stats(void **confs, char *buf, int len)
+void h2d_module_stats_listen(struct h2d_conf_listen *conf_listen, wuy_json_ctx_t *json)
 {
-	char *pos = buf;
-	char *end = buf + len;
+	for (int i = 0; i < h2d_module_number; i++) {
+		struct h2d_module *m = h2d_modules[i];
+		if (m->stats_listen != NULL) {
+			m->stats_listen(conf_listen->module_confs[i], json);
+		}
+	}
+}
+void h2d_module_stats_host(struct h2d_conf_host *conf_host, wuy_json_ctx_t *json)
+{
+	for (int i = 0; i < h2d_module_number; i++) {
+		struct h2d_module *m = h2d_modules[i];
+		if (m->stats_host != NULL) {
+			m->stats_host(conf_host->module_confs[i], json);
+		}
+	}
+}
+void h2d_module_stats_path(struct h2d_conf_path *conf_path, wuy_json_ctx_t *json)
+{
 	for (int i = 0; i < h2d_module_number; i++) {
 		struct h2d_module *m = h2d_modules[i];
 		if (m->stats_path != NULL) {
-			pos += m->stats_path(confs[i], pos, end - pos);
+			m->stats_path(conf_path->module_confs[i], json);
 		}
 	}
-	return pos - buf;
 }
 
 static int h2d_module_filter_cmp(const struct h2d_module *ma,

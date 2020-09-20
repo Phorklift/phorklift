@@ -16,6 +16,7 @@
 #include "libwuya/wuy_tcp.h"
 #include "libwuya/wuy_sockaddr.h"
 #include "libwuya/wuy_http.h"
+#include "libwuya/wuy_json.h"
 #include "libwuya/wuy_shmem.h"
 
 #include "libloop/loop.h"

@@ -27,9 +27,9 @@ struct h2d_module {
 	struct wuy_cflua_command	command_host;
 	struct wuy_cflua_command	command_path;
 
-	int		(*stats_listen)(void *conf, char *buf, int len);
-	int		(*stats_path)(void *conf, char *buf, int len);
-	int		(*stats_host)(void *conf, char *buf, int len);
+	void		(*stats_listen)(void *conf, wuy_json_ctx_t *json);
+	void		(*stats_path)(void *conf, wuy_json_ctx_t *json);
+	void		(*stats_host)(void *conf, wuy_json_ctx_t *json);
 
 	struct {
 		int	(*process_headers)(struct h2d_request *);
@@ -67,7 +67,9 @@ struct wuy_cflua_command *h2d_module_next_path_command(struct wuy_cflua_command 
 
 bool h2d_module_command_is_set(struct wuy_cflua_command *cmd, void *conf);
 
-int h2d_module_path_stats(void **confs, char *buf, int len);
+void h2d_module_stats_listen(struct h2d_conf_listen *, wuy_json_ctx_t *json);
+void h2d_module_stats_host(struct h2d_conf_host *, wuy_json_ctx_t *json);
+void h2d_module_stats_path(struct h2d_conf_path *, wuy_json_ctx_t *json);
 
 struct h2d_module *h2d_module_content_is_enabled(int i, void *conf);
 void h2d_module_request_ctx_free(struct h2d_request *r);
