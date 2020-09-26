@@ -1,18 +1,12 @@
 #include "h2d_main.h"
 
-struct h2d_proxy_stats {
-	atomic_long			parse_error;
-};
-
 struct h2d_proxy_conf {
-	struct h2d_upstream_conf	upstream;
+	struct h2d_upstream_conf	*upstream; /* at top! */
 	bool				x_forwarded_for;
-
-	struct h2d_proxy_stats		*stats;
 };
 
 struct h2d_proxy_ctx {
-	struct h2d_upstream_retry_ctx	retry_ctx;
+	struct h2d_upstream_content_ctx	upstream; /* at top! */
 	wuy_http_chunked_t		chunked;
 };
 
@@ -33,6 +27,16 @@ static const char *client_addr(struct h2d_request *r)
 		return NULL;
 	}
 	return buf;
+}
+
+static void *h2d_proxy_new_ctx(struct h2d_request *r)
+{
+	struct h2d_proxy_ctx *ctx = calloc(1, sizeof(struct h2d_proxy_ctx));
+
+	if (r->req.method != WUY_HTTP_GET && r->req.method != WUY_HTTP_HEAD) {
+		ctx->upstream.retries = -1;
+	}
+	return ctx;
 }
 
 static int h2d_proxy_build_request_headers(struct h2d_request *r, char *buffer)
@@ -72,15 +76,21 @@ static int h2d_proxy_build_request_headers(struct h2d_request *r, char *buffer)
 	return pos - buffer;
 }
 
+static char *h2d_proxy_build_request(struct h2d_request *r, int *p_len)
+{
+	char *req_buf = malloc(4096 + r->req.body_len); // TODO
+	int req_len = h2d_proxy_build_request_headers(r, req_buf);
+	memcpy(req_buf + req_len, r->req.body_buf, r->req.body_len);
+	*p_len = req_len + r->req.body_len;
+	return req_buf;
+}
+
 static int h2d_proxy_parse_response_headers(struct h2d_request *r,
 		const char *buffer, int buf_len, bool *is_done)
 {
 	const char *p = buffer;
 	const char *buf_end = buffer + buf_len;
 	struct h2d_proxy_ctx *ctx = r->module_ctxs[h2d_proxy_module.index];
-	struct h2d_proxy_conf *conf = r->conf_path->module_confs[h2d_proxy_module.index];
-
-	// printf("upstream headers: %d\n%s\n===\n", buf_len, buffer);
 
 	if (r->resp.status_code == 0) {
 		int proc_len = wuy_http_status_line(p, buf_len,
@@ -89,7 +99,6 @@ static int h2d_proxy_parse_response_headers(struct h2d_request *r,
 			return H2D_AGAIN;
 		}
 		if (proc_len < 0) {
-			atomic_fetch_add(&conf->stats->parse_error, 1);
 			return H2D_ERROR;
 		}
 		p += proc_len;
@@ -102,7 +111,6 @@ static int h2d_proxy_parse_response_headers(struct h2d_request *r,
 		int proc_len = wuy_http_header(p, buf_end - p, &name_len,
 				&value_str, &value_len);
 		if (proc_len < 0) {
-			atomic_fetch_add(&conf->stats->parse_error, 1);
 			return H2D_ERROR;
 		}
 		if (proc_len == 0) {
@@ -135,114 +143,66 @@ static int h2d_proxy_parse_response_headers(struct h2d_request *r,
 	return p - buffer;
 }
 
-static int h2d_proxy_generate_response_headers(struct h2d_request *r)
+static bool h2d_proxy_is_response_body_done(struct h2d_request *r)
 {
 	struct h2d_proxy_ctx *ctx = r->module_ctxs[h2d_proxy_module.index];
-	if (ctx != NULL) {
-		goto run;
+	if (wuy_http_chunked_is_enabled(&ctx->chunked)) {
+		return wuy_http_chunked_is_finished(&ctx->chunked);
 	}
-
-	/* create ctx */
-	ctx = calloc(1, sizeof(struct h2d_proxy_ctx));
-	r->module_ctxs[h2d_proxy_module.index] = ctx;
-
-	/* get upstream connection */
-	struct h2d_proxy_conf *conf = r->conf_path->module_confs[h2d_proxy_module.index];
-	ctx->retry_ctx.upc = h2d_upstream_get_connection(&conf->upstream, r);
-	if (ctx->retry_ctx.upc == NULL) {
-		return WUY_HTTP_500;
-	}
-
-	/* make request */
-	char *req_buf = malloc(4096 + r->req.body_len); // TODO
-	int req_len = h2d_proxy_build_request_headers(r, req_buf);
-	memcpy(req_buf + req_len, r->req.body_buf, r->req.body_len);
-	ctx->retry_ctx.req_buf = req_buf;
-	ctx->retry_ctx.req_len = req_len + r->req.body_len;
-
-run:
-	return h2d_upstream_generate_response_headers(r, &ctx->retry_ctx,
-			h2d_proxy_parse_response_headers);
+	return false;
 }
 
-static int h2d_proxy_generate_response_body(struct h2d_request *r, uint8_t *buffer, int buf_len)
+static int h2d_proxy_build_response_body(struct h2d_request *r, uint8_t *buffer,
+		int data_len, int buf_size)
 {
 	struct h2d_proxy_ctx *ctx = r->module_ctxs[h2d_proxy_module.index];
-	struct h2d_proxy_conf *conf = r->conf_path->module_confs[h2d_proxy_module.index];
 
-	/* plain case */
 	if (!wuy_http_chunked_is_enabled(&ctx->chunked)) {
-		return h2d_upstream_connection_read(ctx->retry_ctx.upc, buffer, buf_len);
+		/* do nothing for none-chunked */
+		return data_len;
 	}
 
-	/* chunked encoding case */
-	if (wuy_http_chunked_is_finished(&ctx->chunked)) {
-		return 0;
-	}
-
-	uint8_t raw_buffer[buf_len];
-	int read_len = h2d_upstream_connection_read(ctx->retry_ctx.upc, raw_buffer, buf_len);
-	if (read_len < 0) {
-		return read_len;
-	}
+	/* chunked */
+	uint8_t raw_buffer[data_len];
+	memcpy(raw_buffer, buffer, data_len); // TODO remove this memcpy()
 
 	int proc_len = wuy_http_chunked_process(&ctx->chunked, raw_buffer,
-			read_len, buffer, &buf_len);
+			data_len, buffer, &buf_size);
 	if (proc_len < 0) {
-		atomic_fetch_add(&conf->stats->parse_error, 1);
 		printf("invalid chunked: %d\n", proc_len);
 		return H2D_ERROR;
 	}
-	assert(proc_len == read_len);
 
-	if (buf_len == 0 && !wuy_http_chunked_is_finished(&ctx->chunked)) {
+	if (buf_size == 0 && !wuy_http_chunked_is_finished(&ctx->chunked)) {
 		return H2D_AGAIN;
 	}
 
 	/* if chunked is finished, this function will be called again
 	 * and returns 0 then. */
-	return buf_len;
+	return buf_size;
 }
 
-static void h2d_proxy_ctx_free(struct h2d_request *r)
-{
-	struct h2d_proxy_ctx *ctx = r->module_ctxs[h2d_proxy_module.index];
-	h2d_upstream_retry_ctx_free(&ctx->retry_ctx);
-	free(ctx);
-}
-
-static void h2d_proxy_conf_stats(void *data, wuy_json_ctx_t *json)
-{
-	struct h2d_proxy_conf *conf = data;
-	struct h2d_proxy_stats *stats = conf->stats;
-	if (stats == NULL) {
-		return;
-	}
-	wuy_json_object_object(json, "proxy");
-	wuy_json_object_int(json, "parse_error", atomic_load(&stats->parse_error));
-	h2d_upstream_conf_stats(&conf->upstream, json);
-	wuy_json_object_close(json);
-}
-
-/* configuration */
+static struct h2d_upstream_ops h2d_proxy_upstream_ops = {
+	.new_ctx = h2d_proxy_new_ctx,
+	.build_request = h2d_proxy_build_request,
+	.parse_response_headers = h2d_proxy_parse_response_headers,
+	.is_response_body_done = h2d_proxy_is_response_body_done,
+	.build_response_body = h2d_proxy_build_response_body,
+};
 
 static bool h2d_proxy_conf_post(void *data)
 {
 	struct h2d_proxy_conf *conf = data;
-	if (conf->upstream.stats == NULL) { // TODO: how to check?
-		return true;
+	if (conf->upstream->ops != NULL && conf->upstream->ops != &h2d_proxy_upstream_ops) {
+		printf("Error: different ops for one upstream\n");
+		return false;
 	}
-
-	conf->stats = wuy_shmem_alloc(sizeof(struct h2d_proxy_stats));
+	conf->upstream->ops = &h2d_proxy_upstream_ops;
 	return true;
 }
 
 static struct wuy_cflua_command h2d_proxy_conf_commands[] = {
-	{	.type = WUY_CFLUA_TYPE_STRING,
-		.offset = offsetof(struct h2d_proxy_conf, upstream.hostnames),
-		.array_member_size = sizeof(struct h2d_upstream_hostname),
-	},
-	{	.name = "upstream",
+	{	.flags = WUY_CFLUA_FLAG_UNIQ_MEMBER,
 		.type = WUY_CFLUA_TYPE_TABLE,
 		.offset = offsetof(struct h2d_proxy_conf, upstream),
 		.u.table = &h2d_upstream_conf_table,
@@ -266,12 +226,6 @@ struct h2d_module h2d_proxy_module = {
 			.post = h2d_proxy_conf_post,
 		}
 	},
-	.stats_path = h2d_proxy_conf_stats,
-
-	.content = {
-		.response_headers = h2d_proxy_generate_response_headers,
-		.response_body = h2d_proxy_generate_response_body,
-	},
-
-	.ctx_free = h2d_proxy_ctx_free,
+	.content = H2D_UPSTREAM_CONTENT,
+	.ctx_free = h2d_upstream_content_ctx_free,
 };

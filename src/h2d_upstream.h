@@ -88,6 +88,17 @@ struct h2d_upstream_loadbalance {
 	struct h2d_upstream_address *	(*pick)(struct h2d_upstream_conf *, struct h2d_request *);
 };
 
+struct h2d_upstream_ops {
+	void	*(*new_ctx)(struct h2d_request *r);
+	char	*(*build_request)(struct h2d_request *r, int *p_len);
+	int	(*parse_response_headers)(struct h2d_request *r,
+			const char *buffer, int buf_len, bool *is_done);
+	bool	(*is_response_body_done)(struct h2d_request *r);
+	int	(*build_response_body)(struct h2d_request *r, uint8_t *buffer,
+			int data_len, int buf_size);
+};
+
+/* make sure the `h2d_upstream_conf *` at top of your module's conf */
 struct h2d_upstream_conf {
 	/* configrations */
 	struct h2d_upstream_hostname	*hostnames;
@@ -133,26 +144,34 @@ struct h2d_upstream_conf {
 	struct h2d_upstream_loadbalance	*loadbalance;
 	void				*lb_confs[H2D_UPSTREAM_LOADBALANCE_MAX];
 
+	struct h2d_upstream_ops		*ops;
+
 	wuy_list_node_t			list_node;
 };
 
-struct h2d_upstream_retry_ctx {
+
+/* {{{ defined in h2d_upstream_content.c and used by other modules, i.e. proxy.
+ *     Make sure the `h2d_upstream_content_ctx` at the top of your module ctx. */
+struct h2d_upstream_content_ctx {
 	bool				has_sent_request;
 	int				retries;
 	char				*req_buf;
 	int				req_len;
 	struct h2d_upstream_connection	*upc;
 };
+void h2d_upstream_content_ctx_free(struct h2d_request *r);
 
-typedef int (*parse_f)(struct h2d_request *r,
-		const char *buffer, int buf_len, bool *is_done);
+int h2d_upstream_content_generate_response_headers(struct h2d_request *r);
+int h2d_upstream_content_generate_response_body(struct h2d_request *r,
+		uint8_t *buffer, int buf_len);
+#define H2D_UPSTREAM_CONTENT { \
+	.response_headers = h2d_upstream_content_generate_response_headers, \
+	.response_body = h2d_upstream_content_generate_response_body, \
+}
+/* }}} */
 
-int h2d_upstream_generate_response_headers(struct h2d_request *r,
-		struct h2d_upstream_retry_ctx *ctx, parse_f parse);
-void h2d_upstream_retry_ctx_free(struct h2d_upstream_retry_ctx *ctx);
 
-extern struct wuy_cflua_table h2d_upstream_conf_table;
-
+/* {{{ defined in h2d_upstream.c and used by h2d_upstream_content.c */
 struct h2d_upstream_connection *
 h2d_upstream_get_connection(struct h2d_upstream_conf *upstream, struct h2d_request *r);
 
@@ -171,15 +190,18 @@ int h2d_upstream_connection_write(struct h2d_upstream_connection *upc,
 
 void h2d_upstream_connection_fail(struct h2d_upstream_connection *upc);
 
-bool h2d_upstream_address_is_pickable(struct h2d_upstream_address *address);
-
 static inline bool h2d_upstream_connection_write_blocked(struct h2d_upstream_connection *upc)
 {
 	return loop_stream_is_write_blocked(upc->loop_stream);
 }
+/* }}} */
+
+bool h2d_upstream_address_is_pickable(struct h2d_upstream_address *address);
 
 void h2d_upstream_stats(wuy_json_ctx_t *json);
 
 void h2d_upstream_init(void);
+
+extern struct wuy_cflua_table h2d_upstream_conf_table;
 
 #endif

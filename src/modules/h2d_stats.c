@@ -68,6 +68,8 @@ static int h2d_stats_generate_response_headers(struct h2d_request *r)
 		h2d_stats_dump_listen(r->c->conf_listen, &json);
 	} else if (memcmp(scope_str, "host", scope_len) == 0) {
 		h2d_stats_dump_host(r->conf_host, &json);
+	} else if (memcmp(scope_str, "upstream", scope_len) == 0) {
+		h2d_upstream_stats(&json);
 	} else {
 		printf("invalid query scope\n");
 		return WUY_HTTP_400;
