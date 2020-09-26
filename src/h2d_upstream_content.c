@@ -32,9 +32,15 @@ int h2d_upstream_content_generate_response_headers(struct h2d_request *r)
 {
 	struct h2d_upstream_conf *upstream = h2d_upstream_content_conf(r);
 	struct h2d_upstream_content_ctx *ctx = h2d_upstream_content_ctx(r);
+	struct h2d_upstream_ops *ops = upstream->ops;
+
 	if (ctx == NULL) {
 		/* create ctx */
-		ctx = upstream->ops->new_ctx(r);
+		if (ops->new_ctx != NULL) {
+			ctx = ops->new_ctx(r);
+		} else {
+			ctx = calloc(1, sizeof(struct h2d_upstream_content_ctx));
+		}
 		r->module_ctxs[r->conf_path->content->index] = ctx;
 
 		/* get upstream connection */
@@ -43,7 +49,10 @@ int h2d_upstream_content_generate_response_headers(struct h2d_request *r)
 			return WUY_HTTP_500;
 		}
 
-		ctx->req_buf = upstream->ops->build_request(r, &ctx->req_len);
+		int ret = ops->build_request(r);
+		if (ret != H2D_OK) {
+			return ret;
+		}
 	}
 
 	if (!ctx->has_sent_request) {
@@ -69,8 +78,14 @@ int h2d_upstream_content_generate_response_headers(struct h2d_request *r)
 		return h2d_upstream_content_fail(r);
 	}
 
+	int proc_len = 0;
+	if (ops->parse_response_headers == NULL) {
+		r->resp.status_code = WUY_HTTP_200;
+		goto no_headers;
+	}
+
 	bool is_done;
-	int proc_len = upstream->ops->parse_response_headers(r, buffer, read_len, &is_done);
+	proc_len = ops->parse_response_headers(r, buffer, read_len, &is_done);
 	if (proc_len < 0) {
 		return h2d_upstream_content_fail(r);
 	}
@@ -83,6 +98,7 @@ int h2d_upstream_content_generate_response_headers(struct h2d_request *r)
 	if (h2d_upstream_content_status_code_retry(r)) {
 		return h2d_upstream_content_fail(r);
 	}
+no_headers:
 
 	h2d_upstream_connection_read_notfinish(ctx->upc, buffer + proc_len, read_len - proc_len);
 	return H2D_OK;
@@ -118,8 +134,9 @@ int h2d_upstream_content_generate_response_body(struct h2d_request *r,
 {
 	struct h2d_upstream_conf *upstream = h2d_upstream_content_conf(r);
 	struct h2d_upstream_content_ctx *ctx = h2d_upstream_content_ctx(r);
+	struct h2d_upstream_ops *ops = upstream->ops;
 
-	if (upstream->ops->is_response_body_done(r)) {
+	if (ops->is_response_body_done && ops->is_response_body_done(r)) {
 		return 0;
 	}
 
@@ -128,7 +145,11 @@ int h2d_upstream_content_generate_response_body(struct h2d_request *r,
 		return read_len;
 	}
 
-	return upstream->ops->build_response_body(r, buffer, read_len, buf_len);
+	if (ops->build_response_body != NULL) {
+		read_len = ops->build_response_body(r, buffer, read_len, buf_len);
+	}
+
+	return read_len;
 }
 
 void h2d_upstream_content_ctx_free(struct h2d_request *r)
@@ -139,4 +160,18 @@ void h2d_upstream_content_ctx_free(struct h2d_request *r)
 	}
 	free(ctx->req_buf);
 	free(ctx);
+}
+
+bool h2d_upstream_content_set_ops(struct h2d_upstream_conf *conf,
+		struct h2d_upstream_ops *ops)
+{
+	if (conf->ops != NULL) {
+		if (conf->ops != ops) {
+			printf("Error: different ops for one upstream\n");
+			return false;
+		}
+		return true;
+	}
+	conf->ops = ops;
+	return true;
 }

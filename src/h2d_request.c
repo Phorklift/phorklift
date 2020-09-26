@@ -93,8 +93,7 @@ static void h2d_request_access_log(struct h2d_request *r)
 
 	const char *format = "-";
 	if (wuy_cflua_is_function_set(log->format)) {
-		size_t len;
-		const char *format = h2d_lua_api_call_lstring(r, log->format, &len);
+		const char *format = h2d_lua_api_call_lstring(r, log->format, NULL);
 		if (format == NULL) {
 			format = "-";
 

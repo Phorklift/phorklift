@@ -83,16 +83,17 @@ static bool h2d_lua_api_call(struct h2d_request *r, wuy_cflua_function_t f)
 }
 
 const char *h2d_lua_api_call_lstring(struct h2d_request *r,
-		wuy_cflua_function_t f, size_t *plen)
+		wuy_cflua_function_t f, int *plen)
 {
 	if (!h2d_lua_api_call(r, f)) {
+		*plen = -WUY_HTTP_500;
 		return NULL;
 	}
 
 	size_t len;
 	const char *str = lua_tolstring(h2d_L, -1, &len);
 	if (plen != NULL) {
-		*plen = len;
+		*plen = (str != NULL) ? len : -WUY_HTTP_400;
 	}
 
 	/* Although not documented, lua_pop() does not trigger GC.

@@ -89,8 +89,12 @@ struct h2d_upstream_loadbalance {
 };
 
 struct h2d_upstream_ops {
+	/* build request into h2d_upstream_content_ctx.req_buf/req_len,
+	 * and return H2D_OK if successful. */
+	int	(*build_request)(struct h2d_request *r);
+
+	/* optional bellow */
 	void	*(*new_ctx)(struct h2d_request *r);
-	char	*(*build_request)(struct h2d_request *r, int *p_len);
 	int	(*parse_response_headers)(struct h2d_request *r,
 			const char *buffer, int buf_len, bool *is_done);
 	bool	(*is_response_body_done)(struct h2d_request *r);
@@ -160,6 +164,9 @@ struct h2d_upstream_content_ctx {
 	struct h2d_upstream_connection	*upc;
 };
 void h2d_upstream_content_ctx_free(struct h2d_request *r);
+
+bool h2d_upstream_content_set_ops(struct h2d_upstream_conf *conf,
+		struct h2d_upstream_ops *ops);
 
 int h2d_upstream_content_generate_response_headers(struct h2d_request *r);
 int h2d_upstream_content_generate_response_body(struct h2d_request *r,

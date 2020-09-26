@@ -76,13 +76,15 @@ static int h2d_proxy_build_request_headers(struct h2d_request *r, char *buffer)
 	return pos - buffer;
 }
 
-static char *h2d_proxy_build_request(struct h2d_request *r, int *p_len)
+static int h2d_proxy_build_request(struct h2d_request *r)
 {
-	char *req_buf = malloc(4096 + r->req.body_len); // TODO
-	int req_len = h2d_proxy_build_request_headers(r, req_buf);
-	memcpy(req_buf + req_len, r->req.body_buf, r->req.body_len);
-	*p_len = req_len + r->req.body_len;
-	return req_buf;
+	struct h2d_upstream_content_ctx *ctx = r->module_ctxs[h2d_proxy_module.index];
+
+	ctx->req_buf = malloc(4096 + r->req.body_len); // TODO
+	ctx->req_len = h2d_proxy_build_request_headers(r, ctx->req_buf);
+	memcpy(ctx->req_buf + ctx->req_len, r->req.body_buf, r->req.body_len);
+	ctx->req_len += r->req.body_len;
+	return H2D_OK;
 }
 
 static int h2d_proxy_parse_response_headers(struct h2d_request *r,
@@ -193,12 +195,7 @@ static struct h2d_upstream_ops h2d_proxy_upstream_ops = {
 static bool h2d_proxy_conf_post(void *data)
 {
 	struct h2d_proxy_conf *conf = data;
-	if (conf->upstream->ops != NULL && conf->upstream->ops != &h2d_proxy_upstream_ops) {
-		printf("Error: different ops for one upstream\n");
-		return false;
-	}
-	conf->upstream->ops = &h2d_proxy_upstream_ops;
-	return true;
+	return h2d_upstream_content_set_ops(conf->upstream, &h2d_proxy_upstream_ops);
 }
 
 static struct wuy_cflua_command h2d_proxy_conf_commands[] = {
