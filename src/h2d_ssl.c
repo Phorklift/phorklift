@@ -102,7 +102,7 @@ static int h2d_ssl_ticket_callback(SSL *ssl, unsigned char *name,
 
 	} else {
 		if (memcmp(name, secret->name, 16) != 0) {
-			return -1;
+			return 0;
 		}
 		if (HMAC_Init_ex(hctx, secret->hmac_key, 16, digest, NULL) != 1) {
 			return -1;
