@@ -147,6 +147,8 @@ void h2d_request_close(struct h2d_request *r)
 		h2d_http1_request_close(r);
 	}
 
+	wuy_list_del_if(&r->list_node);
+
 	h2d_module_request_ctx_free(r);
 
 	h2d_header_free_list(&r->req.headers);
