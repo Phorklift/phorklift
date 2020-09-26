@@ -129,7 +129,10 @@ end
 
 local h2d_conf_listens = {}
 
-local function h2d_check_names(names, prefix)
+local function h2d_check_names(names, expect, prefix)
+	if not names then
+		error(prefix .. ": invalid level: only " .. expect .. " is allowed here")
+	end
 	if #names == 0 then
 		error(prefix .. ": expect names")
 	end
@@ -143,7 +146,7 @@ end
 function Listen(...)
 	local addresses = {select(1, ...)}
 
-	h2d_check_names(addresses, "Listen()")
+	h2d_check_names(addresses, nil, "Listen()")
 
 	local listen_prefix = string.format("Listen(%s)", addresses[1])
 
@@ -160,7 +163,7 @@ function Listen(...)
 		setmetatable(listen._default_next._default_next, h2d_path_default)
 
 		for i,host in ipairs(listen) do
-			h2d_check_names(host._hostnames, listen_prefix)
+			h2d_check_names(host._hostnames, "Host()", listen_prefix)
 
 			host._default_next = {} -- default path
 
@@ -171,7 +174,7 @@ function Listen(...)
 			setmetatable(host._default_next, listen._default_next._default_next)
 
 			for j,path in ipairs(host) do
-				h2d_check_names(path._pathnames, host_prefix)
+				h2d_check_names(path._pathnames, "Path()", host_prefix)
 
 				local path_prefix = host_prefix .. string.format(">Path(%s)", path._pathnames[1])
 				h2d_set_metatable(path, host._default_next, path_prefix)
@@ -198,7 +201,9 @@ function Path(...)
 end
 
 dofile(h2d_conf_file)
-
+if #h2d_conf_listens == 0 then
+	error("at least 1 Listen() is need")
+end
 
 -- clear globals
 Listen = nil

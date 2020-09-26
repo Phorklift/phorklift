@@ -8,6 +8,7 @@
 #include <stdatomic.h>
 #include <assert.h>
 #include <time.h>
+#include <string.h>
 
 #include "libwuya/wuy_dict.h"
 #include "libwuya/wuy_slist.h"
@@ -17,7 +18,9 @@
 #include "libwuya/wuy_sockaddr.h"
 #include "libwuya/wuy_http.h"
 #include "libwuya/wuy_json.h"
+#include "libwuya/wuy_base64.h"
 #include "libwuya/wuy_shmem.h"
+#include "libwuya/wuy_time.h"
 
 #include "libloop/loop.h"
 
