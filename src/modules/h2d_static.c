@@ -6,11 +6,6 @@
 
 #include "h2d_main.h"
 
-struct h2d_static_stats {
-	atomic_int	total;
-	atomic_int	ret404;
-	atomic_int	ret304;
-};
 struct h2d_static_conf {
 	const char	*dir_name;
 	int		dirfd;
@@ -18,8 +13,6 @@ struct h2d_static_conf {
 	const char	*index;
 
 	struct h2d_log	*log;
-
-	struct h2d_static_stats	*stats;
 };
 
 struct h2d_static_ctx {
@@ -34,7 +27,6 @@ struct h2d_module h2d_static_module;
 static int h2d_static_generate_response_headers(struct h2d_request *r)
 {
 	struct h2d_static_conf *conf = r->conf_path->module_confs[h2d_static_module.index];
-	atomic_fetch_add(&conf->stats->total, 1);
 
 	time_t if_modified_since = 0;
 	struct h2d_header *h;
@@ -55,7 +47,6 @@ static int h2d_static_generate_response_headers(struct h2d_request *r)
 
 	int fd = openat(conf->dirfd, filename, O_RDONLY);
 	if (fd < 0) {
-		atomic_fetch_add(&conf->stats->ret404, 1);
 		h2d_request_log_at(r, conf->log, H2D_LOG_INFO, "error to open file %s %s",
 				filename, strerror(errno));
 		return WUY_HTTP_404;
@@ -72,7 +63,6 @@ static int h2d_static_generate_response_headers(struct h2d_request *r)
 			if_modified_since, st_buf.st_mtime);
 	if (if_modified_since == st_buf.st_mtime) {
 		close(fd);
-		atomic_fetch_add(&conf->stats->ret304, 1);
 		return WUY_HTTP_304;
 	}
 
@@ -124,24 +114,7 @@ static bool h2d_static_conf_post(void *data)
 	}
 	// printf("debug: open %s\n", conf->dir_name);
 
-	conf->stats = wuy_shmem_alloc(sizeof(struct h2d_static_stats));
-
 	return true;
-}
-
-static void h2d_static_conf_stats(void *data, wuy_json_ctx_t *json)
-{
-	struct h2d_static_conf *conf = data;
-	struct h2d_static_stats *stats = conf->stats;
-	if (stats == NULL) {
-		return;
-	}
-
-	wuy_json_object_object(json, "static");
-	wuy_json_object_int(json, "total", atomic_load(&stats->total));
-	wuy_json_object_int(json, "ret404", atomic_load(&stats->ret404));
-	wuy_json_object_int(json, "ret304", atomic_load(&stats->ret304));
-	wuy_json_object_close(json);
 }
 
 static struct wuy_cflua_command h2d_static_conf_commands[] = {
@@ -174,7 +147,6 @@ struct h2d_module h2d_static_module = {
 			.post = h2d_static_conf_post,
 		}
 	},
-	.stats_path = h2d_static_conf_stats,
 
 	.content = {
 		.response_headers = h2d_static_generate_response_headers,
@@ -183,9 +155,4 @@ struct h2d_module h2d_static_module = {
 
 	.ctx_free = h2d_static_ctx_free,
 
-	/* TODO stats in module angle. do we need path,host,listen, or a single one?
-	.stats = {
-		.size = sizeof(struct h2d_static_stats),
-	},
-	*/
 };

@@ -11,15 +11,16 @@ struct h2d_module h2d_stats_module;
 static void h2d_stats_dump_path(struct h2d_conf_path *conf_path, wuy_json_ctx_t *json)
 {
 	wuy_json_new_object(json);
-	wuy_json_object_string(json, "name", conf_path->pathnames[0]);
+	wuy_json_object_string(json, "name", conf_path->name);
+	h2d_conf_path_stats(conf_path, json);
 	h2d_module_stats_path(conf_path, json);
 	wuy_json_object_close(json);
 }
 static void h2d_stats_dump_host(struct h2d_conf_host *conf_host, wuy_json_ctx_t *json)
 {
 	wuy_json_new_object(json);
-	wuy_json_object_string(json, "name", conf_host->hostnames[0]);
-	// h2d_ssl_stats_du
+	wuy_json_object_string(json, "name", conf_host->name);
+	h2d_conf_host_stats(conf_host, json);
 	h2d_module_stats_host(conf_host, json);
 
 	wuy_json_object_array(json, "paths");
@@ -34,8 +35,8 @@ static void h2d_stats_dump_host(struct h2d_conf_host *conf_host, wuy_json_ctx_t 
 static void h2d_stats_dump_listen(struct h2d_conf_listen *conf_listen, wuy_json_ctx_t *json)
 {
 	wuy_json_new_object(json);
-	wuy_json_object_string(json, "name", conf_listen->addresses[0]);
-	// h2d_ssl_stats_du
+	wuy_json_object_string(json, "name", conf_listen->name);
+	h2d_conf_listen_stats(conf_listen, json);
 	h2d_module_stats_listen(conf_listen, json);
 
 	wuy_json_object_array(json, "hosts");

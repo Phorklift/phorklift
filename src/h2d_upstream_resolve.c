@@ -54,6 +54,11 @@ static void h2d_upstream_address_add(struct h2d_upstream_conf *upstream,
 	wuy_list_init(&address->active_head);
 	address->upstream = upstream;
 	address->weight = hostname->weight;
+	address->stats.create_time = time(NULL);
+
+	char buf[128];
+	wuy_sockaddr_ntop(sockaddr, buf, sizeof(buf));
+	address->name = strdup(buf);
 
 	if (before != NULL) {
 		wuy_list_add_before(&before->upstream_node, &address->upstream_node);

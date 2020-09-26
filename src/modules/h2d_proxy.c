@@ -1,8 +1,14 @@
 #include "h2d_main.h"
 
+struct h2d_proxy_stats {
+	atomic_long			parse_error;
+};
+
 struct h2d_proxy_conf {
 	struct h2d_upstream_conf	upstream;
 	bool				x_forwarded_for;
+
+	struct h2d_proxy_stats		*stats;
 };
 
 struct h2d_proxy_ctx {
@@ -72,6 +78,7 @@ static int h2d_proxy_parse_response_headers(struct h2d_request *r,
 	const char *p = buffer;
 	const char *buf_end = buffer + buf_len;
 	struct h2d_proxy_ctx *ctx = r->module_ctxs[h2d_proxy_module.index];
+	struct h2d_proxy_conf *conf = r->conf_path->module_confs[h2d_proxy_module.index];
 
 	// printf("upstream headers: %d\n%s\n===\n", buf_len, buffer);
 
@@ -82,6 +89,7 @@ static int h2d_proxy_parse_response_headers(struct h2d_request *r,
 			return H2D_AGAIN;
 		}
 		if (proc_len < 0) {
+			atomic_fetch_add(&conf->stats->parse_error, 1);
 			return H2D_ERROR;
 		}
 		p += proc_len;
@@ -94,6 +102,7 @@ static int h2d_proxy_parse_response_headers(struct h2d_request *r,
 		int proc_len = wuy_http_header(p, buf_end - p, &name_len,
 				&value_str, &value_len);
 		if (proc_len < 0) {
+			atomic_fetch_add(&conf->stats->parse_error, 1);
 			return H2D_ERROR;
 		}
 		if (proc_len == 0) {
@@ -159,6 +168,7 @@ run:
 static int h2d_proxy_generate_response_body(struct h2d_request *r, uint8_t *buffer, int buf_len)
 {
 	struct h2d_proxy_ctx *ctx = r->module_ctxs[h2d_proxy_module.index];
+	struct h2d_proxy_conf *conf = r->conf_path->module_confs[h2d_proxy_module.index];
 
 	/* plain case */
 	if (!wuy_http_chunked_is_enabled(&ctx->chunked)) {
@@ -179,6 +189,7 @@ static int h2d_proxy_generate_response_body(struct h2d_request *r, uint8_t *buff
 	int proc_len = wuy_http_chunked_process(&ctx->chunked, raw_buffer,
 			read_len, buffer, &buf_len);
 	if (proc_len < 0) {
+		atomic_fetch_add(&conf->stats->parse_error, 1);
 		printf("invalid chunked: %d\n", proc_len);
 		return H2D_ERROR;
 	}
@@ -203,15 +214,28 @@ static void h2d_proxy_ctx_free(struct h2d_request *r)
 static void h2d_proxy_conf_stats(void *data, wuy_json_ctx_t *json)
 {
 	struct h2d_proxy_conf *conf = data;
-	if (conf->upstream.stats == NULL) {
+	struct h2d_proxy_stats *stats = conf->stats;
+	if (stats == NULL) {
 		return;
 	}
 	wuy_json_object_object(json, "proxy");
+	wuy_json_object_int(json, "parse_error", atomic_load(&stats->parse_error));
 	h2d_upstream_conf_stats(&conf->upstream, json);
 	wuy_json_object_close(json);
 }
 
 /* configuration */
+
+static bool h2d_proxy_conf_post(void *data)
+{
+	struct h2d_proxy_conf *conf = data;
+	if (conf->upstream.stats == NULL) { // TODO: how to check?
+		return true;
+	}
+
+	conf->stats = wuy_shmem_alloc(sizeof(struct h2d_proxy_stats));
+	return true;
+}
 
 static struct wuy_cflua_command h2d_proxy_conf_commands[] = {
 	{	.type = WUY_CFLUA_TYPE_STRING,
@@ -239,6 +263,7 @@ struct h2d_module h2d_proxy_module = {
 		.u.table = &(struct wuy_cflua_table) {
 			.commands = h2d_proxy_conf_commands,
 			.size = sizeof(struct h2d_proxy_conf),
+			.post = h2d_proxy_conf_post,
 		}
 	},
 	.stats_path = h2d_proxy_conf_stats,

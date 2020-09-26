@@ -17,10 +17,10 @@ struct _ups_nonuse {
 #define H2D_UPSTREAM_LOADBALANCE_MAX		(H2D_MODULE_STATIC_NUMBER + H2D_MODULE_DYNAMIC_MAX)
 
 struct h2d_upstream_stats {
-	atomic_int		total;
-	atomic_int		reuse;
-	atomic_int		retry;
-	atomic_int		pick_fail;
+	atomic_long		pick_fail;
+	atomic_long		total;
+	atomic_long		reuse;
+	atomic_long		retry;
 };
 
 struct h2d_upstream_connection {
@@ -33,6 +33,8 @@ struct h2d_upstream_connection {
 
 	struct h2d_request	*request; /* NULL if in idle state */
 
+	long			create_time;
+
 	wuy_list_node_t		list_node;
 };
 
@@ -43,6 +45,8 @@ struct h2d_upstream_address {
 		struct sockaddr_in6	sin6;
 		struct sockaddr_un	sun;
 	} sockaddr;
+
+	const char		*name;
 
 	bool			deleted;
 	time_t			down_time;
@@ -55,7 +59,17 @@ struct h2d_upstream_address {
 	wuy_list_node_t		hostname_node;
 	wuy_list_node_t		down_node;
 	double			weight;
+
 	struct h2d_upstream_conf	*upstream;
+
+	struct {
+		time_t		create_time;
+		long		pick;
+		long		reuse;
+		long		down;
+		long		connected;
+		long		connect_acc_ms;
+	} stats;
 };
 
 struct h2d_upstream_hostname {
@@ -77,6 +91,7 @@ struct h2d_upstream_loadbalance {
 struct h2d_upstream_conf {
 	/* configrations */
 	struct h2d_upstream_hostname	*hostnames;
+	const char			*name;
 	int				idle_max;
 	int				idle_timeout;
 	int				recv_timeout;
@@ -117,6 +132,8 @@ struct h2d_upstream_conf {
 	/* loadbalances */
 	struct h2d_upstream_loadbalance	*loadbalance;
 	void				*lb_confs[H2D_UPSTREAM_LOADBALANCE_MAX];
+
+	wuy_list_node_t			list_node;
 };
 
 struct h2d_upstream_retry_ctx {
@@ -161,7 +178,7 @@ static inline bool h2d_upstream_connection_write_blocked(struct h2d_upstream_con
 	return loop_stream_is_write_blocked(upc->loop_stream);
 }
 
-void h2d_upstream_conf_stats(struct h2d_upstream_conf *conf, wuy_json_ctx_t *json);
+void h2d_upstream_stats(wuy_json_ctx_t *json);
 
 void h2d_upstream_init(void);
 

@@ -9,6 +9,12 @@ struct h2d_conf_listen_hostname {
 
 #define x_strlow(x)
 
+void h2d_conf_listen_stats(struct h2d_conf_listen *conf_listen, wuy_json_ctx_t *json)
+{
+	struct h2d_conf_listen_stats *stats = conf_listen->stats;
+	wuy_json_object_int(json, "fail_no_host", atomic_load(&stats->fail_no_host));
+}
+
 struct h2d_conf_host *h2d_conf_listen_search_hostname(
 		struct h2d_conf_listen *conf_listen, const char *name)
 {
@@ -147,6 +153,12 @@ static bool h2d_conf_listen_post(void *data)
 		}
 	}
 
+	if (conf_listen->name == NULL) {
+		conf_listen->name = conf_listen->addresses[0];
+	}
+
+	conf_listen->stats = wuy_shmem_alloc(sizeof(struct h2d_conf_listen_stats));
+
 	return true;
 }
 
@@ -217,6 +229,10 @@ static struct wuy_cflua_command h2d_conf_listen_commands[] = {
 		.type = WUY_CFLUA_TYPE_TABLE,
 		.offset = offsetof(struct h2d_conf_listen, default_host),
 		.u.table = &h2d_conf_host_table,
+	},
+	{	.name = "name",
+		.type = WUY_CFLUA_TYPE_STRING,
+		.offset = offsetof(struct h2d_conf_listen, name),
 	},
 	{	.name = "http1",
 		.type = WUY_CFLUA_TYPE_TABLE,

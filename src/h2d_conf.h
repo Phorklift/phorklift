@@ -7,7 +7,32 @@
 
 #include "h2d_module.h"
 
+struct h2d_conf_path_stats {
+	atomic_long	total;
+	atomic_long	done;
+
+	atomic_long	req_acc_ms;
+	atomic_long	react_acc_ms;
+	atomic_long	resp_acc_ms;
+	atomic_long	total_acc_ms;
+
+#define X(s, _) atomic_long status_##s;
+	WUY_HTTP_STATUS_CODE_TABLE
+#undef X
+	atomic_long	status_others;
+};
+
+struct h2d_conf_host_stats {
+	atomic_long	fail_no_path;
+};
+
+struct h2d_conf_listen_stats {
+	atomic_long	fail_no_host;
+};
+
 struct h2d_conf_path {
+	const char		*name;
+
 	char			**pathnames;
 
 	bool			(*req_hook)(void);
@@ -18,9 +43,13 @@ struct h2d_conf_path {
 
 	void			*module_confs[H2D_MODULE_MAX];
 	int			content_meta_levels[H2D_MODULE_MAX];
+
+	struct h2d_conf_path_stats	*stats;
 };
 
 struct h2d_conf_host {
+	const char		*name;
+
 	char			**hostnames;
 
 	struct h2d_conf_path	**paths;
@@ -29,9 +58,13 @@ struct h2d_conf_host {
 	struct h2d_ssl_conf	*ssl;
 
 	void			*module_confs[H2D_MODULE_MAX];
+
+	struct h2d_conf_host_stats	*stats;
 };
 
 struct h2d_conf_listen {
+	const char		*name;
+
 	char			**addresses;
 
 	SSL_CTX			*ssl_ctx;
@@ -67,6 +100,8 @@ struct h2d_conf_listen {
 	} network;
 
 	void			*module_confs[H2D_MODULE_MAX];
+
+	struct h2d_conf_listen_stats	*stats;
 };
 
 extern lua_State *h2d_L;
@@ -78,6 +113,10 @@ struct h2d_conf_host *h2d_conf_listen_search_hostname(
 
 struct h2d_conf_path *h2d_conf_host_search_pathname(
 		struct h2d_conf_host *conf_host, const char *name);
+
+void h2d_conf_path_stats(struct h2d_conf_path *conf_path, wuy_json_ctx_t *json);
+void h2d_conf_host_stats(struct h2d_conf_host *conf_host, wuy_json_ctx_t *json);
+void h2d_conf_listen_stats(struct h2d_conf_listen *conf_listen, wuy_json_ctx_t *json);
 
 /* internal */
 extern struct wuy_cflua_table h2d_conf_listen_table;

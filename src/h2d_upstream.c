@@ -10,6 +10,8 @@ static struct h2d_upstream_loadbalance *h2d_upstream_loadbalances[H2D_UPSTREAM_L
 	#undef X
 };
 
+static WUY_LIST(h2d_upstream_list);
+
 static int h2d_upstream_loadbalance_number;
 
 static void h2d_upstream_connection_close(struct h2d_upstream_connection *upc)
@@ -66,6 +68,8 @@ void h2d_upstream_connection_fail(struct h2d_upstream_connection *upc)
 	printf("upstream address go down\n");
 	address->down_time = time(NULL);
 	address->healthchecks = 0;
+
+	address->stats.down++;
 
 	if (h2d_upstream_is_active_healthcheck(upstream)) {
 		wuy_list_del_if(&address->down_node);
@@ -135,6 +139,7 @@ h2d_upstream_get_connection(struct h2d_upstream_conf *upstream, struct h2d_reque
 		address->healthchecks++;
 	}
 
+	address->stats.pick++;
 	char tmpbuf[100];
 	wuy_sockaddr_ntop(&address->sockaddr.s, tmpbuf, sizeof(tmpbuf));
 	printf("pick %s\n", tmpbuf);
@@ -145,6 +150,7 @@ h2d_upstream_get_connection(struct h2d_upstream_conf *upstream, struct h2d_reque
 		wuy_list_append(&address->active_head, &upc->list_node);
 		address->idle_num--;
 		atomic_fetch_add(&upstream->stats->reuse, 1);
+		address->stats.reuse++;
 		upc->request = r;
 		return upc;
 	}
@@ -166,6 +172,7 @@ h2d_upstream_get_connection(struct h2d_upstream_conf *upstream, struct h2d_reque
 	upc->loop_stream = s;
 	wuy_list_append(&address->active_head, &upc->list_node);
 	loop_stream_set_app_data(s, upc);
+	upc->create_time = wuy_time_ms();
 
 	upc->request = r;
 	return upc;
@@ -296,6 +303,12 @@ int h2d_upstream_connection_write(struct h2d_upstream_connection *upc,
 		void *data, int data_len)
 {
 	assert(upc->loop_stream != NULL);
+
+	if (upc->create_time != 0) {
+		upc->address->stats.connected += 1;
+		upc->address->stats.connect_acc_ms += wuy_time_ms() - upc->create_time;
+		upc->create_time = 0;
+	}
 
 	int write_len = loop_stream_write(upc->loop_stream, data, data_len);
 	if (write_len < 0) {
@@ -510,19 +523,55 @@ static bool h2d_upstream_conf_post(void *data)
 		return false;
 	}
 
+	if (conf->name == NULL) {
+		conf->name = conf->hostnames[0].name;
+	}
+
+	wuy_list_append(&h2d_upstream_list, &conf->list_node);
+
 	return true;
 }
 
-void h2d_upstream_conf_stats(struct h2d_upstream_conf *conf, wuy_json_ctx_t *json)
+static void h2d_upstream_conf_stats(struct h2d_upstream_conf *conf, wuy_json_ctx_t *json)
 {
-	struct h2d_upstream_stats *stats = conf->stats;
+	wuy_json_new_object(json);
 
-	wuy_json_object_object(json, "upstream");
+	wuy_json_object_string(json, "name", conf->name);
+
+	struct h2d_upstream_stats *stats = conf->stats;
 	wuy_json_object_int(json, "total", atomic_load(&stats->total));
 	wuy_json_object_int(json, "reuse", atomic_load(&stats->reuse));
 	wuy_json_object_int(json, "retry", atomic_load(&stats->retry));
 	wuy_json_object_int(json, "pick_fail", atomic_load(&stats->pick_fail));
+
+	wuy_json_object_int(json, "worker_pid", getpid());
+	wuy_json_object_array(json, "worker_addresses");
+	struct h2d_upstream_address *address;
+	wuy_list_iter_type(&conf->address_head, address, upstream_node) {
+		wuy_json_array_object(json);
+		wuy_json_object_string(json, "name", address->name);
+		wuy_json_object_int(json, "down_time", address->down_time);
+		wuy_json_object_int(json, "create_time", address->stats.create_time);
+		wuy_json_object_int(json, "down", address->stats.down);
+		wuy_json_object_int(json, "pick", address->stats.pick);
+		wuy_json_object_int(json, "reuse", address->stats.reuse);
+		wuy_json_object_int(json, "connected", address->stats.connected);
+		wuy_json_object_int(json, "connect_acc_ms", address->stats.connect_acc_ms);
+		wuy_json_object_close(json);
+	}
+	wuy_json_array_close(json); /* end of worker_addresses[] */
+
 	wuy_json_object_close(json);
+}
+void h2d_upstream_stats(wuy_json_ctx_t *json)
+{
+	wuy_json_new_array(json);
+
+	struct h2d_upstream_conf *conf;
+	wuy_list_iter_type(&h2d_upstream_list, conf, list_node) {
+		h2d_upstream_conf_stats(conf, json);
+	}
+	wuy_json_array_close(json);
 }
 
 static struct wuy_cflua_command h2d_upstream_healthcheck_commands[] = {

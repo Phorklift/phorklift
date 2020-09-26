@@ -1,5 +1,11 @@
 #include "h2d_main.h"
 
+void h2d_conf_host_stats(struct h2d_conf_host *conf_host, wuy_json_ctx_t *json)
+{
+	struct h2d_conf_host_stats *stats = conf_host->stats;
+	wuy_json_object_int(json, "fail_no_path", atomic_load(&stats->fail_no_path));
+}
+
 struct h2d_conf_path *h2d_conf_host_search_pathname(
 		struct h2d_conf_host *conf_host, const char *name)
 {
@@ -39,6 +45,12 @@ static bool h2d_conf_host_post(void *data)
 		return false;
 	}
 
+	if (conf_host->name == NULL) {
+		conf_host->name = conf_host->hostnames ? conf_host->hostnames[0] : "_default";
+	}
+
+	conf_host->stats = wuy_shmem_alloc(sizeof(struct h2d_conf_host_stats));
+
 	return true;
 }
 
@@ -56,6 +68,10 @@ static struct wuy_cflua_command h2d_conf_host_commands[] = {
 		.type = WUY_CFLUA_TYPE_TABLE,
 		.offset = offsetof(struct h2d_conf_host, default_path),
 		.u.table = &h2d_conf_path_table,
+	},
+	{	.name = "name",
+		.type = WUY_CFLUA_TYPE_STRING,
+		.offset = offsetof(struct h2d_conf_host, name),
 	},
 	{	.name = "ssl",
 		.type = WUY_CFLUA_TYPE_TABLE,

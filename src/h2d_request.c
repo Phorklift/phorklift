@@ -10,6 +10,8 @@ struct h2d_request *h2d_request_new(struct h2d_connection *c)
 		return NULL;
 	}
 
+	r->create_time = wuy_time_ms();
+
 	wuy_slist_init(&r->req.headers);
 	wuy_slist_init(&r->resp.headers);
 	wuy_list_init(&r->subr_head);
@@ -31,6 +33,43 @@ void h2d_request_reset_response(struct h2d_request *r)
 	h2d_header_free_list(&r->resp.headers);
 }
 
+static void h2d_request_stats(struct h2d_request *r)
+{
+	/* count */
+	if (r->conf_host == NULL) {
+		atomic_fetch_add(&r->c->conf_listen->stats->fail_no_host, 1);
+		return;
+	}
+	if (r->conf_path == NULL) {
+		atomic_fetch_add(&r->conf_host->stats->fail_no_path, 1);
+		return;
+	}
+
+	struct h2d_conf_path_stats *stats = r->conf_path->stats;
+
+	atomic_fetch_add(&stats->total, 1);
+	if (r->state == H2D_REQUEST_STATE_DONE) {
+		atomic_fetch_add(&stats->done, 1);
+
+		/* time */
+		long close_time = wuy_time_ms();
+		atomic_fetch_add(&stats->req_acc_ms, r->req_end_time - r->create_time);
+		atomic_fetch_add(&stats->react_acc_ms, r->resp_begin_time - r->req_end_time);
+		atomic_fetch_add(&stats->resp_acc_ms, close_time - r->resp_begin_time);
+		atomic_fetch_add(&stats->total_acc_ms, close_time - r->create_time);
+	}
+
+	/* status code */
+	switch (r->resp.status_code) {
+#define X(s, _) case s: atomic_fetch_add(&stats->status_##s, 1); break;
+	WUY_HTTP_STATUS_CODE_TABLE
+#undef X
+	default:
+		h2d_request_log(r, H2D_LOG_ERROR, "unknown status code %d", r->resp.status_code);
+		atomic_fetch_add(&stats->status_others, 1);
+	}
+}
+
 void h2d_request_close(struct h2d_request *r)
 {
 	if (h2d_request_is_subreq(r) && !r->father->closed) {
@@ -46,6 +85,8 @@ void h2d_request_close(struct h2d_request *r)
 	r->closed = true;
 
 	h2d_request_log(r, H2D_LOG_DEBUG, "request done: %s", r->req.uri.raw);
+
+	h2d_request_stats(r);
 
 	if (!wuy_list_empty(&r->subr_head)) {
 		h2d_request_log(r, H2D_LOG_DEBUG, "!!!!!!!!! subruest %p", r);
@@ -194,13 +235,13 @@ static inline int h2d_request_simple_response_body(enum wuy_http_status_code cod
 		char *buf, int len)
 {
 #define H2D_STATUS_CODE_RESPONSE_BODY_FORMAT \
-	"<html>" \
-	"<head><title>%d %s</title></head>" \
-	"<body>" \
-	"<h1>%d %s</h1>" \
-	"<hr><p><em>by h2tpd</em></p>" \
-	"</body>" \
-	"</html>"
+	"<html>\n" \
+	"<head><title>%d %s</title></head>\n" \
+	"<body>\n" \
+	"<h1>%d %s</h1>\n" \
+	"<hr><p><em>by h2tpd</em></p>\n" \
+	"</body>\n" \
+	"</html>\n"
 
 	if (code < WUY_HTTP_400) {
 		return 0;
@@ -212,6 +253,10 @@ static inline int h2d_request_simple_response_body(enum wuy_http_status_code cod
 
 static int h2d_request_response_headers(struct h2d_request *r)
 {
+	if (r->req_end_time == 0) {
+		r->req_end_time = wuy_time_ms();
+	}
+
 	if (!r->is_broken) {
 		int ret = r->conf_path->content->content.response_headers(r);
 		if (ret != H2D_OK) {
@@ -242,6 +287,10 @@ static int h2d_request_response_headers(struct h2d_request *r)
 
 static int h2d_request_response_body(struct h2d_request *r)
 {
+	if (r->resp_begin_time == 0) {
+		r->resp_begin_time = wuy_time_ms();
+	}
+
 	struct h2d_connection *c = r->c;
 
 	int buf_len = h2d_connection_make_space(c, 4096);

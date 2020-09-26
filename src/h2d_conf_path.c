@@ -1,5 +1,27 @@
 #include "h2d_main.h"
 
+void h2d_conf_path_stats(struct h2d_conf_path *conf_path, wuy_json_ctx_t *json)
+{
+	struct h2d_conf_path_stats *stats = conf_path->stats;
+	wuy_json_object_int(json, "total", atomic_load(&stats->total));
+	wuy_json_object_int(json, "done", atomic_load(&stats->done));
+	wuy_json_object_int(json, "req_acc_ms", atomic_load(&stats->req_acc_ms));
+	wuy_json_object_int(json, "react_acc_ms", atomic_load(&stats->react_acc_ms));
+	wuy_json_object_int(json, "resp_acc_ms", atomic_load(&stats->resp_acc_ms));
+	wuy_json_object_int(json, "total_acc_ms", atomic_load(&stats->total_acc_ms));
+
+	wuy_json_object_object(json, "status_codes");
+	int c;
+#define X(s, _) c = atomic_load(&stats->status_##s); if (c != 0) wuy_json_object_int(json, #s, c);
+	WUY_HTTP_STATUS_CODE_TABLE
+#undef X
+	c = atomic_load(&stats->status_others);
+	if (c != 0) {
+		wuy_json_object_int(json, "others", c);
+	}
+	wuy_json_object_close(json);
+}
+
 static int h2d_conf_path_name(void *data, char *buf, int size)
 {
 	struct h2d_conf_path *conf_path = data;
@@ -48,6 +70,12 @@ static bool h2d_conf_path_post(void *data)
 		return false;
 	}
 
+	if (conf_path->name == NULL) {
+		conf_path->name = conf_path->pathnames ? conf_path->pathnames[0] : "_default";
+	}
+
+	conf_path->stats = wuy_shmem_alloc(sizeof(struct h2d_conf_path_stats));
+
 	return true;
 }
 
@@ -56,6 +84,10 @@ static struct wuy_cflua_command h2d_conf_path_commands[] = {
 		.type = WUY_CFLUA_TYPE_TABLE,
 		.offset = offsetof(struct h2d_conf_path, pathnames),
 		.u.table = WUY_CFLUA_ARRAY_STRING_TABLE,
+	},
+	{	.name = "name",
+		.type = WUY_CFLUA_TYPE_STRING,
+		.offset = offsetof(struct h2d_conf_path, name),
 	},
 	{	.name = "error_log",
 		.type = WUY_CFLUA_TYPE_TABLE,

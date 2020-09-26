@@ -63,6 +63,10 @@ struct h2d_request {
 	int			filter_step_process_headers;
 	int			filter_step_process_body;
 
+	long			create_time;
+	long			req_end_time;
+	long			resp_begin_time;
+
 	struct h2d_request	*father; /* only for subreq */
 	wuy_list_t		subr_head;
 	wuy_list_node_t		subr_node;

@@ -4,14 +4,14 @@
 #include <openssl/ossl_typ.h>
 
 struct h2d_ssl_stats {
-	atomic_int	total;
-	atomic_int	alpn_h2;
-	atomic_int	alpn_miss;
-	atomic_int	alpn_fail;
-	atomic_int	sni_ok;
-	atomic_int	sni_miss;
-	atomic_int	ticket_sign;
-	atomic_int	ticket_reuse;
+	atomic_long	total;
+	atomic_long	alpn_h2;
+	atomic_long	alpn_miss;
+	atomic_long	alpn_fail;
+	atomic_long	sni_ok;
+	atomic_long	sni_miss;
+	atomic_long	ticket_sign;
+	atomic_long	ticket_reuse;
 };
 struct h2d_ssl_conf {
 	const char	*certificate;
