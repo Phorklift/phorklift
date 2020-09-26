@@ -36,8 +36,8 @@ static inline struct h2d_header *h2d_header_new(const char *name_str, int name_l
 	return h;
 }
 
-#define h2d_header_add_lite(list, name, value) \
-	h2d_header_add(list, name, sizeof(name)-1, value, sizeof(value)-1)
+#define h2d_header_add_lite(list, name, value, value_len) \
+	h2d_header_add(list, name, sizeof(name)-1, value, value_len)
 
 static inline struct h2d_header *h2d_header_add(wuy_slist_t *list,
 		const char *name_str, int name_len,

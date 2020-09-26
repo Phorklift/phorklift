@@ -39,6 +39,18 @@ struct h2d_conf_path {
 
 	struct h2d_log		*error_log;
 
+	struct h2d_conf_access_log {
+		const char		*filename;
+		double			sampling_rate;
+		bool			replace_format;
+		wuy_cflua_function_t	format;
+		wuy_cflua_function_t	filter;
+		int			buf_size;
+		int			max_line;
+
+		struct h2d_log_file	*file;
+	} access_log;
+
 	struct h2d_module	*content;
 
 	void			*module_confs[H2D_MODULE_MAX];

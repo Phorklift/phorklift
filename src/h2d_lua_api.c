@@ -69,8 +69,7 @@ void h2d_lua_api_thread_free(lua_State *L)
 	lua_settable(h2d_L, LUA_REGISTRYINDEX);
 }
 
-const char *h2d_lua_api_call_lstring(struct h2d_request *r,
-		wuy_cflua_function_t f, size_t *plen)
+static bool h2d_lua_api_call(struct h2d_request *r, wuy_cflua_function_t f)
 {
 	h2d_lua_api_current_request = r;
 
@@ -78,6 +77,15 @@ const char *h2d_lua_api_call_lstring(struct h2d_request *r,
 	if (lua_pcall(h2d_L, 0, 1, 0) != 0) {
 		printf("lua_pcall fail: %s\n", lua_tostring(h2d_L, -1));
 		lua_pop(h2d_L, 1);
+		return false;
+	}
+	return true;
+}
+
+const char *h2d_lua_api_call_lstring(struct h2d_request *r,
+		wuy_cflua_function_t f, size_t *plen)
+{
+	if (!h2d_lua_api_call(r, f)) {
 		return NULL;
 	}
 
@@ -94,6 +102,17 @@ const char *h2d_lua_api_call_lstring(struct h2d_request *r,
 	return str;
 }
 
+int h2d_lua_api_call_boolean(struct h2d_request *r,
+		wuy_cflua_function_t f)
+{
+	if (!h2d_lua_api_call(r, f)) {
+		return -1;
+	}
+
+	int ret = lua_toboolean(h2d_L, -1);
+	lua_pop(h2d_L, -1);
+	return ret;
+}
 
 /* APIs */
 
@@ -146,6 +165,13 @@ static int h2d_lua_api_headers(lua_State *L)
 	return 1;
 }
 
+static int h2d_lua_api_status_code(lua_State *L)
+{
+	struct h2d_request *r = h2d_lua_api_current_request;
+	lua_pushinteger(L, r->resp.status_code);
+	return 1;
+}
+
 static int h2d_lua_api_subrequest_resume(lua_State *L)
 {
 	struct h2d_request *r = h2d_lua_api_current_request;
@@ -192,6 +218,7 @@ static const struct luaL_Reg h2d_lua_api_list [] = {
 	{ "uri_raw", h2d_lua_api_uri_raw},
 	{ "uri_path", h2d_lua_api_uri_path },
 	{ "headers", h2d_lua_api_headers },
+	{ "status_code", h2d_lua_api_status_code },
 	{ "sleep", h2d_lua_api_sleep },
 	{ "subrequest", h2d_lua_api_subrequest },
 	{ NULL, NULL }  /* sentinel */

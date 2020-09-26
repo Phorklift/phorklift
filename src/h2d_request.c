@@ -70,6 +70,55 @@ static void h2d_request_stats(struct h2d_request *r)
 	}
 }
 
+static void h2d_request_access_log(struct h2d_request *r)
+{
+	struct h2d_conf_access_log *log = &r->conf_path->access_log;
+
+	if (log->sampling_rate == 0) {
+		return;
+	}
+
+	if (wuy_cflua_is_function_set(log->filter)) {
+		if (!h2d_lua_api_call_boolean(r, log->filter)) {
+			return;
+		}
+	}
+
+	if (log->sampling_rate < 1) {
+		if ((wuy_time_usec() % 10000) / 10000.0 > log->sampling_rate) {
+			printf("skip log\n");
+			return;
+		}
+	}
+
+	const char *format = "-";
+	if (wuy_cflua_is_function_set(log->format)) {
+		size_t len;
+		const char *format = h2d_lua_api_call_lstring(r, log->format, &len);
+		if (format == NULL) {
+			format = "-";
+
+		} else if (log->replace_format) {
+			h2d_log_file_write(log->file, log->max_line, "%s", format);
+		}
+	}
+
+#define H2D_DIFF(a, b) (a != 0) ? a - b : -1
+#define H2D_DIFF2(a, b) (b != 0) ? a - b : -1
+	long close_time = wuy_time_ms();
+	h2d_log_file_write(log->file, log->max_line, "%s %s %d %lu %d %ld %ld %ld %ld %s",
+			r->req.host ? r->req.host : "-",
+			r->req.uri.raw,
+			r->resp.status_code,
+			r->resp.sent_length,
+			r->state,
+			H2D_DIFF(r->req_end_time, r->create_time),
+			H2D_DIFF(r->resp_begin_time, r->req_end_time),
+			H2D_DIFF2(close_time, r->resp_begin_time),
+			close_time - r->create_time,
+			format);
+}
+
 void h2d_request_close(struct h2d_request *r)
 {
 	if (h2d_request_is_subreq(r) && !r->father->closed) {
@@ -86,6 +135,7 @@ void h2d_request_close(struct h2d_request *r)
 
 	h2d_request_log(r, H2D_LOG_DEBUG, "request done: %s", r->req.uri.raw);
 
+	h2d_request_access_log(r);
 	h2d_request_stats(r);
 
 	if (!wuy_list_empty(&r->subr_head)) {

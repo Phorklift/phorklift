@@ -121,9 +121,9 @@ static inline struct h2d_log *h2d_request_get_log(struct h2d_request *r)
 
 #define h2d_request_do_log(r, log, level, fmt, ...) \
 	if (level >= H2D_LOG_ERROR && r->req.uri.raw) { \
-		h2d_log_write(log, level, "%s " fmt, r->req.uri.raw, ##__VA_ARGS__); \
+		h2d_log_level_nocheck(log, level, "%s " fmt, r->req.uri.raw, ##__VA_ARGS__); \
 	} else { \
-		h2d_log_write(log, level, fmt, ##__VA_ARGS__); \
+		h2d_log_level_nocheck(log, level, fmt, ##__VA_ARGS__); \
 	}
 
 #define h2d_request_log_at(r, log, level2, fmt, ...) \

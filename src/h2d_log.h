@@ -1,6 +1,16 @@
 #ifndef H2D_LOG_H
 #define H2D_LOG_H
 
+/* log file */
+
+struct h2d_log_file;
+
+struct h2d_log_file *h2d_log_file_open(const char *filename, int buf_size);
+
+void h2d_log_file_write(struct h2d_log_file *file, int max_line, const char *fmt, ...);
+
+/* error log */
+
 enum h2d_log_level {
 	H2D_LOG_DEBUG,
 	H2D_LOG_INFO,
@@ -9,33 +19,39 @@ enum h2d_log_level {
 	H2D_LOG_FATAL,
 };
 
+static inline const char *h2d_log_strlevel(enum h2d_log_level level)
+{
+	switch (level) {
+	case H2D_LOG_DEBUG: return "[debug]";
+	case H2D_LOG_INFO:  return "[info]";
+	case H2D_LOG_WARN:  return "[warn]";
+	case H2D_LOG_ERROR: return "[error]";
+	case H2D_LOG_FATAL: return "[fatal]";
+	default: abort();
+	}
+}
+
 struct h2d_log {
 	const char		*conf_filename;
 	const char		*conf_level;
+	int			buf_size;
+	int			max_line;
 
 	enum h2d_log_level	level;
 	struct h2d_log_file	*file;
 };
 
-/* internal */
-void h2d_log_write(struct h2d_log *log, enum h2d_log_level level, const char *fmt, ...);
+#define h2d_log_level_nocheck(log, level2, fmt, ...) \
+	h2d_log_file_write(log->file, log->max_line, \
+			"%s %d " fmt, h2d_log_strlevel(level2), 0, ##__VA_ARGS__)
+
 #define h2d_log_level(log, level2, fmt, ...) \
-	if (level2 <= log->level) h2d_log_write(log, level2, fmt, ##__VA_ARGS__)
-
-
-/* API */
-#define h2d_log_debug(log, fmt, ...)	h2d_log_level(log, H2D_LOG_DEBUG, fmt, ##__VA_ARGS__)
-#define h2d_log_info(log, fmt, ...)	h2d_log_level(log, H2D_LOG_INFO, fmt, ##__VA_ARGS__)
-#define h2d_log_warn(log, fmt, ...)	h2d_log_level(log, H2D_LOG_WARN, fmt, ##__VA_ARGS__)
-#define h2d_log_error(log, fmt, ...)	h2d_log_level(log, H2D_LOG_ERROR, fmt, ##__VA_ARGS__)
-#define h2d_log_fatal(log, fmt, ...)	h2d_log_level(log, H2D_LOG_FATAL, fmt, ##__VA_ARGS__)
+	if (level2 <= log->level) h2d_log_level_nocheck(log, level2, fmt, ##__VA_ARGS__)
 
 #define h2d_assert(expr) if (!(expr)) h2d_log_fatal("assert fail: " #expr " at %s()", __FUNCTION__)
 
-struct h2d_log *h2d_log_new(const char *filename, enum h2d_log_level level);
+extern struct wuy_cflua_table h2d_log_conf_table; 
 
 void h2d_log_init(void);
-
-extern struct wuy_cflua_table h2d_log_conf_table; 
 
 #endif

@@ -1,95 +1,93 @@
 #include "h2d_main.h"
 
-#include <sys/time.h>
-#include <time.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
 
-#define H2D_LOG_BUFFER_SIZE	1024*16
-#define H2D_LOG_MAX_LENGTH	1024
-
 static WUY_LIST(h2d_log_file_list);
-
-static pid_t h2d_log_pid;
 
 struct h2d_log_file {
 	wuy_list_node_t		list_node;
 	const char		*name;
 	int			fd;
 	char			*pos;
-	char			buffer[H2D_LOG_BUFFER_SIZE];
+	int			buf_size;
+	char			buffer[0];
 };
 
-static int h2d_log_time(char *buffer)
+struct h2d_log_file *h2d_log_file_open(const char *filename, int buf_size)
 {
-/* TODO need to optimize? */
+	/* search file */
+	struct h2d_log_file *file;
+	wuy_list_iter_type(&h2d_log_file_list, file, list_node) {
+		if (strcmp(file->name, filename) == 0) {
+			return file;
+		}
+	}
 
-#define H2D_LOG_TIME_SIZE_TZ	(sizeof("+0800") - 1)
-#define H2D_LOG_TIME_SIZE_SEC	(sizeof("2018-09-19T16:53:50.") - 1)
-#define H2D_LOG_TIME_SIZE_USEC	(sizeof("123456") - 1)
+	/* open new file */
+	file = malloc(sizeof(struct h2d_log_file) + buf_size);
+	file->fd = open(filename, O_WRONLY | O_APPEND | O_CREAT, 0644);
+	if (file->fd < 0) {
+		printf("error in open log file %s %s\n", filename, strerror(errno));
+		return NULL;
+	}
+	file->name = filename;
+	file->pos = file->buffer;
+	file->buf_size = buf_size;
+	wuy_list_append(&h2d_log_file_list, &file->list_node);
 
-        static char buf_sec[H2D_LOG_TIME_SIZE_SEC + 1];
-        static char buf_usec[H2D_LOG_TIME_SIZE_USEC + 1];
-        static char buf_tz[H2D_LOG_TIME_SIZE_TZ + 1];
-
-        static struct timeval last;
-
-        struct timeval now;
-        gettimeofday(&now, NULL);
-
-        if (now.tv_sec != last.tv_sec) {
-                struct tm *tm = localtime(&now.tv_sec);
-                sprintf(buf_sec, "%04d-%02d-%02dT%02d:%02d:%02d.",
-                                tm->tm_year + 1900, tm->tm_mon + 1, tm->tm_mday,
-                                tm->tm_hour, tm->tm_min, tm->tm_sec);
-        }
-
-        if (now.tv_usec != last.tv_usec) {
-                sprintf(buf_usec, "%06ld", now.tv_usec);
-        }
-
-        if (last.tv_sec == 0) {
-		/* timezone */
-                time_t tmp = time(NULL);
-                struct tm *tm = localtime(&tmp);
-
-                int off_sign = '+';
-                int off = (int) tm->tm_gmtoff;
-                if (tm->tm_gmtoff < 0) {
-                        off_sign = '-';
-                        off = -off;
-                }
-
-                off /= 60; /* second to minute */
-                sprintf(buf_tz, "%c%02d%02d", off_sign, off / 60, off % 60);
-        }
-
-        last = now;
-
-	char *p = buffer;
-	memcpy(p, buf_sec, H2D_LOG_TIME_SIZE_SEC);
-	p += H2D_LOG_TIME_SIZE_SEC;
-	memcpy(p, buf_usec, H2D_LOG_TIME_SIZE_USEC);
-	p += H2D_LOG_TIME_SIZE_USEC;
-	memcpy(p, buf_tz, H2D_LOG_TIME_SIZE_SEC);
-	p += H2D_LOG_TIME_SIZE_TZ;
-
-        return p - buffer;
+	return file;
 }
 
-#define H2D_STRMOVE(buf, str)  memcpy(buf, str, sizeof(str) - 1); return sizeof(str) - 1;
-static int h2d_log_strlevel(char *buffer, enum h2d_log_level level)
+static void h2d_log_file_flush(struct h2d_log_file *file)
 {
-	switch (level) {
-	case H2D_LOG_DEBUG: H2D_STRMOVE(buffer, "[debug]");
-	case H2D_LOG_INFO:  H2D_STRMOVE(buffer, "[info]");
-	case H2D_LOG_WARN:  H2D_STRMOVE(buffer, "[warn]");
-	case H2D_LOG_ERROR: H2D_STRMOVE(buffer, "[error]");
-	case H2D_LOG_FATAL: H2D_STRMOVE(buffer, "[fatal]");
-	default: abort();
+	if (write(file->fd, file->buffer, file->pos - file->buffer) < 0) {
+		perror("fail in flush log");
+	}
+	file->pos = file->buffer;
+}
+
+void h2d_log_file_write(struct h2d_log_file *file, int max_line, const char *fmt, ...)
+{
+	char *end = file->buffer + file->buf_size;
+	if (end - file->pos < max_line) {
+		h2d_log_file_flush(file);
+	}
+
+	file->pos += wuy_time_rfc3339(file->pos, WUY_TIME_PRECISION_MS);
+	*file->pos++ = ' ';
+
+        va_list ap;
+        va_start(ap, fmt);
+        file->pos += vsnprintf(file->pos, end - file->pos - 1, fmt, ap);
+        va_end(ap);
+
+	if (file->pos > end - 1) {
+		printf("too long line. %ld %d\n", file->pos - end, file->buf_size);
+		file->pos = end - 1;
+	}
+
+	*file->pos++ = '\n';
+}
+
+static void h2d_log_routine(void *data)
+{
+	struct h2d_log_file *file;
+	wuy_list_iter_type(&h2d_log_file_list, file, list_node) {
+		if (file->pos > file->buffer) {
+			h2d_log_file_flush(file);
+		}
 	}
 }
+
+void h2d_log_init(void)
+{
+	loop_idle_add(h2d_loop, h2d_log_routine, NULL);
+}
+
+/* error log */
+
 static enum h2d_log_level h2d_log_parse_level(const char *str)
 {
 	if (strcmp(str, "debug") == 0) {
@@ -107,83 +105,6 @@ static enum h2d_log_level h2d_log_parse_level(const char *str)
 	}
 }
 
-static void h2d_log_file_flush(struct h2d_log_file *file)
-{
-	if (write(file->fd, file->buffer, file->pos - file->buffer) < 0) {
-		perror("fail in flush log");
-	}
-	file->pos = file->buffer;
-}
-
-void h2d_log_write(struct h2d_log *log, enum h2d_log_level level, const char *fmt, ...)
-{
-	struct h2d_log_file *file = log->file;
-
-	if (H2D_LOG_BUFFER_SIZE - (file->pos - file->buffer) < H2D_LOG_MAX_LENGTH) {
-		h2d_log_file_flush(file);
-	}
-
-	file->pos += h2d_log_time(file->pos);
-	*file->pos++ = ' ';
-
-	file->pos += h2d_log_strlevel(file->pos, level);
-	*file->pos++ = ' ';
-
-	file->pos += sprintf(file->pos, "%d ", h2d_log_pid);
-
-        va_list ap;
-        va_start(ap, fmt);
-	size_t size = H2D_LOG_BUFFER_SIZE - (file->pos - file->buffer) - 1;
-        file->pos += vsnprintf(file->pos, size, fmt, ap);
-        va_end(ap);
-	*file->pos++ = '\n';
-}
-
-static void h2d_log_routine(void *data)
-{
-	struct h2d_log_file *file;
-	wuy_list_iter_type(&h2d_log_file_list, file, list_node) {
-		if (file->pos > file->buffer) {
-			h2d_log_file_flush(file);
-		}
-	}
-}
-
-struct h2d_log *h2d_log_new(const char *filename, enum h2d_log_level level)
-{
-	struct h2d_log *log = malloc(sizeof(struct h2d_log));
-	log->level = level;
-
-	/* search file */
-	struct h2d_log_file *file;
-	wuy_list_iter_type(&h2d_log_file_list, file, list_node) {
-		if (strcmp(file->name, filename) == 0) {
-			log->file = file;
-			return log;
-		}
-	}
-
-	/* open new file */
-	file = malloc(sizeof(struct h2d_log_file));
-	file->fd = open(filename, O_WRONLY | O_APPEND | O_CREAT, 0644);
-	if (file->fd < 0) {
-		printf("error in open log file %s %s\n", filename, strerror(errno));
-		return NULL;
-	}
-	file->name = strdup(filename);
-	file->pos = file->buffer;
-	wuy_list_append(&h2d_log_file_list, &file->list_node);
-
-	log->file = file;
-	return log;
-}
-
-void h2d_log_init(void)
-{
-	h2d_log_pid = getpid();
-	loop_idle_add(h2d_loop, h2d_log_routine, NULL);
-}
-
 static bool h2d_log_conf_post(void *data)
 {
 	struct h2d_log *log = data;
@@ -193,39 +114,34 @@ static bool h2d_log_conf_post(void *data)
 		printf("invalid log level\n");
 		return false;
 	}
+	if (log->max_line > log->buf_size) {
+		printf("expect: max_line <= buffer_size\n");
+		return false;
+	}
 
 	if (log->conf_filename == NULL) {
 		log->conf_filename = "error.log";
 	}
 
-	/* search file */
-	struct h2d_log_file *file;
-	wuy_list_iter_type(&h2d_log_file_list, file, list_node) {
-		if (strcmp(file->name, log->conf_filename) == 0) {
-			log->file = file;
-			return true;
-		}
-	}
-
-	/* open new file */
-	file = malloc(sizeof(struct h2d_log_file));
-	file->fd = open(log->conf_filename, O_WRONLY | O_APPEND | O_CREAT, 0644);
-	if (file->fd < 0) {
-		printf("error in open log file %s %s\n", log->conf_filename, strerror(errno));
-		return false;
-	}
-	file->name = log->conf_filename;
-	file->pos = file->buffer;
-	wuy_list_append(&h2d_log_file_list, &file->list_node);
-
-	log->file = file;
-	return true;
+	log->file = h2d_log_file_open(log->conf_filename, log->buf_size);
+	return log->file != NULL;
 }
 
 static struct wuy_cflua_command h2d_log_conf_commands[] = {
 	{	.type = WUY_CFLUA_TYPE_STRING,
 		.flags = WUY_CFLUA_FLAG_UNIQ_MEMBER,
 		.offset = offsetof(struct h2d_log, conf_filename),
+	},
+	{	.name = "buffer_size",
+		.type = WUY_CFLUA_TYPE_INTEGER,
+		.offset = offsetof(struct h2d_log, buf_size),
+		.limits.n = WUY_CFLUA_LIMITS_LOWER(4 * 1024),
+		.default_value.n = 16 * 1024,
+	},
+	{	.name = "max_line",
+		.type = WUY_CFLUA_TYPE_INTEGER,
+		.offset = offsetof(struct h2d_log, max_line),
+		.default_value.n = 2 * 1024,
 	},
 	{	.name = "level",
 		.type = WUY_CFLUA_TYPE_STRING,

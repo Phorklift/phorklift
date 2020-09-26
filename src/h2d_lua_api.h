@@ -13,6 +13,9 @@ void h2d_lua_api_thread_free(lua_State *L);
 const char *h2d_lua_api_call_lstring(struct h2d_request *r,
 		wuy_cflua_function_t f, size_t *plen);
 
+int h2d_lua_api_call_boolean(struct h2d_request *r,
+		wuy_cflua_function_t f);
+
 void h2d_lua_api_init(void);
 
 #endif

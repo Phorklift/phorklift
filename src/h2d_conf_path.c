@@ -74,11 +74,61 @@ static bool h2d_conf_path_post(void *data)
 		conf_path->name = conf_path->pathnames ? conf_path->pathnames[0] : "_default";
 	}
 
+	/* access log */
+	struct h2d_conf_access_log *log = &conf_path->access_log;
+	if (log->max_line > log->buf_size) {
+		printf("expect: max_line <= buffer_size\n");
+		return false;
+	}
+	if (log->filename == NULL) {
+		log->filename = "access.log";
+	}
+	log->file = h2d_log_file_open(log->filename, log->buf_size);
+	if (log->file == NULL) {
+		return false;
+	}
+
 	conf_path->stats = wuy_shmem_alloc(sizeof(struct h2d_conf_path_stats));
 
 	return true;
 }
 
+static struct wuy_cflua_command h2d_conf_path_access_log_commands[] = {
+	{	.type = WUY_CFLUA_TYPE_STRING,
+		.flags = WUY_CFLUA_FLAG_UNIQ_MEMBER,
+		.offset = offsetof(struct h2d_conf_path, access_log.filename),
+	},
+	{	.name = "sampling_rate",
+		.type = WUY_CFLUA_TYPE_DOUBLE,
+		.offset = offsetof(struct h2d_conf_path, access_log.sampling_rate),
+		.limits.d = WUY_CFLUA_LIMITS(0, 1),
+		.default_value.d = 1,
+	},
+	{	.name = "replace_format",
+		.type = WUY_CFLUA_TYPE_BOOLEAN,
+		.offset = offsetof(struct h2d_conf_path, access_log.replace_format),
+	},
+	{	.name = "format",
+		.type = WUY_CFLUA_TYPE_FUNCTION,
+		.offset = offsetof(struct h2d_conf_path, access_log.format),
+	},
+	{	.name = "filter",
+		.type = WUY_CFLUA_TYPE_FUNCTION,
+		.offset = offsetof(struct h2d_conf_path, access_log.filter),
+	},
+	{	.name = "buffer_size",
+		.type = WUY_CFLUA_TYPE_INTEGER,
+		.offset = offsetof(struct h2d_conf_path, access_log.buf_size),
+		.limits.n = WUY_CFLUA_LIMITS_LOWER(4 * 1024),
+		.default_value.n = 16 * 1024,
+	},
+	{	.name = "max_line",
+		.type = WUY_CFLUA_TYPE_INTEGER,
+		.offset = offsetof(struct h2d_conf_path, access_log.max_line),
+		.default_value.n = 2 * 1024,
+	},
+	{ NULL },
+};
 static struct wuy_cflua_command h2d_conf_path_commands[] = {
 	{	.name = "_pathnames",
 		.type = WUY_CFLUA_TYPE_TABLE,
@@ -93,6 +143,10 @@ static struct wuy_cflua_command h2d_conf_path_commands[] = {
 		.type = WUY_CFLUA_TYPE_TABLE,
 		.offset = offsetof(struct h2d_conf_path, error_log),
 		.u.table = &h2d_log_conf_table,
+	},
+	{	.name = "access_log",
+		.type = WUY_CFLUA_TYPE_TABLE,
+		.u.table = &(struct wuy_cflua_table) { h2d_conf_path_access_log_commands },
 	},
 	{	.type = WUY_CFLUA_TYPE_END,
 		.u.next = h2d_module_next_path_command,
