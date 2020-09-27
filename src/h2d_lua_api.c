@@ -4,6 +4,8 @@
 
 #include "h2d_main.h"
 
+/* C functions for Lua code to call */
+
 static struct h2d_request *h2d_lua_api_current_request;
 
 #define H2D_LUA_API_RESUME_HANDLER_KEY "HLARH_KEY___"
@@ -225,7 +227,38 @@ static const struct luaL_Reg h2d_lua_api_list [] = {
 	{ NULL, NULL }  /* sentinel */
 };
 
+
+/* Lua functions for C code to call */
+static lua_State *h2d_lua_api_L;
+
+const char *h2d_lua_api_str_gsub(const char *s, const char *pattern, const char *repl)
+{
+	lua_getglobal(h2d_lua_api_L, "string");
+	lua_getfield(h2d_lua_api_L, -1, "gsub");
+
+	lua_pushstring(h2d_lua_api_L, s);
+	lua_pushstring(h2d_lua_api_L, pattern);
+	lua_pushstring(h2d_lua_api_L, repl);
+	if (lua_pcall(h2d_lua_api_L, 3, 2, 0) != 0){
+		printf("error in lua_pcall\n");
+		return NULL;
+	}
+
+	const char *out = lua_tostring(h2d_lua_api_L, -2);
+	int n = lua_tointeger(h2d_lua_api_L, -1);
+
+	/* 2 return values and 1 function */
+	lua_pop(h2d_lua_api_L, 3);
+
+	return n != 0 ? out : NULL;
+}
+
 void h2d_lua_api_init(void)
 {
+	/* C functions for Lua code to call */
 	luaL_register(h2d_L, "h2d", h2d_lua_api_list);
+
+	/* Lua functions for C code to call */
+	h2d_lua_api_L = lua_open();
+	luaL_openlibs(h2d_lua_api_L);
 }

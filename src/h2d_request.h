@@ -19,6 +19,7 @@ struct h2d_request {
 		struct {
 			const char	*raw;
 			const char	*path;
+			bool		is_rewrited;
 
 			const char	*path_pos;
 			const char	*query_pos;

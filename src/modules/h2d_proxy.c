@@ -45,8 +45,16 @@ static int h2d_proxy_build_request_headers(struct h2d_request *r, char *buffer)
 
 	char *pos = buffer;
 
-	pos += sprintf(pos, "%s %s HTTP/1.1\r\n",
-			wuy_http_string_method(r->req.method), r->req.uri.raw);
+	pos += sprintf(pos, "%s ", wuy_http_string_method(r->req.method));
+
+	if (!r->req.uri.is_rewrited) {
+		pos += sprintf(pos, "%s HTTP/1.1\r\n", r->req.uri.raw);
+	} else if (r->req.uri.query_pos == NULL) {
+		pos += sprintf(pos, "%s HTTP/1.1\r\n", r->req.uri.path); // TODO url-encode?
+	} else {
+		pos += sprintf(pos, "%s%s HTTP/1.1\r\n",
+				r->req.uri.path, r->req.uri.query_pos);
+	}
 
 	if (r->req.host != NULL) {
 		pos += sprintf(pos, "Host: %s\r\n", r->req.host);

@@ -7,6 +7,7 @@
 	X(h2d_stats_module) \
 	X(h2d_cache_module) \
 	X(h2d_redis_module) \
+	X(h2d_rewrite_module) \
 	X(h2d_auth_basic_module) \
 
 #define H2D_UPSTREAM_LOADBALANCE_X_LIST \
