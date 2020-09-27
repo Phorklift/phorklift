@@ -288,10 +288,11 @@ bool h2d_module_command_is_set(struct wuy_cflua_command *cmd, void *conf)
 	case WUY_CFLUA_TYPE_INTEGER:
 		return *(int *)ptr != 0;
 	case WUY_CFLUA_TYPE_STRING:
-	case WUY_CFLUA_TYPE_TABLE:
 		return *(char **)ptr != NULL;
 	case WUY_CFLUA_TYPE_FUNCTION:
 		return wuy_cflua_is_function_set(*(wuy_cflua_function_t *)ptr);
+	case WUY_CFLUA_TYPE_TABLE:
+		return h2d_module_command_is_set(first, *(char **)ptr);
 	default:
 		abort();
 	}

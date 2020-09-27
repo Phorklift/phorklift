@@ -114,7 +114,7 @@ static int h2d_upstream_content_fail(struct h2d_request *r)
 
 	/* retry */
 	printf("retry %d %d\n", ctx->retries, upstream->max_retries);
-	if (ctx->retries < 0 || ++ctx->retries >= upstream->max_retries) {
+	if (ctx->retries < 0 || ctx->retries++ >= upstream->max_retries) {
 		return r->resp.status_code != 0 ? H2D_OK : WUY_HTTP_502;
 	}
 
