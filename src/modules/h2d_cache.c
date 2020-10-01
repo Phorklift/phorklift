@@ -128,7 +128,7 @@ static bool h2d_cache_conf_post(void *data)
 
 static struct wuy_cflua_command h2d_cache_conf_commands[] = {
 	{	.type = WUY_CFLUA_TYPE_INTEGER,
-		.flags = WUY_CFLUA_FLAG_UNIQ_MEMBER,
+		.is_single_array = true,
 		.offset = offsetof(struct h2d_cache_conf, size),
 		.limits.n = WUY_CFLUA_LIMITS_NON_NEGATIVE,
 	},

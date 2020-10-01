@@ -66,8 +66,8 @@ static void h2d_lua_ctx_free(struct h2d_request *r)
 
 static struct wuy_cflua_command h2d_lua_conf_commands[] = {
 	{	.type = WUY_CFLUA_TYPE_FUNCTION,
+		.is_single_array = true,
 		.offset = offsetof(struct h2d_lua_conf, content),
-		.flags = WUY_CFLUA_FLAG_UNIQ_MEMBER,
 	},
 	{	.name = "before_host",
 		.type = WUY_CFLUA_TYPE_FUNCTION,

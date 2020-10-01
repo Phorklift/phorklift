@@ -53,8 +53,8 @@ static int h2d_test_subreq_filter_response_body(struct h2d_request *r, uint8_t *
 
 static struct wuy_cflua_command h2d_test_subreq_conf_commands[] = {
 	{	.type = WUY_CFLUA_TYPE_BOOLEAN,
+		.is_single_array = true,
 		.offset = offsetof(struct h2d_test_subreq_conf, enable),
-		.flags = WUY_CFLUA_FLAG_UNIQ_MEMBER,
 	},
 	{ NULL }
 };

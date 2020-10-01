@@ -207,8 +207,8 @@ static bool h2d_proxy_conf_post(void *data)
 }
 
 static struct wuy_cflua_command h2d_proxy_conf_commands[] = {
-	{	.flags = WUY_CFLUA_FLAG_UNIQ_MEMBER,
-		.type = WUY_CFLUA_TYPE_TABLE,
+	{	.type = WUY_CFLUA_TYPE_TABLE,
+		.is_single_array = true,
 		.offset = offsetof(struct h2d_proxy_conf, upstream),
 		.u.table = &h2d_upstream_conf_table,
 	},

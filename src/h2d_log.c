@@ -129,7 +129,7 @@ static bool h2d_log_conf_post(void *data)
 
 static struct wuy_cflua_command h2d_log_conf_commands[] = {
 	{	.type = WUY_CFLUA_TYPE_STRING,
-		.flags = WUY_CFLUA_FLAG_UNIQ_MEMBER,
+		.is_single_array = true,
 		.offset = offsetof(struct h2d_log, conf_filename),
 	},
 	{	.name = "buffer_size",

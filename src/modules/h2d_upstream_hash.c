@@ -130,7 +130,7 @@ static struct h2d_upstream_address *h2d_upstream_hash_pick(
 
 static struct wuy_cflua_command h2d_upstream_hash_commands[] = {
 	{	.type = WUY_CFLUA_TYPE_FUNCTION,
-		.flags = WUY_CFLUA_FLAG_UNIQ_MEMBER,
+		.is_single_array = true,
 		.offset = offsetof(struct h2d_upstream_hash_conf, key),
 	},
 	{	.name = "address_vnodes",

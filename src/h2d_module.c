@@ -275,7 +275,7 @@ bool h2d_module_command_is_set(struct wuy_cflua_command *cmd, void *conf)
 	void *ptr = (char *)conf + first->offset;
 
 	/* it's multi-value array */
-	if ((first->flags & WUY_CFLUA_FLAG_UNIQ_MEMBER) == 0) {
+	if (!first->is_single_array) {
 		return *(char **)ptr != NULL;
 	}
 
