@@ -68,6 +68,12 @@ struct h2d_request {
 	long			req_end_time;
 	long			resp_begin_time;
 
+	/* should be somewhere else */
+	struct {
+		const char	*name;
+		lua_State	*L;
+	} dynamic_upstream;
+
 	struct h2d_request	*father; /* only for subreq */
 	wuy_list_t		subr_head;
 	wuy_list_node_t		subr_node;

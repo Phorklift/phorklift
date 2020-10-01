@@ -153,6 +153,12 @@ static int h2d_lua_api_uri_path(lua_State *L)
 	lua_pushstring(L, r->req.uri.path);
 	return 1;
 }
+static int h2d_lua_api_host(lua_State *L)
+{
+	struct h2d_request *r = h2d_lua_api_current_request;
+	lua_pushstring(L, r->req.host);
+	return 1;
+}
 
 static int h2d_lua_api_headers(lua_State *L)
 {
@@ -185,7 +191,7 @@ static int h2d_lua_api_subrequest_resume(lua_State *L)
 	lua_newtable(L);
 
 	lua_pushinteger(L, subr->resp.status_code);
-	lua_setfield(L, -2, "status");
+	lua_setfield(L, -2, "status_code");
 
 	lua_pushlstring(L, (char *)subr->c->send_buffer, subr->c->send_buf_pos - subr->c->send_buffer);
 	lua_setfield(L, -2, "body");
@@ -210,6 +216,7 @@ static int h2d_lua_api_subrequest(lua_State *L)
 
 	struct h2d_request *subr = h2d_request_subrequest(h2d_lua_api_current_request);
 	h2d_request_set_uri(subr, uri, len);
+	subr->req.method = WUY_HTTP_GET;
 
 	lua_pushlightuserdata(L, h2d_lua_api_subrequest_resume);
 	lua_setfield(L, LUA_REGISTRYINDEX, H2D_LUA_API_RESUME_HANDLER_KEY);
@@ -220,6 +227,7 @@ static int h2d_lua_api_subrequest(lua_State *L)
 static const struct luaL_Reg h2d_lua_api_list [] = {
 	{ "uri_raw", h2d_lua_api_uri_raw},
 	{ "uri_path", h2d_lua_api_uri_path },
+	{ "host", h2d_lua_api_host },
 	{ "headers", h2d_lua_api_headers },
 	{ "status_code", h2d_lua_api_status_code },
 	{ "sleep", h2d_lua_api_sleep },

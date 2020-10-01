@@ -77,6 +77,135 @@ void h2d_upstream_connection_fail(struct h2d_upstream_connection *upc)
 	}
 }
 
+static struct wuy_cflua_table h2d_upstream_sub_conf_table;
+static struct h2d_upstream_conf *
+h2d_upstream_dynamic_get(struct h2d_upstream_conf *upstream, struct h2d_request *r)
+{
+	h2d_request_log(r, H2D_LOG_DEBUG, "h2d_upstream_dynamic_get()");
+	const char *name = r->dynamic_upstream.name;
+	struct h2d_upstream_conf *subups = NULL;
+
+	if (name != NULL) {
+		/* we have got name by get_name(), and was got H2D_AGAIN
+		 * when calling get_conf(), and it's ready now. */
+		subups = wuy_dict_get(upstream->dynamic.dict, name);
+		goto state_get_conf;
+	}
+
+	/* call get_name() */
+	if (upstream->dynamic.is_name_blocking) {
+		h2d_request_log(r, H2D_LOG_DEBUG, "dynamic upstream get_name() blocking");
+		name = h2d_lua_api_call_lstring(r, upstream->dynamic.get_name, NULL);
+		if (name == NULL) {
+			goto fail;
+		}
+		r->dynamic_upstream.name = strdup(name);
+
+	} else {
+		h2d_request_log(r, H2D_LOG_DEBUG, "dynamic upstream get_name() non-blocking");
+
+		if (r->dynamic_upstream.L == NULL) {
+			r->dynamic_upstream.L = h2d_lua_api_thread_new(upstream->dynamic.get_name);
+		}
+
+		int ret = h2d_lua_api_thread_resume(r->dynamic_upstream.L, r);
+		if (ret == H2D_ERROR) {
+			goto fail;
+		}
+		if (ret == H2D_AGAIN) {
+			return NULL;
+		}
+
+		name = lua_tostring(r->dynamic_upstream.L, -1);
+		if (name == NULL) {
+			goto fail;
+		}
+		r->dynamic_upstream.name = strdup(name);
+
+		h2d_lua_api_thread_free(r->dynamic_upstream.L);
+		r->dynamic_upstream.L = NULL;
+	}
+
+	name = r->dynamic_upstream.name;
+
+	/* search cache by name */
+	subups = wuy_dict_get(upstream->dynamic.dict, name);
+	if (subups != NULL) {
+		h2d_request_log(r, H2D_LOG_DEBUG, "upstream hit %s", name);
+		return subups;
+	}
+
+	/* cache miss, so create new sub-upstream */
+	subups = malloc(sizeof(struct h2d_upstream_conf));
+	*subups = *upstream; /* inherit confs */
+	subups->name = strdup(name);
+	subups->address_num = 0;
+	subups->dynamic.get_name = 0;
+	subups->dynamic.dict = NULL;
+	wuy_dict_add(upstream->dynamic.dict, subups);
+
+	/* simple case: single hostname */
+	if (name[0] != '@') {
+		subups->hostnames = calloc(2, sizeof(struct h2d_upstream_hostname));
+		subups->hostnames->name = strdup(name);
+		if (!h2d_upstream_sub_conf_table.post(subups)) {
+			printf("!!! sub upstream fail\n");
+			return NULL;
+		}
+
+		goto return_new_sub_upstream;
+	}
+
+	/* the other case: get_conf() by name */
+	h2d_request_log(r, H2D_LOG_DEBUG, "dynamic upstream get_conf()");
+	r->dynamic_upstream.L = h2d_lua_api_thread_new(upstream->dynamic.get_conf);
+
+state_get_conf:;
+
+	int ret = h2d_lua_api_thread_resume(r->dynamic_upstream.L, r);
+	if (ret == H2D_ERROR) {
+		goto fail;
+	}
+	if (ret == H2D_AGAIN) {
+		return NULL;
+	}
+	if (lua_gettop(r->dynamic_upstream.L) != 1 || !lua_istable(r->dynamic_upstream.L, -1)) {
+		printf("return nil\n");
+		goto fail;
+	}
+
+	lua_xmove(r->dynamic_upstream.L, h2d_L, 1);
+	h2d_lua_api_thread_free(r->dynamic_upstream.L);
+	r->dynamic_upstream.L = NULL;
+
+	int err = wuy_cflua_parse(h2d_L, &h2d_upstream_sub_conf_table, subups);
+	if (err < 0) {
+		printf("parse dynamic upstream error: %s\n", wuy_cflua_strerror(h2d_L, err));
+		goto fail;
+	}
+
+	if (wuy_cflua_is_function_set(subups->dynamic.get_name)) {
+		printf("dynamic_get is not allowed in dynamic upstream\n");
+		goto fail;
+	}
+
+return_new_sub_upstream:
+	h2d_request_log(r, H2D_LOG_DEBUG, "return upstream new %s %d %s",
+			name, subups->address_num, subups->hostnames[0].name);
+	r->dynamic_upstream.name = NULL;
+	wuy_dict_add(upstream->dynamic.dict, subups);
+	// TODO non-block hostname resolve
+	return subups;
+
+fail:
+	if (subups != NULL) {
+		wuy_dict_delete(upstream->dynamic.dict, subups);
+		free(subups);
+	}
+	r->resp.status_code = WUY_HTTP_500;
+	return NULL;
+}
+
 static void h2d_upstream_on_active(loop_stream_t *s)
 {
 	/* Explicit handshake is not required here because the following
@@ -109,65 +238,6 @@ static loop_stream_ops_t h2d_upstream_ops = {
 	H2D_SSL_LOOP_STREAM_UNDERLYINGS,
 };
 
-static bool h2d_upstream_conf_post(void *data);
-static struct h2d_upstream_conf *
-h2d_upstream_dynamic_get(struct h2d_upstream_conf *upstream, struct h2d_request *r)
-{
-	const char *name = h2d_lua_api_call_lstring(r, upstream->dynamic.get, NULL);
-	if (name == NULL || name[0] == '\0') {
-		return NULL;
-	}
-
-	struct h2d_upstream_conf *subups = wuy_dict_get(upstream->dynamic.dict, name);
-	if (subups != NULL) {
-		printf("upstream hit %s\n", name);
-		return subups;
-	}
-
-	if (name[0] == '@') {
-		/* call lua */
-		lua_rawgeti(h2d_L, LUA_REGISTRYINDEX, upstream->dynamic.conf);
-		lua_pushstring(h2d_L, name);
-		if (lua_pcall(h2d_L, 1, 1, 0) != 0) {
-			printf("lua_pcall fail: %s\n", lua_tostring(h2d_L, -1));
-			lua_pop(h2d_L, 1);
-			return NULL;
-		}
-
-		int err = wuy_cflua_parse_table(h2d_L, &h2d_upstream_conf_table, &subups);
-		lua_pop(h2d_L, 1); /* nothing to keep */
-		if (err < 0) {
-			printf("parse dynamic upstream error: %s\n", wuy_cflua_strerror(h2d_L, err));
-			return NULL;
-		}
-
-		if (wuy_cflua_is_function_set(subups->dynamic.get)) {
-			printf("dynamic_get is not allowed in dynamic upstream\n");
-			return NULL;
-		}
-
-		subups->name = strdup(name);
-		printf("upstream new %s %d %s\n", name, subups->address_num, subups->hostnames[0].name);
-
-	} else {
-		subups = malloc(sizeof(struct h2d_upstream_conf));
-		*subups = *upstream;
-		subups->hostnames = calloc(2, sizeof(struct h2d_upstream_hostname));
-		subups->hostnames->name = strdup(name);
-		subups->name = NULL;
-		subups->address_num = 0;
-		subups->dynamic.get = 0;
-		subups->dynamic.dict = NULL;
-		if (!h2d_upstream_conf_post(subups)) {
-			printf("!!! sub upstream fail\n");
-			return NULL;
-		}
-	}
-
-	wuy_dict_add(upstream->dynamic.dict, subups);
-	return subups;
-}
-
 void h2d_upstream_resolve(struct h2d_upstream_conf *upstream);
 void h2d_upstream_healthcheck(struct h2d_upstream_conf *upstream);
 
@@ -176,8 +246,11 @@ h2d_upstream_get_connection(struct h2d_upstream_conf *upstream, struct h2d_reque
 {
 	atomic_fetch_add(&upstream->stats->total, 1);
 
-	if (wuy_cflua_is_function_set(upstream->dynamic.get)) {
+	if (wuy_cflua_is_function_set(upstream->dynamic.get_name)) {
 		upstream = h2d_upstream_dynamic_get(upstream, r);
+		if (upstream == NULL) {
+			return NULL;
+		}
 	}
 
 	/* resolve and healthcheck routines */
@@ -480,7 +553,7 @@ static bool h2d_upstream_conf_post(void *data)
 	wuy_list_init(&conf->deleted_address_defer);
 	wuy_list_init(&conf->down_head);
 
-	if (wuy_cflua_is_function_set(conf->dynamic.get)) {
+	if (wuy_cflua_is_function_set(conf->dynamic.get_name)) {
 		conf->dynamic.dict = wuy_dict_new_type(WUY_DICT_KEY_STRING,
 				offsetof(struct h2d_upstream_conf, name),
 				offsetof(struct h2d_upstream_conf, dynamic.dict_node));
@@ -549,6 +622,21 @@ void h2d_upstream_stats(wuy_json_ctx_t *json)
 	wuy_json_array_close(json);
 }
 
+static struct wuy_cflua_command h2d_upstream_dynamic_commands[] = {
+	{	.name = "get_name",
+		.type = WUY_CFLUA_TYPE_FUNCTION,
+		.offset = offsetof(struct h2d_upstream_conf, dynamic.get_name),
+	},
+	{	.name = "get_conf",
+		.type = WUY_CFLUA_TYPE_FUNCTION,
+		.offset = offsetof(struct h2d_upstream_conf, dynamic.get_conf),
+	},
+	{	.name = "is_name_blocking",
+		.type = WUY_CFLUA_TYPE_BOOLEAN,
+		.offset = offsetof(struct h2d_upstream_conf, dynamic.is_name_blocking),
+	},
+	{ NULL },
+};
 static struct wuy_cflua_command h2d_upstream_healthcheck_commands[] = {
 	{	.name = "interval",
 		.type = WUY_CFLUA_TYPE_INTEGER,
@@ -579,13 +667,9 @@ static struct wuy_cflua_command h2d_upstream_conf_commands[] = {
 		.offset = offsetof(struct h2d_upstream_conf, hostnames),
 		.array_member_size = sizeof(struct h2d_upstream_hostname),
 	},
-	{	.name = "dynamic_get",
-		.type = WUY_CFLUA_TYPE_FUNCTION,
-		.offset = offsetof(struct h2d_upstream_conf, dynamic.get),
-	},
-	{	.name = "dynamic_conf",
-		.type = WUY_CFLUA_TYPE_FUNCTION,
-		.offset = offsetof(struct h2d_upstream_conf, dynamic.conf),
+	{	.name = "dynamic",
+		.type = WUY_CFLUA_TYPE_TABLE,
+		.u.table = &(struct wuy_cflua_table) { h2d_upstream_dynamic_commands },
 	},
 	{	.name = "idle_max",
 		.type = WUY_CFLUA_TYPE_INTEGER,
@@ -657,4 +741,10 @@ struct wuy_cflua_table h2d_upstream_conf_table = {
 	.commands = h2d_upstream_conf_commands,
 	.size = sizeof(struct h2d_upstream_conf),
 	.post = h2d_upstream_conf_post,
+};
+static struct wuy_cflua_table h2d_upstream_sub_conf_table = {
+	.commands = h2d_upstream_conf_commands,
+	.size = 0,
+	.post = h2d_upstream_conf_post,
+	.no_default_value = true,
 };

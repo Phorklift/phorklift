@@ -119,8 +119,9 @@ struct h2d_upstream_conf {
 	bool				ssl_enable;
 
 	struct {
-		wuy_cflua_function_t	get;
-		wuy_cflua_function_t	conf;
+		bool			is_name_blocking;
+		wuy_cflua_function_t	get_name;
+		wuy_cflua_function_t	get_conf;
 		wuy_dict_t		*dict;
 
 		wuy_dict_node_t		dict_node;

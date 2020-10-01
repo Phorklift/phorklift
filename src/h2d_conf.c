@@ -44,12 +44,9 @@ struct h2d_conf_listen **h2d_conf_parse(const char *conf_file)
 		},
 		{ NULL },
 	};
-	struct wuy_cflua_command global = {
-		.type = WUY_CFLUA_TYPE_TABLE,
-		.u.table = &(struct wuy_cflua_table) {
-			.commands = listens_commands,
-			.name = h2d_conf_name,
-		},
+	struct wuy_cflua_table global = {
+		.commands = listens_commands,
+		.name = h2d_conf_name,
 	};
 
 	static struct h2d_conf_listen **h2d_conf_listens;

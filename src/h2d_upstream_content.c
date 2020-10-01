@@ -35,7 +35,6 @@ int h2d_upstream_content_generate_response_headers(struct h2d_request *r)
 	struct h2d_upstream_ops *ops = upstream->ops;
 
 	if (ctx == NULL) {
-		/* create ctx */
 		if (ops->new_ctx != NULL) {
 			ctx = ops->new_ctx(r);
 		} else {
@@ -43,15 +42,16 @@ int h2d_upstream_content_generate_response_headers(struct h2d_request *r)
 		}
 		r->module_ctxs[r->conf_path->content->index] = ctx;
 
-		/* get upstream connection */
-		ctx->upc = h2d_upstream_get_connection(upstream, r);
-		if (ctx->upc == NULL) {
-			return WUY_HTTP_500;
-		}
-
 		int ret = ops->build_request(r);
 		if (ret != H2D_OK) {
 			return ret;
+		}
+	}
+
+	if (ctx->upc == NULL) {
+		ctx->upc = h2d_upstream_get_connection(upstream, r);
+		if (ctx->upc == NULL) {
+			return r->resp.status_code ? r->resp.status_code : H2D_AGAIN;
 		}
 	}
 
