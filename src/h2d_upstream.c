@@ -144,6 +144,7 @@ h2d_upstream_dynamic_get(struct h2d_upstream_conf *upstream, struct h2d_request 
 	subups->address_num = 0;
 	subups->dynamic.get_name = 0;
 	subups->dynamic.sub_dict = NULL;
+	subups->lb_confs[0] = NULL; /* roundrobin is special */
 	wuy_list_init(&subups->dynamic.wait_head);
 	wuy_dict_add(upstream->dynamic.sub_dict, subups);
 
@@ -156,7 +157,7 @@ h2d_upstream_dynamic_get(struct h2d_upstream_conf *upstream, struct h2d_request 
 			return NULL;
 		}
 
-		goto return_new_sub_upstream;
+		goto return_sub_upstream;
 	}
 
 	/* the other case: get_conf() by name */
@@ -195,13 +196,8 @@ state_get_conf:;
 		goto fail;
 	}
 
-return_new_sub_upstream:
-	h2d_request_log(r, H2D_LOG_DEBUG, "return upstream new %s %d %s",
-			name, subups->address_num, subups->hostnames[0].name);
-	r->dynamic_upstream.name = NULL;
-	wuy_dict_add(upstream->dynamic.sub_dict, subups);
-
 return_sub_upstream:
+	r->dynamic_upstream.name = NULL;
 	if (subups->address_num == 0) { /* wait for hostname resolving */
 		if (wuy_list_node_linked(&r->list_node)) {
 			printf("!!!!! where does it linked???\n");

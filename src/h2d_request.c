@@ -152,7 +152,7 @@ void h2d_request_close(struct h2d_request *r)
 	h2d_module_request_ctx_free(r);
 
 	// TODO move out
-	free(r->dynamic_upstream.name);
+	free((void *)r->dynamic_upstream.name);
 	h2d_lua_api_thread_free(r->dynamic_upstream.lth);
 
 	h2d_header_free_list(&r->req.headers);
