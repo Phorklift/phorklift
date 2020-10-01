@@ -4,11 +4,26 @@
 #include <lua5.1/lua.h>
 #include "h2d_request.h"
 
-lua_State *h2d_lua_api_thread_new(wuy_cflua_function_t entry);
+struct h2d_lua_api_thread {
+	lua_State		*L;
+	struct h2d_request	*r;
 
-int h2d_lua_api_thread_resume(lua_State *L, struct h2d_request *r);
+	loop_timer_t		*timer;
 
-void h2d_lua_api_thread_free(lua_State *L);
+	struct {
+		int	(*handler)(void);
+		void	*data;
+	} resume;
+};
+
+struct h2d_lua_api_thread *h2d_lua_api_thread_new(wuy_cflua_function_t entry,
+		struct h2d_request *r);
+
+void h2d_lua_api_thread_set_argn(struct h2d_lua_api_thread *lth, int argn);
+
+int h2d_lua_api_thread_resume(struct h2d_lua_api_thread *lth);
+
+void h2d_lua_api_thread_free(struct h2d_lua_api_thread *lth);
 
 const char *h2d_lua_api_call_lstring(struct h2d_request *r,
 		wuy_cflua_function_t f, int *plen);

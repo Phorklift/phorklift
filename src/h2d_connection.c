@@ -68,7 +68,7 @@ static int h2d_connection_flush(struct h2d_connection *c)
 
 	if (c->loop_stream == NULL) { /* fake connection of subrequest */
 		// TODO wake up father request
-		return H2D_OK;
+		return H2D_AGAIN;
 	}
 
 	int write_len = loop_stream_write(c->loop_stream, c->send_buffer, buf_len);

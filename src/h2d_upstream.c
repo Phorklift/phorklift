@@ -81,9 +81,10 @@ static struct wuy_cflua_table h2d_upstream_sub_conf_table;
 static struct h2d_upstream_conf *
 h2d_upstream_dynamic_get(struct h2d_upstream_conf *upstream, struct h2d_request *r)
 {
-	h2d_request_log(r, H2D_LOG_DEBUG, "h2d_upstream_dynamic_get()");
 	const char *name = r->dynamic_upstream.name;
 	struct h2d_upstream_conf *subups = NULL;
+
+	h2d_request_log(r, H2D_LOG_DEBUG, "h2d_upstream_dynamic_get()");
 
 	if (name != NULL) {
 		/* we have got name by get_name(), and was got H2D_AGAIN
@@ -104,11 +105,11 @@ h2d_upstream_dynamic_get(struct h2d_upstream_conf *upstream, struct h2d_request 
 	} else {
 		h2d_request_log(r, H2D_LOG_DEBUG, "dynamic upstream get_name() non-blocking");
 
-		if (r->dynamic_upstream.L == NULL) {
-			r->dynamic_upstream.L = h2d_lua_api_thread_new(upstream->dynamic.get_name);
+		if (r->dynamic_upstream.lth == NULL) {
+			r->dynamic_upstream.lth = h2d_lua_api_thread_new(upstream->dynamic.get_name, r);
 		}
 
-		int ret = h2d_lua_api_thread_resume(r->dynamic_upstream.L, r);
+		int ret = h2d_lua_api_thread_resume(r->dynamic_upstream.lth);
 		if (ret == H2D_ERROR) {
 			goto fail;
 		}
@@ -116,16 +117,17 @@ h2d_upstream_dynamic_get(struct h2d_upstream_conf *upstream, struct h2d_request 
 			return NULL;
 		}
 
-		name = lua_tostring(r->dynamic_upstream.L, -1);
+		name = lua_tostring(r->dynamic_upstream.lth->L, -1);
 		if (name == NULL) {
 			goto fail;
 		}
 		r->dynamic_upstream.name = strdup(name);
 
-		h2d_lua_api_thread_free(r->dynamic_upstream.L);
-		r->dynamic_upstream.L = NULL;
+		h2d_lua_api_thread_free(r->dynamic_upstream.lth);
+		r->dynamic_upstream.lth = NULL;
 	}
 
+	h2d_request_log(r, H2D_LOG_DEBUG, "dynamic upstream name: %s", name);
 	name = r->dynamic_upstream.name;
 
 	/* search cache by name */
@@ -158,25 +160,28 @@ h2d_upstream_dynamic_get(struct h2d_upstream_conf *upstream, struct h2d_request 
 
 	/* the other case: get_conf() by name */
 	h2d_request_log(r, H2D_LOG_DEBUG, "dynamic upstream get_conf()");
-	r->dynamic_upstream.L = h2d_lua_api_thread_new(upstream->dynamic.get_conf);
+	r->dynamic_upstream.lth = h2d_lua_api_thread_new(upstream->dynamic.get_conf, r);
+
+	lua_pushstring(r->dynamic_upstream.lth->L, name);
+	h2d_lua_api_thread_set_argn(r->dynamic_upstream.lth, 1);
 
 state_get_conf:;
 
-	int ret = h2d_lua_api_thread_resume(r->dynamic_upstream.L, r);
+	int ret = h2d_lua_api_thread_resume(r->dynamic_upstream.lth);
 	if (ret == H2D_ERROR) {
 		goto fail;
 	}
 	if (ret == H2D_AGAIN) {
 		return NULL;
 	}
-	if (lua_gettop(r->dynamic_upstream.L) != 1 || !lua_istable(r->dynamic_upstream.L, -1)) {
+	if (lua_gettop(r->dynamic_upstream.lth->L) != 1 || !lua_istable(r->dynamic_upstream.lth->L, -1)) {
 		printf("return nil\n");
 		goto fail;
 	}
 
-	lua_xmove(r->dynamic_upstream.L, h2d_L, 1);
-	h2d_lua_api_thread_free(r->dynamic_upstream.L);
-	r->dynamic_upstream.L = NULL;
+	lua_xmove(r->dynamic_upstream.lth->L, h2d_L, 1);
+	h2d_lua_api_thread_free(r->dynamic_upstream.lth);
+	r->dynamic_upstream.lth = NULL;
 
 	int err = wuy_cflua_parse(h2d_L, &h2d_upstream_sub_conf_table, subups);
 	if (err < 0) {

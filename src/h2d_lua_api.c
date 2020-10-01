@@ -6,74 +6,93 @@
 
 /* C functions for Lua code to call */
 
-static struct h2d_request *h2d_lua_api_current_request;
+static struct h2d_lua_api_thread *h2d_lua_api_current;
 
-#define H2D_LUA_API_RESUME_HANDLER_KEY "HLARH_KEY___"
-
-lua_State *h2d_lua_api_thread_new(wuy_cflua_function_t entry)
+struct h2d_lua_api_thread *h2d_lua_api_thread_new(wuy_cflua_function_t entry,
+		struct h2d_request *r)
 {
-	lua_State *new_L = lua_newthread(h2d_L);
+	struct h2d_lua_api_thread *lth = calloc(1, sizeof(struct h2d_lua_api_thread));
+
+	lth->r = r;
+	lth->L = lua_newthread(h2d_L);
 
 	/* mark it to avoid GC */
 	/* TODO i am not sure whether this is the right way ... */
-	lua_pushlightuserdata(h2d_L, new_L); /* use pointer as key */
+	lua_pushlightuserdata(h2d_L, lth->L); /* use pointer as key */
 	lua_insert(h2d_L, -2); /* use thread as value */
 	lua_settable(h2d_L, LUA_REGISTRYINDEX);
 
 	/* push entry function */
 	lua_rawgeti(h2d_L, LUA_REGISTRYINDEX, entry);
-	lua_xmove(h2d_L, new_L, 1);
+	lua_xmove(h2d_L, lth->L, 1);
 
-	return new_L;
+	h2d_request_log(r, H2D_LOG_DEBUG, "new Lua thread %p", lth);
+
+	return lth;
 }
 
-int h2d_lua_api_thread_resume(lua_State *L, struct h2d_request *r)
+static int h2d_lua_api_thread_set_argn_handler(void)
 {
-	h2d_lua_api_current_request = r;
+	return (uintptr_t)(h2d_lua_api_current->resume.data);
+}
+void h2d_lua_api_thread_set_argn(struct h2d_lua_api_thread *lth, int argn)
+{
+	lth->resume.handler = h2d_lua_api_thread_set_argn_handler;
+	lth->resume.data = (void *)(uintptr_t)argn;
+}
+
+int h2d_lua_api_thread_resume(struct h2d_lua_api_thread *lth)
+{
+	h2d_lua_api_current = lth;
+
+	h2d_request_log(lth->r, H2D_LOG_DEBUG, "Lua thread resume %p", lth);
 
 	int argn = 0;
-
-	lua_getfield(L, LUA_REGISTRYINDEX, H2D_LUA_API_RESUME_HANDLER_KEY);
-	int (*resume_handler)(lua_State *) = lua_touserdata(L, -1);
-	lua_pop(L, 1);
-	if (resume_handler != NULL) {
-		argn = resume_handler(L);
+	if (lth->resume.handler != NULL) {
+		argn = lth->resume.handler();
 		if (argn < 0) {
-			return H2D_ERROR;
+			return argn;
 		}
-
-		/* reset resume-handler */
-		lua_pushnil(L);
-		lua_setfield(L, LUA_REGISTRYINDEX, H2D_LUA_API_RESUME_HANDLER_KEY);
+		lth->resume.handler = NULL;
 	}
 
-	h2d_request_log(r, H2D_LOG_DEBUG, "lua_resume %d\n", argn);
+	h2d_request_log(lth->r, H2D_LOG_DEBUG, "call lua_resume args=%d", argn);
 
-	int ret = lua_resume(L, argn);
+	int ret = lua_resume(lth->L, argn);
+
+	h2d_request_log(lth->r, H2D_LOG_DEBUG, "lua_resume returns %d", ret);
+
 	if (ret == LUA_YIELD) {
 		return H2D_AGAIN;
 	}
 	if (ret != 0) {
 		return H2D_ERROR;
 	}
-
 	return H2D_OK;
 }
 
-void h2d_lua_api_thread_free(lua_State *L)
+void h2d_lua_api_thread_free(struct h2d_lua_api_thread *lth)
 {
-	if (L == NULL) {
+	if (lth == NULL) {
 		return;
 	}
+
+	h2d_request_log(lth->r, H2D_LOG_DEBUG, "free Lua thread %p", lth);
+
 	/* un-mark it for GC */
-	lua_pushlightuserdata(h2d_L, L);
+	lua_pushlightuserdata(h2d_L, lth->L);
 	lua_pushnil(h2d_L);
 	lua_settable(h2d_L, LUA_REGISTRYINDEX);
+
+	loop_timer_delete(lth->timer);
+
+	free(lth);
 }
 
 static bool h2d_lua_api_call(struct h2d_request *r, wuy_cflua_function_t f)
 {
-	h2d_lua_api_current_request = r;
+	struct h2d_lua_api_thread lth = {.r = r};
+	h2d_lua_api_current = &lth;
 
 	lua_rawgeti(h2d_L, LUA_REGISTRYINDEX, f);
 	if (lua_pcall(h2d_L, 0, 1, 0) != 0) {
@@ -121,41 +140,39 @@ int h2d_lua_api_call_boolean(struct h2d_request *r,
 
 static int64_t h2d_lua_api_sleep_timeout(int64_t at, void *data)
 {
-	// XXX the request may closed yet!!!
-	// maybe should close the timer in ctx-free
 	printf("Lua timer finish.\n");
-	lua_State *L = data;
-
-	struct h2d_request *r = NULL;
-	h2d_lua_api_thread_resume(L, r); // XXX
-	h2d_request_active(r);
-	return -1;
+	struct h2d_lua_api_thread *lth = data;
+	h2d_lua_api_thread_resume(lth); // TODO check the return value
+	h2d_request_active(lth->r);
+	return 0;
 }
 static int h2d_lua_api_sleep(lua_State *L)
 {
-	loop_timer_t *timer = loop_timer_new(h2d_loop, h2d_lua_api_sleep_timeout, L);
+	h2d_lua_api_current->timer = loop_timer_new(h2d_loop,
+			h2d_lua_api_sleep_timeout,
+			h2d_lua_api_current);
 
 	lua_Number value = lua_tonumber(L, -1);
-	loop_timer_set_after(timer, value * 1000); /* second -> ms */
+	loop_timer_set_after(h2d_lua_api_current->timer, value * 1000); /* second -> ms */
 	printf("Lua add timer: %f\n", value);
 	return lua_yield(L, 0);
 }
 
 static int h2d_lua_api_uri_raw(lua_State *L)
 {
-	struct h2d_request *r = h2d_lua_api_current_request;
+	struct h2d_request *r = h2d_lua_api_current->r;
 	lua_pushstring(L, r->req.uri.raw);
 	return 1;
 }
 static int h2d_lua_api_uri_path(lua_State *L)
 {
-	struct h2d_request *r = h2d_lua_api_current_request;
+	struct h2d_request *r = h2d_lua_api_current->r;
 	lua_pushstring(L, r->req.uri.path);
 	return 1;
 }
 static int h2d_lua_api_host(lua_State *L)
 {
-	struct h2d_request *r = h2d_lua_api_current_request;
+	struct h2d_request *r = h2d_lua_api_current->r;
 	lua_pushstring(L, r->req.host);
 	return 1;
 }
@@ -164,7 +181,7 @@ static int h2d_lua_api_headers(lua_State *L)
 {
 	lua_newtable(L);
 
-	struct h2d_request *r = h2d_lua_api_current_request;
+	struct h2d_request *r = h2d_lua_api_current->r;
 	struct h2d_header *h;
 	h2d_header_iter(&r->req.headers, h) {
 		lua_pushstring(L, h2d_header_value(h));
@@ -176,14 +193,15 @@ static int h2d_lua_api_headers(lua_State *L)
 
 static int h2d_lua_api_status_code(lua_State *L)
 {
-	struct h2d_request *r = h2d_lua_api_current_request;
+	struct h2d_request *r = h2d_lua_api_current->r;
 	lua_pushinteger(L, r->resp.status_code);
 	return 1;
 }
 
-static int h2d_lua_api_subrequest_resume(lua_State *L)
+static int h2d_lua_api_subrequest_resume(void)
 {
-	struct h2d_request *r = h2d_lua_api_current_request;
+	struct h2d_request *r = h2d_lua_api_current->r;
+	lua_State *L = h2d_lua_api_current->L;
 
 	struct h2d_request *subr;
 	wuy_list_first_type(&r->subr_head, subr, subr_node); // XXX maybe other subrequest
@@ -214,12 +232,11 @@ static int h2d_lua_api_subrequest(lua_State *L)
 	size_t len;
 	const char *uri = lua_tolstring(L, -1, &len);
 
-	struct h2d_request *subr = h2d_request_subrequest(h2d_lua_api_current_request);
+	struct h2d_request *subr = h2d_request_subrequest(h2d_lua_api_current->r);
 	h2d_request_set_uri(subr, uri, len);
 	subr->req.method = WUY_HTTP_GET;
 
-	lua_pushlightuserdata(L, h2d_lua_api_subrequest_resume);
-	lua_setfield(L, LUA_REGISTRYINDEX, H2D_LUA_API_RESUME_HANDLER_KEY);
+	h2d_lua_api_current->resume.handler = h2d_lua_api_subrequest_resume;
 
 	return lua_yield(L, 0);
 }

@@ -70,8 +70,8 @@ struct h2d_request {
 
 	/* should be somewhere else */
 	struct {
-		const char	*name;
-		lua_State	*L;
+		const char			*name;
+		struct h2d_lua_api_thread	*lth;
 	} dynamic_upstream;
 
 	struct h2d_request	*father; /* only for subreq */
