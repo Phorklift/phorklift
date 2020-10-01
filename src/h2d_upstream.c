@@ -89,7 +89,7 @@ h2d_upstream_dynamic_get(struct h2d_upstream_conf *upstream, struct h2d_request 
 	if (name != NULL) {
 		/* we have got name by get_name(), and was got H2D_AGAIN
 		 * when calling get_conf(), and it's ready now. */
-		subups = wuy_dict_get(upstream->dynamic.dict, name);
+		subups = wuy_dict_get(upstream->dynamic.sub_dict, name);
 		goto state_get_conf;
 	}
 
@@ -131,10 +131,10 @@ h2d_upstream_dynamic_get(struct h2d_upstream_conf *upstream, struct h2d_request 
 	name = r->dynamic_upstream.name;
 
 	/* search cache by name */
-	subups = wuy_dict_get(upstream->dynamic.dict, name);
+	subups = wuy_dict_get(upstream->dynamic.sub_dict, name);
 	if (subups != NULL) {
 		h2d_request_log(r, H2D_LOG_DEBUG, "upstream hit %s", name);
-		return subups;
+		goto return_sub_upstream;
 	}
 
 	/* cache miss, so create new sub-upstream */
@@ -143,8 +143,9 @@ h2d_upstream_dynamic_get(struct h2d_upstream_conf *upstream, struct h2d_request 
 	subups->name = strdup(name);
 	subups->address_num = 0;
 	subups->dynamic.get_name = 0;
-	subups->dynamic.dict = NULL;
-	wuy_dict_add(upstream->dynamic.dict, subups);
+	subups->dynamic.sub_dict = NULL;
+	wuy_list_init(&subups->dynamic.wait_head);
+	wuy_dict_add(upstream->dynamic.sub_dict, subups);
 
 	/* simple case: single hostname */
 	if (name[0] != '@') {
@@ -198,13 +199,22 @@ return_new_sub_upstream:
 	h2d_request_log(r, H2D_LOG_DEBUG, "return upstream new %s %d %s",
 			name, subups->address_num, subups->hostnames[0].name);
 	r->dynamic_upstream.name = NULL;
-	wuy_dict_add(upstream->dynamic.dict, subups);
-	// TODO non-block hostname resolve
+	wuy_dict_add(upstream->dynamic.sub_dict, subups);
+
+return_sub_upstream:
+	if (subups->address_num == 0) { /* wait for hostname resolving */
+		if (wuy_list_node_linked(&r->list_node)) {
+			printf("!!!!! where does it linked???\n");
+			abort();
+		}
+		wuy_list_append(&subups->dynamic.wait_head, &r->list_node);
+		return NULL;
+	}
 	return subups;
 
 fail:
 	if (subups != NULL) {
-		wuy_dict_delete(upstream->dynamic.dict, subups);
+		wuy_dict_delete(upstream->dynamic.sub_dict, subups);
 		free(subups);
 	}
 	r->resp.status_code = WUY_HTTP_500;
@@ -224,7 +234,7 @@ static void h2d_upstream_on_active(loop_stream_t *s)
 
 	struct h2d_upstream_connection *upc = loop_stream_get_app_data(s);
 	if (upc->request != NULL) {
-		h2d_request_active(upc->request);
+		h2d_request_active(upc->request, "upstream ready");
 	} else { /* idle */
 		h2d_upstream_connection_close(upc);
 	}
@@ -559,7 +569,7 @@ static bool h2d_upstream_conf_post(void *data)
 	wuy_list_init(&conf->down_head);
 
 	if (wuy_cflua_is_function_set(conf->dynamic.get_name)) {
-		conf->dynamic.dict = wuy_dict_new_type(WUY_DICT_KEY_STRING,
+		conf->dynamic.sub_dict = wuy_dict_new_type(WUY_DICT_KEY_STRING,
 				offsetof(struct h2d_upstream_conf, name),
 				offsetof(struct h2d_upstream_conf, dynamic.dict_node));
 	}

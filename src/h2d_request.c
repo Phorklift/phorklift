@@ -123,7 +123,7 @@ void h2d_request_close(struct h2d_request *r)
 	if (h2d_request_is_subreq(r) && !r->father->closed) {
 		/* father should close me */
 		h2d_request_log(r, H2D_LOG_DEBUG, "sub wake up father: %p -> %p", r, r->father);
-		h2d_request_active(r->father);
+		h2d_request_active(r->father, "finished subrequest");
 		return;
 	}
 
@@ -150,6 +150,10 @@ void h2d_request_close(struct h2d_request *r)
 	wuy_list_del_if(&r->list_node);
 
 	h2d_module_request_ctx_free(r);
+
+	// TODO move out
+	free(r->dynamic_upstream.name);
+	h2d_lua_api_thread_free(r->dynamic_upstream.lth);
 
 	h2d_header_free_list(&r->req.headers);
 	h2d_header_free_list(&r->resp.headers);
@@ -475,11 +479,11 @@ void h2d_request_run(struct h2d_request *r, int window)
 }
 
 void http2_stream_active_tmp(http2_stream_t *s);
-void h2d_request_active(struct h2d_request *r)
+void h2d_request_active(struct h2d_request *r, const char *from)
 {
 	struct h2d_connection *c = r->c;
 	if (h2d_connection_write_blocked(c)) {
-		h2d_request_log(r, H2D_LOG_DEBUG, "======== h2d_request_active"); // XXX coredump if get here 4times
+		h2d_request_log(r, H2D_LOG_DEBUG, "======== h2d_request_active not ready"); // XXX coredump if get here 4times
 		if (c->is_http2) {
 			http2_stream_active_tmp(r->h2s);
 		}
@@ -487,7 +491,7 @@ void h2d_request_active(struct h2d_request *r)
 	}
 
 	// XXX timer -> epoll-block -> idle, so pending subrs will not run
-	h2d_request_log(r, H2D_LOG_DEBUG, "active %s", r->req.uri.raw);
+	h2d_request_log(r, H2D_LOG_DEBUG, "active %s from %s", r->req.uri.raw, from);
 
 	// TODO change to:   if (not linked) append;
 	wuy_list_del_if(&r->list_node); // TODO need delete?
@@ -511,7 +515,7 @@ struct h2d_request *h2d_request_subrequest(struct h2d_request *father)
 
 	h2d_request_log(father, H2D_LOG_DEBUG, "h2d_request_subr_new %p -> %p", father, subr);
 
-	h2d_request_active(subr);
+	h2d_request_active(subr, "new subrequest");
 	return subr;
 }
 

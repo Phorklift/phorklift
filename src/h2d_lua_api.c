@@ -143,7 +143,7 @@ static int64_t h2d_lua_api_sleep_timeout(int64_t at, void *data)
 	printf("Lua timer finish.\n");
 	struct h2d_lua_api_thread *lth = data;
 	h2d_lua_api_thread_resume(lth); // TODO check the return value
-	h2d_request_active(lth->r);
+	h2d_request_active(lth->r, "lua sleep");
 	return 0;
 }
 static int h2d_lua_api_sleep(lua_State *L)

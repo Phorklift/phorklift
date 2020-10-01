@@ -110,6 +110,14 @@ static void h2d_upstream_resolve_hostname(struct h2d_upstream_conf *upstream)
 
 		upstream->loadbalance->update(upstream);
 		upstream->resolve_updated = false;
+
+		wuy_list_t *wait_head = &upstream->dynamic.wait_head;
+		if (wuy_list_inited(wait_head)) {
+			struct h2d_request *r;
+			while (wuy_list_pop_type(wait_head, r, list_node)) {
+				h2d_request_active(r, "dynamic upstream resolved");
+			}
+		}
 		return;
 	}
 
@@ -219,6 +227,8 @@ void h2d_upstream_resolve(struct h2d_upstream_conf *upstream)
 
 bool h2d_upstream_conf_resolve_init(struct h2d_upstream_conf *conf)
 {
+	bool is_sub = wuy_list_inited(&conf->dynamic.wait_head);
+
 	bool need_resolved = false;
 	for (int i = 0; conf->hostnames[i].name != NULL; i++) {
 		struct h2d_upstream_hostname *hostname = &conf->hostnames[i];
@@ -262,6 +272,12 @@ bool h2d_upstream_conf_resolve_init(struct h2d_upstream_conf *conf)
 			*pport = '\0';
 		}
 
+		if (is_sub) {
+			/* sub-upstream is created during h2tpd running, so we
+			 * can not call h2d_resolver_hostname() which is blocking. */
+			continue;
+		}
+
 		/* resolve the hostname */
 		int length;
 		uint8_t *buffer = h2d_resolver_hostname(hostname->name, &length);
@@ -281,6 +297,10 @@ bool h2d_upstream_conf_resolve_init(struct h2d_upstream_conf *conf)
 		free(buffer);
 	}
 
+	if (is_sub) {
+		goto sub_check;
+	}
+
 	if (conf->address_num == 0) {
 		printf("no address for upstream\n");
 		return false;
@@ -289,6 +309,23 @@ bool h2d_upstream_conf_resolve_init(struct h2d_upstream_conf *conf)
 	/* resolve stream */
 	if (need_resolved && conf->resolve_interval > 0) {
 		conf->resolve_last = time(NULL);
+	}
+
+	return true;
+
+sub_check:
+	if (need_resolved) {
+		if (conf->resolve_interval == 0) {
+			printf("resolve_interval can not be 0 for dynamic upstream with hostnames\n");
+			return false;
+		}
+		conf->resolve_last = 1;
+		h2d_upstream_resolve(conf);
+	} else {
+		if (conf->address_num == 0) {
+			printf("no address for dynamic upstream\n");
+			return false;
+		}
 	}
 
 	return true;

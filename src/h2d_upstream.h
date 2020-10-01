@@ -122,9 +122,10 @@ struct h2d_upstream_conf {
 		bool			is_name_blocking;
 		wuy_cflua_function_t	get_name;
 		wuy_cflua_function_t	get_conf;
-		wuy_dict_t		*dict;
+		wuy_dict_t		*sub_dict;
 
 		wuy_dict_node_t		dict_node;
+		wuy_list_t		wait_head;
 	} dynamic;
 
 	struct {

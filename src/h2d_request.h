@@ -108,7 +108,7 @@ static inline bool h2d_request_is_subreq(struct h2d_request *r)
 
 void h2d_request_run(struct h2d_request *r, int window);
 
-void h2d_request_active(struct h2d_request *r);
+void h2d_request_active(struct h2d_request *r, const char *from);
 
 void h2d_request_init(void);
 
