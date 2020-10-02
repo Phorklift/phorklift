@@ -134,7 +134,7 @@ static void h2d_upstream_resolve_hostname(struct h2d_upstream_conf *upstream)
 static int h2d_upstream_resolve_on_read(loop_stream_t *s, void *data, int len)
 {
 	if (memcmp(data, "ERROR", 5) == 0) {
-		return len; /* stop or goto resolve next? */
+		return len; /* TODO XXX stop or goto resolve next?  and wake up dynamic->wait_head*/
 	}
 
 	struct h2d_upstream_conf *upstream = loop_stream_get_app_data(s);
