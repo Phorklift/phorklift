@@ -85,6 +85,7 @@ struct h2d_upstream_loadbalance {
 	int				index;
 	struct wuy_cflua_command	command;
 	void 				(*update)(struct h2d_upstream_conf *);
+	void				(*free)(struct h2d_upstream_conf *);
 	struct h2d_upstream_address *	(*pick)(struct h2d_upstream_conf *, struct h2d_request *);
 };
 
@@ -118,12 +119,22 @@ struct h2d_upstream_conf {
 	int				resolve_interval;
 	bool				ssl_enable;
 
-	struct {
+	struct h2d_upstream_dynamic_conf {
+		/* father only */
 		bool			is_name_blocking;
 		wuy_cflua_function_t	get_name;
 		wuy_cflua_function_t	get_conf;
+		int			single_host_max;
+		int			single_host_idle_timeout;
 		wuy_dict_t		*sub_dict;
+		wuy_list_t		name_conf_head;
+		wuy_list_t		single_host_head;
+		int			single_host_num;
 
+		/* sub upstream only */
+		time_t			create_time;
+		time_t			update_time;
+		time_t			access_time;
 		wuy_dict_node_t		dict_node;
 		wuy_list_t		wait_head;
 	} dynamic;

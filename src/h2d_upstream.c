@@ -77,10 +77,44 @@ void h2d_upstream_connection_fail(struct h2d_upstream_connection *upc)
 	}
 }
 
+static void h2d_upstream_dynamic_single_host_clear(struct h2d_upstream_conf *upstream)
+{
+	struct h2d_upstream_dynamic_conf *d = &upstream->dynamic;
+
+	time_t now = time(NULL);
+	struct h2d_upstream_conf *subups, *safe;
+	wuy_list_iter_reverse_safe_type(&upstream->dynamic.single_host_head,
+			subups, safe, list_node) {
+		if (now - subups->dynamic.access_time < d->single_host_idle_timeout
+				&& d->single_host_num <= d->single_host_max) {
+			break;
+		}
+
+		/* delete subups */
+		printf("delete single host upstream %s %s\n", upstream->name, subups->name);
+		wuy_dict_delete(d->sub_dict, subups);
+		wuy_list_delete(&subups->list_node);
+
+		subups->loadbalance->free(subups);
+		struct h2d_upstream_address *address;
+		while (wuy_list_pop_type(&subups->address_head, address, upstream_node)) {
+			free(address);
+		}
+		free((void *)subups->name);
+		free(subups->hostnames);
+		free(subups);
+
+		d->single_host_num--;
+	}
+}
+
 static struct wuy_cflua_table h2d_upstream_sub_conf_table;
 static struct h2d_upstream_conf *
 h2d_upstream_dynamic_get(struct h2d_upstream_conf *upstream, struct h2d_request *r)
 {
+	/* clear routine */
+	h2d_upstream_dynamic_single_host_clear(upstream);
+
 	const char *name = r->dynamic_upstream.name;
 	struct h2d_upstream_conf *subups = NULL;
 
@@ -134,6 +168,11 @@ h2d_upstream_dynamic_get(struct h2d_upstream_conf *upstream, struct h2d_request 
 	subups = wuy_dict_get(upstream->dynamic.sub_dict, name);
 	if (subups != NULL) {
 		h2d_request_log(r, H2D_LOG_DEBUG, "upstream hit %s", name);
+		if (subups->name[0] != '@') {
+			subups->dynamic.access_time = time(NULL);
+			wuy_list_delete(&subups->list_node);
+			wuy_list_insert(&upstream->dynamic.single_host_head, &subups->list_node);
+		}
 		goto return_sub_upstream;
 	}
 
@@ -142,6 +181,9 @@ h2d_upstream_dynamic_get(struct h2d_upstream_conf *upstream, struct h2d_request 
 	*subups = *upstream; /* inherit confs */
 	subups->name = strdup(name);
 	subups->address_num = 0;
+	subups->dynamic.create_time = time(NULL);
+	subups->dynamic.access_time = subups->dynamic.create_time;
+	subups->dynamic.update_time = subups->dynamic.create_time;
 	subups->dynamic.get_name = 0;
 	subups->dynamic.sub_dict = NULL;
 	subups->lb_confs[0] = NULL; /* roundrobin is special */
@@ -157,13 +199,17 @@ h2d_upstream_dynamic_get(struct h2d_upstream_conf *upstream, struct h2d_request 
 			return NULL;
 		}
 
+		upstream->dynamic.single_host_num++;
+		wuy_list_insert(&upstream->dynamic.single_host_head, &subups->list_node);
+
 		goto return_sub_upstream;
 	}
 
 	/* the other case: get_conf() by name */
 	h2d_request_log(r, H2D_LOG_DEBUG, "dynamic upstream get_conf()");
-	r->dynamic_upstream.lth = h2d_lua_api_thread_new(upstream->dynamic.get_conf, r);
+	wuy_list_insert(&upstream->dynamic.name_conf_head, &subups->list_node);
 
+	r->dynamic_upstream.lth = h2d_lua_api_thread_new(upstream->dynamic.get_conf, r);
 	lua_pushstring(r->dynamic_upstream.lth->L, name);
 	h2d_lua_api_thread_set_argn(r->dynamic_upstream.lth, 1);
 
@@ -565,6 +611,8 @@ static bool h2d_upstream_conf_post(void *data)
 	wuy_list_init(&conf->down_head);
 
 	if (wuy_cflua_is_function_set(conf->dynamic.get_name)) {
+		wuy_list_init(&conf->dynamic.single_host_head);
+		wuy_list_init(&conf->dynamic.name_conf_head);
 		conf->dynamic.sub_dict = wuy_dict_new_type(WUY_DICT_KEY_STRING,
 				offsetof(struct h2d_upstream_conf, name),
 				offsetof(struct h2d_upstream_conf, dynamic.dict_node));
@@ -586,7 +634,9 @@ static bool h2d_upstream_conf_post(void *data)
 		conf->name = conf->hostnames[0].name;
 	}
 
-	wuy_list_append(&h2d_upstream_list, &conf->list_node);
+	if (!wuy_list_inited(&conf->dynamic.wait_head)) { /* not dynamic sub-upstream */
+		wuy_list_append(&h2d_upstream_list, &conf->list_node);
+	}
 
 	return true;
 }
@@ -645,6 +695,18 @@ static struct wuy_cflua_command h2d_upstream_dynamic_commands[] = {
 	{	.name = "is_name_blocking",
 		.type = WUY_CFLUA_TYPE_BOOLEAN,
 		.offset = offsetof(struct h2d_upstream_conf, dynamic.is_name_blocking),
+	},
+	{	.name = "single_host_max",
+		.type = WUY_CFLUA_TYPE_INTEGER,
+		.offset = offsetof(struct h2d_upstream_conf, dynamic.single_host_max),
+		.default_value.n = 100,
+		.limits.n = WUY_CFLUA_LIMITS_NON_NEGATIVE,
+	},
+	{	.name = "single_host_idle_timeout",
+		.type = WUY_CFLUA_TYPE_INTEGER,
+		.offset = offsetof(struct h2d_upstream_conf, dynamic.single_host_idle_timeout),
+		.default_value.n = 3600,
+		.limits.n = WUY_CFLUA_LIMITS_NON_NEGATIVE,
 	},
 	{ NULL },
 };

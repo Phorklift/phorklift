@@ -116,8 +116,16 @@ static struct h2d_upstream_address *h2d_upstream_roundrobin_pick(
 	return conf->rr_addresses[conf->index++].address;
 }
 
+static void h2d_upstream_roundrobin_free(struct h2d_upstream_conf *upstream)
+{
+	struct h2d_upstream_roundrobin_conf *conf = upstream->lb_confs[h2d_upstream_roundrobin.index];
+	free(conf->rr_addresses);
+	free(conf);
+}
+
 struct h2d_upstream_loadbalance h2d_upstream_roundrobin = {
 	.name = "roundrobin",
 	.update = h2d_upstream_roundrobin_update,
 	.pick = h2d_upstream_roundrobin_pick,
+	.free = h2d_upstream_roundrobin_free,
 };

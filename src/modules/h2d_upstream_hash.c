@@ -128,6 +128,13 @@ static struct h2d_upstream_address *h2d_upstream_hash_pick(
 	return vnode->address;
 }
 
+static void h2d_upstream_hash_free(struct h2d_upstream_conf *upstream)
+{
+	struct h2d_upstream_hash_conf *conf = upstream->lb_confs[h2d_upstream_hash.index];
+	free(conf->vnodes);
+	free(conf);
+}
+
 static struct wuy_cflua_command h2d_upstream_hash_commands[] = {
 	{	.type = WUY_CFLUA_TYPE_FUNCTION,
 		.is_single_array = true,
@@ -155,4 +162,5 @@ struct h2d_upstream_loadbalance h2d_upstream_hash = {
 	},
 	.update = h2d_upstream_hash_update,
 	.pick = h2d_upstream_hash_pick,
+	.free = h2d_upstream_hash_free,
 };

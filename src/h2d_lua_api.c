@@ -89,6 +89,14 @@ void h2d_lua_api_thread_free(struct h2d_lua_api_thread *lth)
 	free(lth);
 }
 
+static void h2d_lua_api_check_blocking(lua_State *L, const char *name)
+{
+	if (L == h2d_L) {
+		lua_pushfstring(L, "h2d.%s() is not allowed in blocking context", name);
+		lua_error(L);
+	}
+}
+
 static bool h2d_lua_api_call(struct h2d_request *r, wuy_cflua_function_t f)
 {
 	struct h2d_lua_api_thread lth = {.r = r};
@@ -142,15 +150,18 @@ static int64_t h2d_lua_api_sleep_timeout(int64_t at, void *data)
 {
 	printf("Lua timer finish.\n");
 	struct h2d_lua_api_thread *lth = data;
-	h2d_lua_api_thread_resume(lth); // TODO check the return value
 	h2d_request_active(lth->r, "lua sleep");
 	return 0;
 }
 static int h2d_lua_api_sleep(lua_State *L)
 {
-	h2d_lua_api_current->timer = loop_timer_new(h2d_loop,
-			h2d_lua_api_sleep_timeout,
-			h2d_lua_api_current);
+	h2d_lua_api_check_blocking(L, "sleep");
+
+	if (h2d_lua_api_current->timer == NULL) {
+		h2d_lua_api_current->timer = loop_timer_new(h2d_loop,
+				h2d_lua_api_sleep_timeout,
+				h2d_lua_api_current);
+	}
 
 	lua_Number value = lua_tonumber(L, -1);
 	loop_timer_set_after(h2d_lua_api_current->timer, value * 1000); /* second -> ms */
@@ -229,6 +240,8 @@ static int h2d_lua_api_subrequest_resume(void)
 }
 static int h2d_lua_api_subrequest(lua_State *L)
 {
+	h2d_lua_api_check_blocking(L, "subrequest");
+
 	size_t len;
 	const char *uri = lua_tolstring(L, -1, &len);
 
