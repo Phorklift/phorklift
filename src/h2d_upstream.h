@@ -80,6 +80,12 @@ struct h2d_upstream_hostname {
 	wuy_list_t		address_head;
 };
 
+struct h2d_upstream_dynamic_ctx {
+	struct h2d_lua_api_thread	*lth;
+	struct h2d_upstream_conf	*subups;
+	struct h2d_upstream_conf	*check_ups;
+};
+
 struct h2d_upstream_loadbalance {
 	const char			*name;
 	int				index;
@@ -124,6 +130,8 @@ struct h2d_upstream_conf {
 		bool			is_name_blocking;
 		wuy_cflua_function_t	get_name;
 		wuy_cflua_function_t	get_conf;
+		wuy_cflua_function_t	check_filter;
+		int			check_interval;
 		int			single_host_max;
 		int			single_host_idle_timeout;
 		wuy_dict_t		*sub_dict;
@@ -135,6 +143,7 @@ struct h2d_upstream_conf {
 		time_t			create_time;
 		time_t			update_time;
 		time_t			access_time;
+		time_t			check_time;
 		wuy_dict_node_t		dict_node;
 		wuy_list_t		wait_head;
 	} dynamic;
@@ -223,6 +232,8 @@ static inline bool h2d_upstream_connection_write_blocked(struct h2d_upstream_con
 	return loop_stream_is_write_blocked(upc->loop_stream);
 }
 /* }}} */
+
+void h2d_upstream_dynamic_ctx_free(struct h2d_request *r);
 
 bool h2d_upstream_address_is_pickable(struct h2d_upstream_address *address);
 
