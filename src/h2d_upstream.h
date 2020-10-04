@@ -81,9 +81,8 @@ struct h2d_upstream_hostname {
 };
 
 struct h2d_upstream_dynamic_ctx {
+	const char			*name;
 	struct h2d_lua_api_thread	*lth;
-	struct h2d_upstream_conf	*subups;
-	struct h2d_upstream_conf	*check_ups;
 };
 
 struct h2d_upstream_loadbalance {
@@ -132,16 +131,13 @@ struct h2d_upstream_conf {
 		wuy_cflua_function_t	get_conf;
 		wuy_cflua_function_t	check_filter;
 		int			check_interval;
-		int			single_host_max;
-		int			single_host_idle_timeout;
+		int			idle_timeout;
+		int			sub_max;
 		wuy_dict_t		*sub_dict;
-		wuy_list_t		name_conf_head;
-		wuy_list_t		single_host_head;
-		int			single_host_num;
 
 		/* sub upstream only */
 		time_t			create_time;
-		time_t			update_time;
+		time_t			modify_time;
 		time_t			access_time;
 		time_t			check_time;
 		wuy_dict_node_t		dict_node;

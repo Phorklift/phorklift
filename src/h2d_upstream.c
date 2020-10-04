@@ -427,8 +427,6 @@ static bool h2d_upstream_conf_post(void *data)
 	wuy_list_init(&conf->down_head);
 
 	if (wuy_cflua_is_function_set(conf->dynamic.get_name)) {
-		wuy_list_init(&conf->dynamic.single_host_head);
-		wuy_list_init(&conf->dynamic.name_conf_head);
 		conf->dynamic.sub_dict = wuy_dict_new_type(WUY_DICT_KEY_STRING,
 				offsetof(struct h2d_upstream_conf, name),
 				offsetof(struct h2d_upstream_conf, dynamic.dict_node));
@@ -522,16 +520,16 @@ static struct wuy_cflua_command h2d_upstream_dynamic_commands[] = {
 		.type = WUY_CFLUA_TYPE_FUNCTION,
 		.offset = offsetof(struct h2d_upstream_conf, dynamic.check_filter),
 	},
-	{	.name = "single_host_max",
+	{	.name = "idle_timeout",
 		.type = WUY_CFLUA_TYPE_INTEGER,
-		.offset = offsetof(struct h2d_upstream_conf, dynamic.single_host_max),
-		.default_value.n = 100,
+		.offset = offsetof(struct h2d_upstream_conf, dynamic.idle_timeout),
+		.default_value.n = 3600,
 		.limits.n = WUY_CFLUA_LIMITS_NON_NEGATIVE,
 	},
-	{	.name = "single_host_idle_timeout",
+	{	.name = "sub_max",
 		.type = WUY_CFLUA_TYPE_INTEGER,
-		.offset = offsetof(struct h2d_upstream_conf, dynamic.single_host_idle_timeout),
-		.default_value.n = 3600,
+		.offset = offsetof(struct h2d_upstream_conf, dynamic.sub_max),
+		.default_value.n = 1000,
 		.limits.n = WUY_CFLUA_LIMITS_NON_NEGATIVE,
 	},
 	{ NULL },
