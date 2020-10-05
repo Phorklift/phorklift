@@ -90,7 +90,7 @@ static int h2d_dynamic_get_conf(struct h2d_dynamic_conf *dynamic,
 		}
 		return H2D_OK;
 	case WUY_HTTP_404:
-		// h2d_dynamic_delete(ctx->sub_dyn);
+		h2d_dynamic_delete(dynamic, ctx->sub_dyn);
 		return WUY_HTTP_404;
 	default:
 		return WUY_HTTP_500;
@@ -117,6 +117,7 @@ static int h2d_dynamic_get_conf(struct h2d_dynamic_conf *dynamic,
 	/* replace */
 	struct h2d_dynamic_conf *new_sub = h2d_dynamic_from_container(container, dynamic);
 	new_sub->name = ctx->sub_dyn->name;
+	ctx->sub_dyn->name = NULL;
 	new_sub->create_time = ctx->sub_dyn->create_time;
 	h2d_dynamic_delete(dynamic, ctx->sub_dyn);
 
@@ -152,39 +153,6 @@ static bool h2d_dynamic_need_check_conf(struct h2d_dynamic_conf *sub_dyn,
 	return true;
 }
 
-#if 0
-static void h2d_dynamic_single_host_clear(struct h2d_dynamic_conf *upstream)
-{
-	struct h2d_dynamic_conf *d = &upstream->dynamic;
-
-	time_t now = time(NULL);
-	struct h2d_dynamic_conf *subups, *safe;
-	wuy_list_iter_reverse_safe_type(&upstream->dynamic.single_host_head,
-			subups, safe, list_node) {
-		if (now - subups->dynamic.access_time < d->single_host_idle_timeout
-				&& d->single_host_num <= d->single_host_max) {
-			break;
-		}
-
-		/* delete subups */
-		printf("delete single host upstream %s %s\n", upstream->name, subups->name);
-		wuy_dict_delete(d->sub_dict, subups);
-		// wuy_list_delete(&subups->list_node);
-
-		subups->loadbalance->free(subups);
-		struct h2d_upstream_address *address;
-		while (wuy_list_pop_type(&subups->address_head, address, upstream_node)) {
-			free(address);
-		}
-		free((void *)subups->name);
-		free(subups->hostnames);
-		free(subups);
-
-		d->single_host_num--;
-	}
-}
-#endif
-
 void *h2d_dynamic_get(struct h2d_dynamic_conf *dynamic, struct h2d_request *r)
 {
 	h2d_request_log(r, H2D_LOG_DEBUG, "h2d_dynamic_get()");
@@ -213,6 +181,7 @@ void *h2d_dynamic_get(struct h2d_dynamic_conf *dynamic, struct h2d_request *r)
 		h2d_request_log(r, H2D_LOG_DEBUG, "dynamic new holder %s", name);
 		ctx->sub_dyn = calloc(1, sizeof(struct h2d_dynamic_conf));
 		ctx->sub_dyn->name = strdup(name);
+		ctx->sub_dyn->create_time = time(NULL);
 		ctx->sub_dyn->is_just_holder = true;
 		wuy_dict_add(dynamic->sub_dict, ctx->sub_dyn);
 
@@ -244,8 +213,10 @@ state_get_conf:
 
 not_ok:
 	if (ret != H2D_AGAIN) {
-		ctx->sub_dyn->error_ret = ret;
 		r->resp.status_code = (ret == H2D_ERROR) ? WUY_HTTP_500 : ret;
+		if (ctx->sub_dyn != NULL) {
+			ctx->sub_dyn->error_ret = ret;
+		}
 	}
 	return NULL;
 }
@@ -298,28 +269,21 @@ static bool h2d_dynamic_conf_post(void *data)
 {
 	struct h2d_dynamic_conf *dynamic = data;
 
-	if (!h2d_dynamic_sub_begin) { /* not dynamic sub */
-		if (!wuy_cflua_is_function_set(dynamic->get_name)) {
-			return true;
-		}
-		if (!wuy_cflua_is_function_set(dynamic->get_conf)) {
-			printf("dynamic get_conf must be set too\n");
-			return false;
-		}
-		dynamic->sub_dict = wuy_dict_new_type(WUY_DICT_KEY_STRING,
-				offsetof(struct h2d_dynamic_conf, name),
-				offsetof(struct h2d_dynamic_conf, dict_node));
-
-	} else { /* dynamic sub */
-
-		wuy_dict_add(dynamic->sub_dict, dynamic);
-
-		dynamic->create_time = time(NULL);
-		dynamic->access_time = dynamic->create_time;
-		dynamic->modify_time = dynamic->create_time;
-		dynamic->check_time = dynamic->create_time;
+	if (h2d_dynamic_sub_begin) { /* dynamic sub */
 		dynamic->get_name = 0;
+		return true;
 	}
+
+	if (!wuy_cflua_is_function_set(dynamic->get_name)) {
+		return true;
+	}
+	if (!wuy_cflua_is_function_set(dynamic->get_conf)) {
+		printf("dynamic get_conf must be set too\n");
+		return false;
+	}
+	dynamic->sub_dict = wuy_dict_new_type(WUY_DICT_KEY_STRING,
+			offsetof(struct h2d_dynamic_conf, name),
+			offsetof(struct h2d_dynamic_conf, dict_node));
 
 	return true;
 }
