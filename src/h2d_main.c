@@ -166,6 +166,7 @@ int main(int argc, char * const *argv)
 
 	h2d_module_master_post();
 
+	h2d_dynamic_init();
 	h2d_lua_api_init();
 
 	if (opt_worker_num == 0) {

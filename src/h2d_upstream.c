@@ -111,20 +111,27 @@ static loop_stream_ops_t h2d_upstream_ops = {
 
 void h2d_upstream_resolve(struct h2d_upstream_conf *upstream);
 void h2d_upstream_healthcheck(struct h2d_upstream_conf *upstream);
-struct h2d_upstream_conf *h2d_upstream_dynamic_get(struct h2d_upstream_conf *,
-		struct h2d_request *r);
 
 struct h2d_upstream_connection *
 h2d_upstream_get_connection(struct h2d_upstream_conf *upstream, struct h2d_request *r)
 {
-	atomic_fetch_add(&upstream->stats->total, 1);
-
-	if (wuy_cflua_is_function_set(upstream->dynamic.get_name)) {
-		upstream = h2d_upstream_dynamic_get(upstream, r);
+	if (h2d_dynamic_is_enabled(&upstream->dynamic)) {
+		upstream = h2d_dynamic_get(&upstream->dynamic, r);
 		if (upstream == NULL) {
 			return NULL;
 		}
+		if (upstream->address_num == 0) {
+			/* wait for hostname resolving */
+			if (wuy_list_node_linked(&r->list_node)) {
+				printf("!!!!! where does it linked???\n");
+				abort();
+			}
+			wuy_list_append(&upstream->wait_head, &r->list_node);
+			return NULL;
+		}
 	}
+
+	atomic_fetch_add(&upstream->stats->total, 1);
 
 	/* resolve and healthcheck routines */
 	h2d_upstream_resolve(upstream);
@@ -422,15 +429,10 @@ static bool h2d_upstream_conf_post(void *data)
 
 	conf->stats = wuy_shmem_alloc(sizeof(struct h2d_upstream_stats));
 
+	wuy_list_init(&conf->wait_head);
 	wuy_list_init(&conf->address_head);
 	wuy_list_init(&conf->deleted_address_defer);
 	wuy_list_init(&conf->down_head);
-
-	if (wuy_cflua_is_function_set(conf->dynamic.get_name)) {
-		conf->dynamic.sub_dict = wuy_dict_new_type(WUY_DICT_KEY_STRING,
-				offsetof(struct h2d_upstream_conf, name),
-				offsetof(struct h2d_upstream_conf, dynamic.dict_node));
-	}
 
 	if (conf->ssl_enable) {
 		conf->ssl_ctx = h2d_ssl_ctx_new_client();
@@ -448,9 +450,11 @@ static bool h2d_upstream_conf_post(void *data)
 		conf->name = conf->hostnames[0].name;
 	}
 
-	if (!wuy_list_inited(&conf->dynamic.wait_head)) { /* not dynamic sub-upstream */
+	h2d_dynamic_set_container_table(&conf->dynamic, &h2d_upstream_conf_table);
+
+	//if (h2d_dynamic_is_sub(&conf->dynamic)) { /* not dynamic sub-upstream */
 		wuy_list_append(&h2d_upstream_list, &conf->list_node);
-	}
+	//}
 
 	return true;
 }
@@ -497,43 +501,6 @@ void h2d_upstream_stats(wuy_json_ctx_t *json)
 	wuy_json_array_close(json);
 }
 
-static struct wuy_cflua_command h2d_upstream_dynamic_commands[] = {
-	{	.name = "get_name",
-		.type = WUY_CFLUA_TYPE_FUNCTION,
-		.offset = offsetof(struct h2d_upstream_conf, dynamic.get_name),
-	},
-	{	.name = "get_conf",
-		.type = WUY_CFLUA_TYPE_FUNCTION,
-		.offset = offsetof(struct h2d_upstream_conf, dynamic.get_conf),
-	},
-	{	.name = "is_name_blocking",
-		.type = WUY_CFLUA_TYPE_BOOLEAN,
-		.offset = offsetof(struct h2d_upstream_conf, dynamic.is_name_blocking),
-	},
-	{	.name = "check_interval",
-		.type = WUY_CFLUA_TYPE_INTEGER,
-		.offset = offsetof(struct h2d_upstream_conf, dynamic.check_interval),
-		.default_value.n = 600,
-		.limits.n = WUY_CFLUA_LIMITS_NON_NEGATIVE,
-	},
-	{	.name = "check_filter",
-		.type = WUY_CFLUA_TYPE_FUNCTION,
-		.offset = offsetof(struct h2d_upstream_conf, dynamic.check_filter),
-	},
-	{	.name = "idle_timeout",
-		.type = WUY_CFLUA_TYPE_INTEGER,
-		.offset = offsetof(struct h2d_upstream_conf, dynamic.idle_timeout),
-		.default_value.n = 3600,
-		.limits.n = WUY_CFLUA_LIMITS_NON_NEGATIVE,
-	},
-	{	.name = "sub_max",
-		.type = WUY_CFLUA_TYPE_INTEGER,
-		.offset = offsetof(struct h2d_upstream_conf, dynamic.sub_max),
-		.default_value.n = 1000,
-		.limits.n = WUY_CFLUA_LIMITS_NON_NEGATIVE,
-	},
-	{ NULL },
-};
 static struct wuy_cflua_command h2d_upstream_healthcheck_commands[] = {
 	{	.name = "interval",
 		.type = WUY_CFLUA_TYPE_INTEGER,
@@ -566,7 +533,8 @@ static struct wuy_cflua_command h2d_upstream_conf_commands[] = {
 	},
 	{	.name = "dynamic",
 		.type = WUY_CFLUA_TYPE_TABLE,
-		.u.table = &(struct wuy_cflua_table) { h2d_upstream_dynamic_commands },
+		.offset = offsetof(struct h2d_upstream_conf, dynamic),
+		.u.table = &h2d_dynamic_conf_table,
 	},
 	{	.name = "idle_max",
 		.type = WUY_CFLUA_TYPE_INTEGER,

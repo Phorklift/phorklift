@@ -27,6 +27,7 @@
 #include "libhttp2/http2.h"
 
 #include "h2d_module.h"
+#include "h2d_dynamic.h"
 #include "h2d_conf.h"
 #include "h2d_connection.h"
 #include "h2d_request.h"

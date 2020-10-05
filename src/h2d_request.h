@@ -68,8 +68,7 @@ struct h2d_request {
 	long			req_end_time;
 	long			resp_begin_time;
 
-	/* should be somewhere else */
-	struct h2d_upstream_dynamic_ctx	*dynamic_upstream;
+	struct h2d_dynamic_ctx	*dynamic_ctx;
 
 	struct h2d_request	*father; /* only for subreq */
 	wuy_list_t		subr_head;

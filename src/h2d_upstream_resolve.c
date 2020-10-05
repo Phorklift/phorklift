@@ -111,12 +111,9 @@ static void h2d_upstream_resolve_hostname(struct h2d_upstream_conf *upstream)
 		upstream->loadbalance->update(upstream);
 		upstream->resolve_updated = false;
 
-		wuy_list_t *wait_head = &upstream->dynamic.wait_head;
-		if (wuy_list_inited(wait_head)) {
-			struct h2d_request *r;
-			while (wuy_list_pop_type(wait_head, r, list_node)) {
-				h2d_request_active(r, "dynamic upstream resolved");
-			}
+		struct h2d_request *r;
+		while (wuy_list_pop_type(&upstream->wait_head, r, list_node)) {
+			h2d_request_active(r, "dynamic upstream resolved");
 		}
 		return;
 	}
@@ -227,7 +224,7 @@ void h2d_upstream_resolve(struct h2d_upstream_conf *upstream)
 
 bool h2d_upstream_conf_resolve_init(struct h2d_upstream_conf *conf)
 {
-	bool is_sub = wuy_list_inited(&conf->dynamic.wait_head);
+	bool is_sub = h2d_dynamic_is_sub(&conf->dynamic);
 
 	bool need_resolved = false;
 	for (int i = 0; conf->hostnames[i].name != NULL; i++) {
