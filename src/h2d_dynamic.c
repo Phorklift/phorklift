@@ -108,7 +108,11 @@ static int h2d_dynamic_get_conf(struct h2d_dynamic_conf *dynamic,
 
 	/* parse */
 	void *container = NULL;
-	int err = wuy_cflua_parse(h2d_L, dynamic->container_table, &container);
+	struct wuy_cflua_table *sub_table = wuy_cflua_copy_table_default(
+			dynamic->container_table, h2d_dynamic_to_container(dynamic));
+	int err = wuy_cflua_parse(h2d_L, sub_table, &container);
+	wuy_cflua_free_copied_table(sub_table);
+
 	if (err < 0) {
 		printf("parse dynamic sub error: %s\n", wuy_cflua_strerror(h2d_L, err));
 		return H2D_ERROR;
@@ -254,7 +258,8 @@ bool h2d_dynamic_set_container_table(struct h2d_dynamic_conf *dynamic,
 
 	dynamic->container_table = conf_table;
 
-	for (struct wuy_cflua_command *cmd = conf_table->commands; cmd != NULL; cmd++) {
+	for (struct wuy_cflua_command *cmd = conf_table->commands;
+			cmd->type != WUY_CFLUA_TYPE_END; cmd++) {
 		if (cmd->name != NULL && strcmp(cmd->name, "dynamic") == 0) {
 			dynamic->container_offset = cmd->offset;
 			return true;
