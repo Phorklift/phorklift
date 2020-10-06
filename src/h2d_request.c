@@ -243,10 +243,13 @@ static int h2d_request_process_headers(struct h2d_request *r)
 			return WUY_HTTP_404;
 		}
 		if (h2d_dynamic_is_enabled(&r->conf_path->dynamic)) {
-			r->conf_path = h2d_dynamic_get(&r->conf_path->dynamic, r);
-			if (r->conf_path == NULL) {
+			struct h2d_conf_path *sub_path = h2d_dynamic_get(&r->conf_path->dynamic, r);
+			if (sub_path == NULL) {
+				h2d_request_log(r, H2D_LOG_DEBUG, "get dynamic sub_path %d", r->resp.status_code);
 				return r->resp.status_code != 0 ? r->resp.status_code : H2D_AGAIN;
 			}
+			h2d_request_log(r, H2D_LOG_DEBUG, "get dynamic sub_path OK: %s", sub_path->dynamic.name);
+			r->conf_path = sub_path;
 		}
 	}
 
