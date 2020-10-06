@@ -38,9 +38,9 @@ static int h2d_dynamic_get_name(struct h2d_dynamic_conf *dynamic,
 	return H2D_OK;
 }
 
-static void *h2d_dynamic_to_container(struct h2d_dynamic_conf *sub_dyn,
-		struct h2d_dynamic_conf *dynamic)
+static void *h2d_dynamic_to_container(struct h2d_dynamic_conf *sub_dyn)
 {
+	struct h2d_dynamic_conf *dynamic = sub_dyn->father ? sub_dyn->father : sub_dyn;
 	return ((char *)sub_dyn) - dynamic->container.offset;
 }
 static struct h2d_dynamic_conf *h2d_dynamic_from_container(void *container,
@@ -49,10 +49,28 @@ static struct h2d_dynamic_conf *h2d_dynamic_from_container(void *container,
 	return (void *)(((char *)container) + dynamic->container.offset);
 }
 
-static void h2d_dynamic_delete(struct h2d_dynamic_conf *dynamic,
-		struct h2d_dynamic_conf *sub_dyn)
+static void h2d_dynamic_delete(struct h2d_dynamic_conf *sub_dyn, const char *reason)
 {
+	struct h2d_dynamic_conf *dynamic = sub_dyn->father;
+
+	printf("delete dynamic sub %s for %s\n", sub_dyn->name, reason);
+
+	loop_timer_delete(sub_dyn->timer);
 	wuy_dict_delete(dynamic->sub_dict, sub_dyn);
+	dynamic->container.del(h2d_dynamic_to_container(sub_dyn));
+}
+
+static void h2d_dynamic_update_timer(struct h2d_dynamic_conf *sub_dyn)
+{
+	if (sub_dyn->timer != NULL) {
+		loop_timer_set_after(sub_dyn->timer, sub_dyn->idle_timeout * 1000);
+	}
+}
+
+static int64_t h2d_dynamic_timeout_handler(int64_t at, void *data)
+{
+	h2d_dynamic_delete(data, "idle timedout");
+	return 0;
 }
 
 /* Call dynamic->get_conf(), which accepts 2 arguments (name, last_modify_time)
@@ -91,7 +109,7 @@ static int h2d_dynamic_get_conf(struct h2d_dynamic_conf *dynamic,
 		}
 		return H2D_OK;
 	case WUY_HTTP_404:
-		h2d_dynamic_delete(dynamic, ctx->sub_dyn);
+		h2d_dynamic_delete(ctx->sub_dyn, "deleted");
 		return WUY_HTTP_404;
 	default:
 		return WUY_HTTP_500;
@@ -111,7 +129,7 @@ static int h2d_dynamic_get_conf(struct h2d_dynamic_conf *dynamic,
 	void *container = NULL;
 	struct wuy_cflua_table *sub_table = wuy_cflua_copy_table_default(
 			dynamic->container.conf_table,
-			h2d_dynamic_to_container(dynamic, dynamic));
+			h2d_dynamic_to_container(dynamic));
 	int err = wuy_cflua_parse(h2d_L, sub_table, &container);
 	wuy_cflua_free_copied_table(sub_table);
 
@@ -125,12 +143,16 @@ static int h2d_dynamic_get_conf(struct h2d_dynamic_conf *dynamic,
 	new_sub->name = ctx->sub_dyn->name;
 	ctx->sub_dyn->name = NULL;
 	new_sub->create_time = ctx->sub_dyn->create_time;
-	h2d_dynamic_delete(dynamic, ctx->sub_dyn);
+	h2d_dynamic_delete(ctx->sub_dyn, "replaced");
 
+	new_sub->father = dynamic;
 	new_sub->modify_time = time(NULL);
-	new_sub->access_time = new_sub->modify_time;
 	new_sub->check_time = new_sub->modify_time;
 	wuy_dict_add(dynamic->sub_dict, new_sub);
+	if (new_sub->idle_timeout > 0) {
+		new_sub->timer = loop_timer_new(h2d_loop, h2d_dynamic_timeout_handler, new_sub);
+		h2d_dynamic_update_timer(new_sub);
+	}
 
 	ctx->sub_dyn = new_sub;
 
@@ -186,6 +208,7 @@ void *h2d_dynamic_get(struct h2d_dynamic_conf *dynamic, struct h2d_request *r)
 	if (ctx->sub_dyn == NULL) {
 		h2d_request_log(r, H2D_LOG_DEBUG, "dynamic new holder %s", name);
 		ctx->sub_dyn = calloc(1, sizeof(struct h2d_dynamic_conf));
+		ctx->sub_dyn->father = dynamic;
 		ctx->sub_dyn->name = strdup(name);
 		ctx->sub_dyn->create_time = time(NULL);
 		ctx->sub_dyn->is_just_holder = true;
@@ -198,8 +221,11 @@ void *h2d_dynamic_get(struct h2d_dynamic_conf *dynamic, struct h2d_request *r)
 		if (ret != H2D_OK) {
 			goto not_ok;
 		}
+
+		h2d_dynamic_update_timer(ctx->sub_dyn);
+
 		if (!h2d_dynamic_need_check_conf(ctx->sub_dyn, r)) {
-			return h2d_dynamic_to_container(ctx->sub_dyn, dynamic);
+			return h2d_dynamic_to_container(ctx->sub_dyn);
 		}
 
 		/* also get_conf() to check */
@@ -209,11 +235,11 @@ void *h2d_dynamic_get(struct h2d_dynamic_conf *dynamic, struct h2d_request *r)
 state_get_conf:
 
 	ret = h2d_dynamic_get_conf(dynamic, r);
-	if (ret != H2D_OK) {
+	if (ret != H2D_OK && ctx->sub_dyn->is_just_holder) {
 		goto not_ok;
 	}
 
-	void *container = h2d_dynamic_to_container(ctx->sub_dyn, dynamic);
+	void *container = h2d_dynamic_to_container(ctx->sub_dyn);
 	ctx->sub_dyn = NULL;
 	return container;
 
@@ -236,6 +262,9 @@ void h2d_dynamic_ctx_free(struct h2d_request *r)
 
 	if (ctx->lth != NULL) {
 		h2d_lua_api_thread_free(ctx->lth);
+	}
+	if (ctx->sub_dyn != NULL && ctx->sub_dyn->is_just_holder && ctx->sub_dyn->error_ret == 0) {
+		h2d_dynamic_delete(ctx->sub_dyn, "just_holder");
 	}
 	free(ctx);
 	r->dynamic_ctx = NULL;

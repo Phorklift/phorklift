@@ -2,6 +2,7 @@
 #define H2D_DYNAMIC_H
 
 struct h2d_dynamic_conf {
+	/* conf */
 	bool			is_name_blocking;
 	wuy_cflua_function_t	get_name;
 	wuy_cflua_function_t	get_conf;
@@ -12,7 +13,7 @@ struct h2d_dynamic_conf {
 	int			sub_max;
 	int			get_name_meta_level;
 
-	/* father only */
+	/* runtime: father only */
 	wuy_dict_t		*sub_dict;
 	struct {
 		struct wuy_cflua_table	*conf_table;
@@ -20,11 +21,12 @@ struct h2d_dynamic_conf {
 		void			(*del)(void *);
 	} container;
 
-	/* sub only */
+	/* runtime: sub only */
+	struct h2d_dynamic_conf	*father;
 	time_t			create_time;
 	time_t			modify_time;
-	time_t			access_time;
 	time_t			check_time;
+	loop_timer_t		*timer;
 	int			error_ret;
 	bool			is_just_holder;
 	bool			in_check_conf;
@@ -50,7 +52,7 @@ static inline bool h2d_dynamic_is_enabled(struct h2d_dynamic_conf *dynamic)
 }
 static inline bool h2d_dynamic_is_sub(struct h2d_dynamic_conf *dynamic)
 {
-	return dynamic->sub_dict == NULL;
+	return dynamic->father != NULL;
 }
 
 void h2d_dynamic_init(void);
