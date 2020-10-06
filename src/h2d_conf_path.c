@@ -31,6 +31,10 @@ static int h2d_conf_path_name(void *data, char *buf, int size)
 	return snprintf(buf, size, "Path(%s)>", conf_path->pathnames[0]);
 }
 
+static void h2d_conf_path_delete(void *data)
+{
+}
+
 /* make sure there is one and only one content module is enabled */
 static bool h2d_conf_path_post(void *data)
 {
@@ -66,7 +70,9 @@ static bool h2d_conf_path_post(void *data)
 	}
 
 	if (h2d_dynamic_is_enabled(&conf_path->dynamic)) {
-		h2d_dynamic_set_container_table(&conf_path->dynamic, &h2d_conf_path_table);
+		h2d_dynamic_set_container(&conf_path->dynamic, &h2d_conf_path_table,
+				offsetof(struct h2d_conf_path, dynamic),
+				h2d_conf_path_delete);
 
 	} else if (conf_path->content == NULL && conf_path->pathnames != NULL) {
 		printf("no content set, %s\n", conf_path->pathnames[0]);

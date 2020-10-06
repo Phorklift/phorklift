@@ -294,7 +294,7 @@ bool h2d_upstream_conf_resolve_init(struct h2d_upstream_conf *conf)
 		free(buffer);
 	}
 
-	if (is_sub) {
+	if (is_sub) { /* dynamic sub upstreams have different rule */
 		goto sub_check;
 	}
 

@@ -10,11 +10,15 @@ struct h2d_dynamic_conf {
 	int			idle_timeout;
 	int			error_expire;
 	int			sub_max;
+	int			get_name_meta_level;
 
 	/* father only */
 	wuy_dict_t		*sub_dict;
-	struct wuy_cflua_table	*container_table;
-	off_t			container_offset;
+	struct {
+		struct wuy_cflua_table	*conf_table;
+		off_t			offset;
+		void			(*del)(void *);
+	} container;
 
 	/* sub only */
 	time_t			create_time;
@@ -36,8 +40,9 @@ struct h2d_dynamic_ctx {
 void *h2d_dynamic_get(struct h2d_dynamic_conf *dynamic, struct h2d_request *r);
 void h2d_dynamic_ctx_free(struct h2d_request *r);
 
-bool h2d_dynamic_set_container_table(struct h2d_dynamic_conf *dynamic,
-		struct wuy_cflua_table *conf_table);
+void h2d_dynamic_set_container(struct h2d_dynamic_conf *dynamic,
+		struct wuy_cflua_table *conf_table,
+		off_t offset, void (*del)(void *));
 
 static inline bool h2d_dynamic_is_enabled(struct h2d_dynamic_conf *dynamic)
 {

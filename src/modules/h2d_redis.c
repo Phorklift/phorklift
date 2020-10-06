@@ -48,6 +48,7 @@ static bool h2d_redis_conf_post(void *data)
 
 static struct wuy_cflua_command h2d_redis_conf_commands[] = {
 	{	.type = WUY_CFLUA_TYPE_TABLE,
+		.is_single_array = true,
 		.offset = offsetof(struct h2d_redis_conf, upstream),
 		.u.table = &h2d_upstream_conf_table,
 	},
@@ -70,7 +71,6 @@ struct h2d_module h2d_redis_module = {
 			.post = h2d_redis_conf_post,
 		}
 	},
-
 	.content = H2D_UPSTREAM_CONTENT,
 	.ctx_free = h2d_upstream_content_ctx_free,
 };

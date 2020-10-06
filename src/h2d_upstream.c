@@ -391,7 +391,6 @@ static bool h2d_upstream_conf_loadbalance_select(struct h2d_upstream_conf *conf)
 		conf->loadbalance = h2d_upstream_loadbalances[0];
 	}
 
-	conf->loadbalance->update(conf);
 	return true;
 }
 
@@ -413,26 +412,59 @@ static struct wuy_cflua_command *h2d_upstream_next_command(struct wuy_cflua_comm
 	return NULL;
 }
 
+static void h2d_upstream_delete(void *data)
+{
+}
+
 bool h2d_upstream_conf_resolve_init(struct h2d_upstream_conf *conf);
 static bool h2d_upstream_conf_post(void *data)
 {
 	struct h2d_upstream_conf *conf = data;
 
-	if (conf->hostnames == NULL) {
-		return true;
-	}
-
+	/* some check for both cases, dynamic or not */
 	if ((conf->healthcheck.req_len == 0) != (conf->healthcheck.resp_len == 0)) {
 		printf("healthcheck request/response must be set both or neigther\n");
 		return false;
 	}
 
+	if (!h2d_upstream_conf_loadbalance_select(conf)) {
+		return false;
+	}
+
 	conf->stats = wuy_shmem_alloc(sizeof(struct h2d_upstream_stats));
+
+	/* dynamic */
+	if (h2d_dynamic_is_enabled(&conf->dynamic)) {
+		if (conf->hostnames != NULL) {
+			printf("hostname is not allowed for dynamic upstream\n");
+			return false;
+		}
+		conf->hostnames = (void *)1; /* used by h2d_module_command_is_set() */
+
+		h2d_dynamic_set_container(&conf->dynamic, &h2d_upstream_conf_table,
+				offsetof(struct h2d_upstream_conf, dynamic),
+				h2d_upstream_delete);
+
+		if (conf->name == NULL) {
+			conf->name = "dynamic";
+		}
+
+		return true;
+	}
+
+	/* non-dynamic: static configured or created dynamic-sub */
+	if (conf->hostnames == NULL) {
+		return true;
+	}
 
 	wuy_list_init(&conf->wait_head);
 	wuy_list_init(&conf->address_head);
 	wuy_list_init(&conf->deleted_address_defer);
 	wuy_list_init(&conf->down_head);
+
+	if (conf->name == NULL) {
+		conf->name = conf->hostnames[0].name;
+	}
 
 	if (conf->ssl_enable) {
 		conf->ssl_ctx = h2d_ssl_ctx_new_client();
@@ -442,19 +474,11 @@ static bool h2d_upstream_conf_post(void *data)
 		return false;
 	}
 
-	if (!h2d_upstream_conf_loadbalance_select(conf)) {
-		return false;
-	}
+	conf->loadbalance->update(conf);
 
-	if (conf->name == NULL) {
-		conf->name = conf->hostnames[0].name;
-	}
-
-	h2d_dynamic_set_container_table(&conf->dynamic, &h2d_upstream_conf_table);
-
-	//if (h2d_dynamic_is_sub(&conf->dynamic)) { /* not dynamic sub-upstream */
+	if (!h2d_dynamic_is_sub(&conf->dynamic)) {
 		wuy_list_append(&h2d_upstream_list, &conf->list_node);
-	//}
+	}
 
 	return true;
 }

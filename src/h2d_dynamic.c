@@ -41,12 +41,12 @@ static int h2d_dynamic_get_name(struct h2d_dynamic_conf *dynamic,
 static void *h2d_dynamic_to_container(struct h2d_dynamic_conf *sub_dyn,
 		struct h2d_dynamic_conf *dynamic)
 {
-	return ((char *)sub_dyn) - dynamic->container_offset;
+	return ((char *)sub_dyn) - dynamic->container.offset;
 }
 static struct h2d_dynamic_conf *h2d_dynamic_from_container(void *container,
 		struct h2d_dynamic_conf *dynamic)
 {
-	return (void *)(((char *)container) + dynamic->container_offset);
+	return (void *)(((char *)container) + dynamic->container.offset);
 }
 
 static void h2d_dynamic_delete(struct h2d_dynamic_conf *dynamic,
@@ -110,7 +110,8 @@ static int h2d_dynamic_get_conf(struct h2d_dynamic_conf *dynamic,
 	/* parse */
 	void *container = NULL;
 	struct wuy_cflua_table *sub_table = wuy_cflua_copy_table_default(
-			dynamic->container_table, h2d_dynamic_to_container(dynamic, dynamic));
+			dynamic->container.conf_table,
+			h2d_dynamic_to_container(dynamic, dynamic));
 	int err = wuy_cflua_parse(h2d_L, sub_table, &container);
 	wuy_cflua_free_copied_table(sub_table);
 
@@ -246,40 +247,30 @@ void h2d_dynamic_init(void)
 	h2d_dynamic_sub_begin = true;
 }
 
-bool h2d_dynamic_set_container_table(struct h2d_dynamic_conf *dynamic,
-		struct wuy_cflua_table *conf_table)
+void h2d_dynamic_set_container(struct h2d_dynamic_conf *dynamic,
+		struct wuy_cflua_table *conf_table,
+		off_t offset, void (*del)(void *))
 {
-	if (dynamic->container_table != NULL) {
-		if (dynamic->container_table != conf_table) {
-			printf("Error: different container_table for one dynamic\n");
-			return false;
-		}
-		return true;
-	}
-
-	dynamic->container_table = conf_table;
-
-	for (struct wuy_cflua_command *cmd = conf_table->commands;
-			cmd->type != WUY_CFLUA_TYPE_END; cmd++) {
-		if (cmd->name != NULL && strcmp(cmd->name, "dynamic") == 0) {
-			dynamic->container_offset = cmd->offset;
-			return true;
-		}
-	}
-
-	printf("no dynamic command found\n");
-	return false;
+	dynamic->container.conf_table = conf_table;
+	dynamic->container.offset = offset;
+	dynamic->container.del = del;
 }
 
 static bool h2d_dynamic_conf_post(void *data)
 {
 	struct h2d_dynamic_conf *dynamic = data;
 
-	if (h2d_dynamic_sub_begin) { /* dynamic sub */
+	/* created dynamic-sub */
+	if (h2d_dynamic_sub_begin) {
+		if (dynamic->get_name_meta_level != -1) {
+			printf("get_name is not allowed in dynamic sub\n");
+			return false;
+		}
 		dynamic->get_name = 0;
 		return true;
 	}
 
+	/* defined in configuration file */
 	if (!wuy_cflua_is_function_set(dynamic->get_name)) {
 		return true;
 	}
@@ -299,6 +290,7 @@ static struct wuy_cflua_command h2d_dynamic_conf_commands[] = {
 	{	.name = "get_name",
 		.type = WUY_CFLUA_TYPE_FUNCTION,
 		.offset = offsetof(struct h2d_dynamic_conf, get_name),
+		.meta_level_offset = offsetof(struct h2d_dynamic_conf, get_name_meta_level),
 	},
 	{	.name = "get_conf",
 		.type = WUY_CFLUA_TYPE_FUNCTION,
