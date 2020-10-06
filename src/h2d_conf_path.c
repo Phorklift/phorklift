@@ -65,7 +65,10 @@ static bool h2d_conf_path_post(void *data)
 		}
 	}
 
-	if (conf_path->content == NULL && conf_path->pathnames != NULL) {
+	if (h2d_dynamic_is_enabled(&conf_path->dynamic)) {
+		h2d_dynamic_set_container_table(&conf_path->dynamic, &h2d_conf_path_table);
+
+	} else if (conf_path->content == NULL && conf_path->pathnames != NULL) {
 		printf("no content set, %s\n", conf_path->pathnames[0]);
 		return false;
 	}
@@ -138,6 +141,11 @@ static struct wuy_cflua_command h2d_conf_path_commands[] = {
 	{	.name = "name",
 		.type = WUY_CFLUA_TYPE_STRING,
 		.offset = offsetof(struct h2d_conf_path, name),
+	},
+	{	.name = "dynamic",
+		.type = WUY_CFLUA_TYPE_TABLE,
+		.offset = offsetof(struct h2d_conf_path, dynamic),
+		.u.table = &h2d_dynamic_conf_table,
 	},
 	{	.name = "error_log",
 		.type = WUY_CFLUA_TYPE_TABLE,

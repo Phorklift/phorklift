@@ -6,6 +6,7 @@
 #include <lua5.1/lua.h>
 
 #include "h2d_module.h"
+#include "h2d_dynamic.h"
 
 struct h2d_conf_path_stats {
 	atomic_long	total;
@@ -34,6 +35,8 @@ struct h2d_conf_path {
 	const char		*name;
 
 	char			**pathnames;
+
+	struct h2d_dynamic_conf	dynamic;
 
 	bool			(*req_hook)(void);
 

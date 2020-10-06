@@ -165,6 +165,9 @@ void h2d_upstream_content_ctx_free(struct h2d_request *r)
 bool h2d_upstream_content_set_ops(struct h2d_upstream_conf *conf,
 		struct h2d_upstream_ops *ops)
 {
+	if (conf == NULL) {
+		return true;
+	}
 	if (conf->ops != NULL) {
 		if (conf->ops != ops) {
 			printf("Error: different ops for one upstream\n");

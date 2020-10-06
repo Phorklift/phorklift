@@ -38,9 +38,10 @@ static int h2d_dynamic_get_name(struct h2d_dynamic_conf *dynamic,
 	return H2D_OK;
 }
 
-static void *h2d_dynamic_to_container(struct h2d_dynamic_conf *dynamic)
+static void *h2d_dynamic_to_container(struct h2d_dynamic_conf *sub_dyn,
+		struct h2d_dynamic_conf *dynamic)
 {
-	return ((char *)dynamic) - dynamic->container_offset;
+	return ((char *)sub_dyn) - dynamic->container_offset;
 }
 static struct h2d_dynamic_conf *h2d_dynamic_from_container(void *container,
 		struct h2d_dynamic_conf *dynamic)
@@ -109,7 +110,7 @@ static int h2d_dynamic_get_conf(struct h2d_dynamic_conf *dynamic,
 	/* parse */
 	void *container = NULL;
 	struct wuy_cflua_table *sub_table = wuy_cflua_copy_table_default(
-			dynamic->container_table, h2d_dynamic_to_container(dynamic));
+			dynamic->container_table, h2d_dynamic_to_container(dynamic, dynamic));
 	int err = wuy_cflua_parse(h2d_L, sub_table, &container);
 	wuy_cflua_free_copied_table(sub_table);
 
@@ -197,7 +198,7 @@ void *h2d_dynamic_get(struct h2d_dynamic_conf *dynamic, struct h2d_request *r)
 			goto not_ok;
 		}
 		if (!h2d_dynamic_need_check_conf(ctx->sub_dyn, r)) {
-			return h2d_dynamic_to_container(ctx->sub_dyn);
+			return h2d_dynamic_to_container(ctx->sub_dyn, dynamic);
 		}
 
 		/* also get_conf() to check */
@@ -211,7 +212,7 @@ state_get_conf:
 		goto not_ok;
 	}
 
-	void *container = h2d_dynamic_to_container(ctx->sub_dyn);
+	void *container = h2d_dynamic_to_container(ctx->sub_dyn, dynamic);
 	ctx->sub_dyn = NULL;
 	return container;
 
