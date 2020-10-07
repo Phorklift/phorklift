@@ -80,16 +80,9 @@ static void h2d_dynamic_timer_update(struct h2d_dynamic_conf *sub_dyn)
 	}
 }
 
-/* Call dynamic->get_conf(), which accepts 2 arguments (name, last_modify_time).
- *
- * It returns conf-table if OK, then we parse it into ctx->sub_dyn, replace
- * the old one, and return H2D_OK;
- *
- * It also may return HTTP status codes if not OK:
- *   - WUY_HTTP_304, the conf-table is not changed since last_modify_time;
- *   - WUY_HTTP_304, the name does not exist;
- *   - WUY_HTTP_500, internal error.
- */
+/* Call dynamic->get_conf(), which accepts 2 arguments (name, last_modify_time),
+ * and returns WUY_HTTP_200 (with conf-table), WUY_HTTP_304, WUY_HTTP_404,
+ * or WUY_HTTP_500. */
 static int h2d_dynamic_get_conf(struct h2d_dynamic_conf *dynamic,
 		struct h2d_request *r)
 {
@@ -109,9 +102,12 @@ static int h2d_dynamic_get_conf(struct h2d_dynamic_conf *dynamic,
 		return ret;
 	}
 
-	/* not conf-table, but WUY_HTTP_304/404/500 */
+	/* not conf-table, but WUY_HTTP_200/304/404/500 */
 	if (lua_isnumber(ctx->lth->L, -1)) {
 		switch (lua_tointeger(ctx->lth->L, 1)) {
+		case WUY_HTTP_200:
+			lua_pop(ctx->lth->L, 1);
+			break;
 		case WUY_HTTP_304:
 			if (ctx->sub_dyn->is_just_holder) {
 				return H2D_ERROR;
