@@ -504,6 +504,14 @@ void h2d_request_active(struct h2d_request *r, const char *from)
 	wuy_list_append(&h2d_request_defer_run_list, &r->list_node);
 }
 
+void h2d_request_active_list(wuy_list_t *list, const char *from)
+{
+	struct h2d_request *r;
+	while (wuy_list_pop_type(list, r, list_node)) {
+		h2d_request_active(r, from);
+	}
+}
+
 struct h2d_request *h2d_request_subrequest(struct h2d_request *father)
 {
 	/* fake connection */

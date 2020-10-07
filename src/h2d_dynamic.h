@@ -31,6 +31,7 @@ struct h2d_dynamic_conf {
 	bool			is_just_holder;
 	bool			in_check_conf;
 	const char		*name;
+	wuy_list_t		holder_wait_head;
 	wuy_dict_node_t		dict_node;
 };
 

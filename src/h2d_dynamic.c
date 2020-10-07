@@ -55,22 +55,29 @@ static void h2d_dynamic_delete(struct h2d_dynamic_conf *sub_dyn, const char *rea
 
 	printf("delete dynamic sub %s for %s\n", sub_dyn->name, reason);
 
+	if (sub_dyn->is_just_holder) {
+		h2d_request_active_list(&sub_dyn->holder_wait_head, "dynamic holder");
+	}
+
 	loop_timer_delete(sub_dyn->timer);
 	wuy_dict_delete(dynamic->sub_dict, sub_dyn);
 	dynamic->container.del(h2d_dynamic_to_container(sub_dyn));
-}
-
-static void h2d_dynamic_update_timer(struct h2d_dynamic_conf *sub_dyn)
-{
-	if (sub_dyn->timer != NULL) {
-		loop_timer_set_after(sub_dyn->timer, sub_dyn->idle_timeout * 1000);
-	}
 }
 
 static int64_t h2d_dynamic_timeout_handler(int64_t at, void *data)
 {
 	h2d_dynamic_delete(data, "idle timedout");
 	return 0;
+}
+static void h2d_dynamic_timer_new(struct h2d_dynamic_conf *sub_dyn)
+{
+	sub_dyn->timer = loop_timer_new(h2d_loop, h2d_dynamic_timeout_handler, sub_dyn);
+}
+static void h2d_dynamic_timer_update(struct h2d_dynamic_conf *sub_dyn)
+{
+	if (sub_dyn->timer != NULL) {
+		loop_timer_set_after(sub_dyn->timer, sub_dyn->idle_timeout * 1000);
+	}
 }
 
 /* Call dynamic->get_conf(), which accepts 2 arguments (name, last_modify_time)
@@ -150,8 +157,8 @@ static int h2d_dynamic_get_conf(struct h2d_dynamic_conf *dynamic,
 	new_sub->check_time = new_sub->modify_time;
 	wuy_dict_add(dynamic->sub_dict, new_sub);
 	if (new_sub->idle_timeout > 0) {
-		new_sub->timer = loop_timer_new(h2d_loop, h2d_dynamic_timeout_handler, new_sub);
-		h2d_dynamic_update_timer(new_sub);
+		h2d_dynamic_timer_new(new_sub);
+		h2d_dynamic_timer_update(new_sub);
 	}
 
 	ctx->sub_dyn = new_sub;
@@ -191,7 +198,7 @@ void *h2d_dynamic_get(struct h2d_dynamic_conf *dynamic, struct h2d_request *r)
 		r->dynamic_ctx = ctx;
 	}
 
-	if (ctx->sub_dyn != NULL) {
+	if (ctx->sub_dyn != NULL) { /* in processing already*/
 		goto state_get_conf;
 	}
 
@@ -207,24 +214,40 @@ void *h2d_dynamic_get(struct h2d_dynamic_conf *dynamic, struct h2d_request *r)
 
 	if (ctx->sub_dyn == NULL) {
 		h2d_request_log(r, H2D_LOG_DEBUG, "dynamic new holder %s", name);
+
+		/* No container, just hold this name. So the following requests
+		 * will be pending here on its holder_wait_head, before get_conf()
+		 * returning. */
 		ctx->sub_dyn = calloc(1, sizeof(struct h2d_dynamic_conf));
 		ctx->sub_dyn->father = dynamic;
 		ctx->sub_dyn->name = strdup(name);
 		ctx->sub_dyn->create_time = time(NULL);
 		ctx->sub_dyn->is_just_holder = true;
+		wuy_list_init(&ctx->sub_dyn->holder_wait_head);
 		wuy_dict_add(dynamic->sub_dict, ctx->sub_dyn);
 
-	} else {
-		h2d_request_log(r, H2D_LOG_DEBUG, "dynamic hit %s", name);
+	} else if (ctx->sub_dyn->is_just_holder) {
+		h2d_request_log(r, H2D_LOG_DEBUG, "dynamic just_holder hit %s %d",
+				name, ctx->sub_dyn->error_ret);
 
+		/* this name was error in get_conf() */
 		ret = ctx->sub_dyn->error_ret;
 		if (ret != H2D_OK) {
 			goto not_ok;
 		}
 
-		h2d_dynamic_update_timer(ctx->sub_dyn);
+		/* this name is in get_conf() processing */
+		wuy_list_append(&ctx->sub_dyn->holder_wait_head, &r->list_node);
+		ctx->sub_dyn = NULL;
+		return NULL;
+
+	} else {
+		h2d_request_log(r, H2D_LOG_DEBUG, "dynamic hit %s", name);
+
+		h2d_dynamic_timer_update(ctx->sub_dyn);
 
 		if (!h2d_dynamic_need_check_conf(ctx->sub_dyn, r)) {
+			/* here is the most passed way to end this function! */
 			return h2d_dynamic_to_container(ctx->sub_dyn);
 		}
 
@@ -235,21 +258,34 @@ void *h2d_dynamic_get(struct h2d_dynamic_conf *dynamic, struct h2d_request *r)
 state_get_conf:
 
 	ret = h2d_dynamic_get_conf(dynamic, r);
-	if (ret != H2D_OK && ctx->sub_dyn->is_just_holder) {
+	if (ret != H2D_OK) {
 		goto not_ok;
 	}
 
-	void *container = h2d_dynamic_to_container(ctx->sub_dyn);
-	ctx->sub_dyn = NULL;
-	return container;
+	return h2d_dynamic_to_container(ctx->sub_dyn);
 
 not_ok:
-	if (ret != H2D_AGAIN) {
-		r->resp.status_code = (ret == H2D_ERROR) ? WUY_HTTP_500 : ret;
-		if (ctx->sub_dyn != NULL) {
-			ctx->sub_dyn->error_ret = ret;
-		}
+	if (ret == H2D_AGAIN) {
+		return NULL;
 	}
+	if (ctx->sub_dyn == NULL) {
+		goto out;
+	}
+	if (ctx->sub_dyn->is_just_holder) {
+		/* cache error */
+		ctx->sub_dyn->error_ret = ret;
+
+		h2d_dynamic_timer_new(ctx->sub_dyn);
+		loop_timer_set_after(ctx->sub_dyn->timer,
+				ctx->sub_dyn->father->error_expire * 1000);
+
+		h2d_request_active_list(&ctx->sub_dyn->holder_wait_head, "dynamic holder");
+	} else {
+		/* ignore error */
+		return h2d_dynamic_to_container(ctx->sub_dyn);
+	}
+out:
+	r->resp.status_code = (ret == H2D_ERROR) ? WUY_HTTP_500 : ret;
 	return NULL;
 }
 
@@ -263,7 +299,8 @@ void h2d_dynamic_ctx_free(struct h2d_request *r)
 	if (ctx->lth != NULL) {
 		h2d_lua_api_thread_free(ctx->lth);
 	}
-	if (ctx->sub_dyn != NULL && ctx->sub_dyn->is_just_holder && ctx->sub_dyn->error_ret == 0) {
+	if (ctx->sub_dyn != NULL && ctx->sub_dyn->is_just_holder
+			&& ctx->sub_dyn->timer == NULL) {
 		h2d_dynamic_delete(ctx->sub_dyn, "just_holder");
 	}
 	free(ctx);

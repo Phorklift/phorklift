@@ -111,10 +111,7 @@ static void h2d_upstream_resolve_hostname(struct h2d_upstream_conf *upstream)
 		upstream->loadbalance->update(upstream);
 		upstream->resolve_updated = false;
 
-		struct h2d_request *r;
-		while (wuy_list_pop_type(&upstream->wait_head, r, list_node)) {
-			h2d_request_active(r, "dynamic upstream resolved");
-		}
+		h2d_request_active_list(&upstream->wait_head, "dynamic upstream resolved");
 		return;
 	}
 
