@@ -80,12 +80,16 @@ static void h2d_dynamic_timer_update(struct h2d_dynamic_conf *sub_dyn)
 	}
 }
 
-/* Call dynamic->get_conf(), which accepts 2 arguments (name, last_modify_time)
- * and returns WUY_HTTP_200 (with conf-table), WUY_HTTP_304, WUY_HTTP_404
- * or WUY_HTTP_500.
+/* Call dynamic->get_conf(), which accepts 2 arguments (name, last_modify_time).
  *
- * If WUY_HTTP_200 is returned from get_conf(), we parse the conf-table into *p_dynsub.
- * Otherwise, return H2D_AGAIN, H2D_ERROR, or other WUY_HTTP_xxx */
+ * It returns conf-table if OK, then we parse it into ctx->sub_dyn, replace
+ * the old one, and return H2D_OK;
+ *
+ * It also may return HTTP status codes if not OK:
+ *   - WUY_HTTP_304, the conf-table is not changed since last_modify_time;
+ *   - WUY_HTTP_304, the name does not exist;
+ *   - WUY_HTTP_500, internal error.
+ */
 static int h2d_dynamic_get_conf(struct h2d_dynamic_conf *dynamic,
 		struct h2d_request *r)
 {
@@ -105,25 +109,24 @@ static int h2d_dynamic_get_conf(struct h2d_dynamic_conf *dynamic,
 		return ret;
 	}
 
-	/* first return value: WUY_HTTP_200/304/404/500 */
-	switch (lua_tointeger(ctx->lth->L, 1)) {
-	case WUY_HTTP_200:
-		/* goto parse */
-		break;
-	case WUY_HTTP_304:
-		if (ctx->sub_dyn->is_just_holder) {
-			return H2D_ERROR;
+	/* not conf-table, but WUY_HTTP_304/404/500 */
+	if (lua_isnumber(ctx->lth->L, -1)) {
+		switch (lua_tointeger(ctx->lth->L, 1)) {
+		case WUY_HTTP_304:
+			if (ctx->sub_dyn->is_just_holder) {
+				return H2D_ERROR;
+			}
+			return H2D_OK;
+		case WUY_HTTP_404:
+			h2d_dynamic_delete(ctx->sub_dyn, "deleted");
+			return WUY_HTTP_404;
+		default:
+			return WUY_HTTP_500;
 		}
-		return H2D_OK;
-	case WUY_HTTP_404:
-		h2d_dynamic_delete(ctx->sub_dyn, "deleted");
-		return WUY_HTTP_404;
-	default:
-		return WUY_HTTP_500;
 	}
 
-	/* second return value: conf-table */
-	if (lua_gettop(ctx->lth->L) != 2 || !lua_istable(ctx->lth->L, -1)) {
+	/* conf-table */
+	if (!lua_istable(ctx->lth->L, -1)) {
 		printf("invalid get_conf() return\n");
 		return H2D_ERROR;
 	}
@@ -383,7 +386,7 @@ static struct wuy_cflua_command h2d_dynamic_conf_commands[] = {
 	{	.name = "check_interval",
 		.type = WUY_CFLUA_TYPE_INTEGER,
 		.offset = offsetof(struct h2d_dynamic_conf, check_interval),
-		.default_value.n = 600,
+		.default_value.n = 0,
 		.limits.n = WUY_CFLUA_LIMITS_NON_NEGATIVE,
 	},
 	{	.name = "check_filter",
