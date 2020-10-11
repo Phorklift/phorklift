@@ -224,6 +224,7 @@ static struct wuy_cflua_command h2d_conf_listen_commands[] = {
 	{	.type = WUY_CFLUA_TYPE_TABLE,
 		.offset = offsetof(struct h2d_conf_listen, hosts),
 		.u.table = &h2d_conf_host_table,
+		.is_extra_commands = true,
 	},
 	{	.name = "_default_next",
 		.type = WUY_CFLUA_TYPE_TABLE,
