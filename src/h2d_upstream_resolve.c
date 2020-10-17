@@ -238,6 +238,8 @@ bool h2d_upstream_conf_resolve_init(struct h2d_upstream_conf *conf)
 				printf("invalid weight of %s %s", hostname->name, wstr);
 				return false;
 			}
+		} else {
+			hostname->weight = 1.0;
 		}
 
 		/* it's static address, no need resolve */

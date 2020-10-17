@@ -60,6 +60,13 @@ struct h2d_upstream_address {
 	wuy_list_node_t		down_node;
 	double			weight;
 
+	union {
+		long		n;
+		unsigned long	u;
+		double		d;
+		void		*p;
+	} lb_data;
+
 	struct h2d_upstream_conf	*upstream;
 
 	struct {

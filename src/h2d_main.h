@@ -21,6 +21,7 @@
 #include "libwuya/wuy_base64.h"
 #include "libwuya/wuy_shmem.h"
 #include "libwuya/wuy_time.h"
+#include "libwuya/wuy_rand.h"
 
 #include "libloop/loop.h"
 

@@ -84,11 +84,9 @@ static void h2d_request_access_log(struct h2d_request *r)
 		}
 	}
 
-	if (log->sampling_rate < 1) {
-		if ((wuy_time_usec() % 10000) / 10000.0 > log->sampling_rate) {
-			printf("skip log\n");
-			return;
-		}
+	if (log->sampling_rate < 1.0 && !wuy_rand_sample(log->sampling_rate)) {
+		printf("skip log\n");
+		return;
 	}
 
 	const char *format = "-";
