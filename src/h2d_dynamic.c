@@ -54,6 +54,9 @@ static void h2d_dynamic_delete(struct h2d_dynamic_conf *sub_dyn)
 	struct h2d_dynamic_conf *dynamic = sub_dyn->father;
 
 	if (sub_dyn->is_just_holder) {
+		if (sub_dyn->error_ret == 0) {
+			sub_dyn->error_ret = WUY_HTTP_500;
+		}
 		h2d_request_active_list(&sub_dyn->holder_wait_head, "dynamic holder");
 	}
 
