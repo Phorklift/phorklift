@@ -235,7 +235,7 @@ static int h2d_request_process_headers(struct h2d_request *r)
 			h2d_request_log(r, H2D_LOG_DEBUG, "no path");
 			return H2D_ERROR;
 		}
-		r->conf_path = h2d_conf_host_search_pathname(r->conf_host, r->req.uri.raw);
+		r->conf_path = h2d_conf_path_locate(r->conf_host, r->req.uri.path);
 		if (r->conf_path == NULL) {
 			h2d_request_log(r, H2D_LOG_DEBUG, "no path matched %s", r->req.uri.raw);
 			return WUY_HTTP_404;

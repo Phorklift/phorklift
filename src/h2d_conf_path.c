@@ -22,6 +22,38 @@ void h2d_conf_path_stats(struct h2d_conf_path *conf_path, wuy_json_ctx_t *json)
 	wuy_json_object_close(json);
 }
 
+static bool h2d_conf_path_name_match(const char *def, const char *req)
+{
+	switch (def[0]) {
+	case '=':
+		return strcmp(def + 1, req) == 0;
+	case '/':
+		return memcmp(def, req, strlen(def)) == 0;
+	case '~':
+		return h2d_lua_api_str_find(req, def + 1);
+	default:
+		abort();
+	}
+}
+struct h2d_conf_path *h2d_conf_path_locate(struct h2d_conf_host *conf_host,
+		const char *name)
+{
+	if (conf_host->paths == NULL) {
+		return conf_host->default_path;
+	}
+
+	struct h2d_conf_path *conf_path;
+	for (int i = 0; (conf_path = conf_host->paths[i]) != NULL; i++) {
+		char *pathname;
+		for (int j = 0; (pathname = conf_path->pathnames[j]) != NULL; j++) {
+			if (h2d_conf_path_name_match(pathname, name)) {
+				return conf_path;
+			}
+		}
+	}
+	return NULL;
+}
+
 static int h2d_conf_path_name(void *data, char *buf, int size)
 {
 	struct h2d_conf_path *conf_path = data;
@@ -35,13 +67,22 @@ static void h2d_conf_path_delete(void *data)
 {
 }
 
-/* make sure there is one and only one content module is enabled */
 static bool h2d_conf_path_post(void *data)
 {
 	struct h2d_conf_path *conf_path = data;
 
-	int i;
-	for (i = 0; i < h2d_module_number; i++) {
+	if (conf_path->pathnames != NULL) {
+		for (int i = 0; conf_path->pathnames[i] != NULL; i++) {
+			char first = conf_path->pathnames[i][0];
+			if (first != '=' && first != '~' && first != '/') {
+				printf("invalid path name: %s\n", conf_path->pathnames[i]);
+				return false;
+			}
+		}
+	}
+
+	/* there is one and only one content module is enabled */
+	for (int i = 0; i < h2d_module_number; i++) {
 		void *mod_conf = conf_path->module_confs[i];
 		if (mod_conf == NULL) {
 			continue;

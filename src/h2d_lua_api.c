@@ -290,6 +290,26 @@ const char *h2d_lua_api_str_gsub(const char *s, const char *pattern, const char 
 	return n != 0 ? out : NULL;
 }
 
+bool h2d_lua_api_str_find(const char *s, const char *pattern)
+{
+	lua_getglobal(h2d_lua_api_L, "string");
+	lua_getfield(h2d_lua_api_L, -1, "find");
+
+	lua_pushstring(h2d_lua_api_L, s);
+	lua_pushstring(h2d_lua_api_L, pattern);
+	if (lua_pcall(h2d_lua_api_L, 2, 2, 0) != 0){
+		printf("error in lua_pcall\n");
+		return NULL;
+	}
+
+	bool found = lua_isnumber(h2d_lua_api_L, -1);
+
+	/* 2 return values and 1 function */
+	lua_pop(h2d_lua_api_L, 3);
+
+	return found;
+}
+
 void h2d_lua_api_init(void)
 {
 	/* C functions for Lua code to call */

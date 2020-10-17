@@ -32,6 +32,7 @@ int h2d_lua_api_call_boolean(struct h2d_request *r,
 		wuy_cflua_function_t f);
 
 const char *h2d_lua_api_str_gsub(const char *s, const char *pattern, const char *repl);
+bool h2d_lua_api_str_find(const char *s, const char *pattern);
 
 void h2d_lua_api_init(void);
 

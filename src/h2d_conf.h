@@ -126,8 +126,8 @@ struct h2d_conf_listen **h2d_conf_parse(const char *conf_file);
 struct h2d_conf_host *h2d_conf_listen_search_hostname(
 		struct h2d_conf_listen *conf_listen, const char *name);
 
-struct h2d_conf_path *h2d_conf_host_search_pathname(
-		struct h2d_conf_host *conf_host, const char *name);
+struct h2d_conf_path *h2d_conf_path_locate(struct h2d_conf_host *conf_host,
+		const char *name);
 
 void h2d_conf_path_stats(struct h2d_conf_path *conf_path, wuy_json_ctx_t *json);
 void h2d_conf_host_stats(struct h2d_conf_host *conf_host, wuy_json_ctx_t *json);

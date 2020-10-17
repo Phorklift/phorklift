@@ -6,25 +6,6 @@ void h2d_conf_host_stats(struct h2d_conf_host *conf_host, wuy_json_ctx_t *json)
 	wuy_json_object_int(json, "fail_no_path", atomic_load(&stats->fail_no_path));
 }
 
-struct h2d_conf_path *h2d_conf_host_search_pathname(
-		struct h2d_conf_host *conf_host, const char *name)
-{
-	if (conf_host->paths == NULL) {
-		return conf_host->default_path;
-	}
-
-	struct h2d_conf_path *conf_path;
-	for (int i = 0; (conf_path = conf_host->paths[i]) != NULL; i++) {
-		char *pathname;
-		for (int j = 0; (pathname = conf_path->pathnames[j]) != NULL; j++) {
-			if (memcmp(pathname, name, strlen(pathname)) == 0) {
-				return conf_path;
-			}
-		}
-	}
-	return NULL;
-}
-
 static int h2d_conf_host_name(void *data, char *buf, int size)
 {
 	struct h2d_conf_host *conf_host = data;
