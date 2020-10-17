@@ -1,6 +1,5 @@
 #include "h2d_main.h"
 
-#include <openssl/md5.h>
 #include "libwuya/wuy_murmurhash.h"
 
 struct h2d_upstream_hash_conf {
@@ -14,35 +13,31 @@ struct h2d_upstream_hash_conf {
 };
 
 struct h2d_upstream_hash_vnode {
-	uint32_t			n;
+	uint64_t			hash;
 	struct h2d_upstream_address	*address;
 };
 
 struct h2d_upstream_loadbalance h2d_upstream_hash;
 
-static uint32_t h2d_upstream_hash_vnode_hash(struct h2d_upstream_address *address, int i)
+static uint64_t h2d_upstream_hash_data(const void *data, int len)
 {
 	union {
 		unsigned char out[16];
-		uint32_t ret;
+		uint64_t ret[2];
 	} u;
 
-	MD5_CTX ctx;
-	MD5_Init(&ctx);
-	MD5_Update(&ctx, &i, sizeof(int));
-	MD5_Update(&ctx, &address->sockaddr.s, wuy_sockaddr_size(&address->sockaddr.s));
-	MD5_Final(u.out, &ctx);
-	return u.ret;
+	wuy_murmurhash(data, len, u.out);
+	return u.ret[0] ^ u.ret[1];
 }
 
 static int h2d_upstream_hash_vnode_cmp(const void *a, const void *b)
 {
 	const struct h2d_upstream_hash_vnode *va = a;
 	const struct h2d_upstream_hash_vnode *vb = b;
-	if (va->n == vb->n) {
+	if (va->hash == vb->hash) {
 		return 0;
 	}
-	return (va->n > vb->n) ? 1 : -1;
+	return (va->hash > vb->hash) ? 1 : -1;
 }
 
 static int h2d_upstream_hash_address_vnode_num(struct h2d_upstream_address *address)
@@ -67,8 +62,11 @@ static void h2d_upstream_hash_update(struct h2d_upstream_conf *upstream)
 
 	struct h2d_upstream_hash_vnode *vnode = conf->vnodes;
 	wuy_list_iter_type(&upstream->address_head, address, upstream_node) {
+		uint64_t hash = h2d_upstream_hash_data(&address->sockaddr.s,
+				wuy_sockaddr_size(&address->sockaddr.s));
+
 		for (int i = 0; i < h2d_upstream_hash_address_vnode_num(address); i++) {
-			vnode->n = h2d_upstream_hash_vnode_hash(address, i);
+			vnode->hash = hash ^ h2d_upstream_hash_data(&i, sizeof(int));
 			vnode->address = address;
 			vnode++;
 		}
@@ -88,14 +86,7 @@ static struct h2d_upstream_address *h2d_upstream_hash_pick(
 	if (key_str == NULL) {
 		return NULL;
 	}
-
-	/* calculate hash value */
-	union {
-		unsigned char out[16];
-		uint32_t ret;
-	} u;
-	wuy_murmurhash(key_str, key_len, u.out);
-	uint32_t n = u.ret;
+	uint64_t hash = h2d_upstream_hash_data(key_str, key_len);
 
 	/* pick one address */
 	struct h2d_upstream_hash_vnode *vnode = NULL;
@@ -103,10 +94,10 @@ static struct h2d_upstream_address *h2d_upstream_hash_pick(
 	while (low <= high) {
 		int mid = (low + high) / 2;
 		vnode = &conf->vnodes[mid];
-		if (vnode->n == n) {
+		if (vnode->hash == hash) {
 			break;
 		}
-		if (vnode->n < n) {
+		if (vnode->hash < hash) {
 			low = mid + 1;
 		} else {
 			high = mid - 1;
