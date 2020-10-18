@@ -217,7 +217,7 @@ static int h2d_request_process_headers(struct h2d_request *r)
 {
 	/* locate host */
 	if (r->conf_host == NULL) {
-		r->conf_host = h2d_conf_listen_search_hostname(r->c->conf_listen, r->req.host);
+		r->conf_host = h2d_conf_host_locate(r->c->conf_listen, r->req.host);
 		if (r->conf_host == NULL) {
 			h2d_request_log(r, H2D_LOG_DEBUG, "invalid host");
 			return H2D_ERROR;
@@ -237,6 +237,7 @@ static int h2d_request_process_headers(struct h2d_request *r)
 		}
 		r->conf_path = h2d_conf_path_locate(r->conf_host, r->req.uri.path);
 		if (r->conf_path == NULL) {
+			r->conf_path = r->conf_host->default_path;
 			h2d_request_log(r, H2D_LOG_DEBUG, "no path matched %s", r->req.uri.raw);
 			return WUY_HTTP_404;
 		}

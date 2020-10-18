@@ -89,6 +89,8 @@ struct h2d_conf_listen {
 
 	wuy_dict_t		*host_dict;
 	struct h2d_conf_host	*host_wildcard;
+	bool			any_prefix_hostname;
+	bool			any_subfix_hostname;
 
 	struct {
 		int		idle_timeout;
@@ -123,8 +125,8 @@ extern lua_State *h2d_L;
 
 struct h2d_conf_listen **h2d_conf_parse(const char *conf_file);
 
-struct h2d_conf_host *h2d_conf_listen_search_hostname(
-		struct h2d_conf_listen *conf_listen, const char *name);
+struct h2d_conf_host *h2d_conf_host_locate(struct h2d_conf_listen *conf_listen,
+		const char *name);
 
 struct h2d_conf_path *h2d_conf_path_locate(struct h2d_conf_host *conf_host,
 		const char *name);

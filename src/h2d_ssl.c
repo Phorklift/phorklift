@@ -57,7 +57,7 @@ static int h2d_ssl_sni_callback(SSL *ssl, int *ad, void *arg)
 	}
 
 	struct h2d_connection *c = SSL_get_ex_data(ssl, H2D_SSL_EX_DATA);
-	c->ssl_sni_conf_host = h2d_conf_listen_search_hostname(c->conf_listen, name);
+	c->ssl_sni_conf_host = h2d_conf_host_locate(c->conf_listen, name);
 	if (c->ssl_sni_conf_host == NULL) {
 		printf("ssl SNI fail\n");
 		atomic_fetch_add(&stats->sni_miss, 1);

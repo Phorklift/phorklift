@@ -1,100 +1,9 @@
 #include "h2d_main.h"
 
-struct h2d_conf_listen_hostname {
-	const char		*name;
-	struct h2d_conf_host	*conf_host;
-	long			hits;
-	wuy_dict_node_t		dict_node;
-};
-
-#define x_strlow(x)
-
 void h2d_conf_listen_stats(struct h2d_conf_listen *conf_listen, wuy_json_ctx_t *json)
 {
 	struct h2d_conf_listen_stats *stats = conf_listen->stats;
 	wuy_json_object_int(json, "fail_no_host", atomic_load(&stats->fail_no_host));
-}
-
-struct h2d_conf_host *h2d_conf_listen_search_hostname(
-		struct h2d_conf_listen *conf_listen, const char *name)
-{
-	if (conf_listen->host_dict == NULL) {
-		return conf_listen->default_host;
-	}
-
-	if (name == NULL) {
-		return conf_listen->host_wildcard;
-	}
-
-	struct h2d_conf_listen_hostname *node = wuy_dict_get(conf_listen->host_dict, name);
-	if (node != NULL) {
-		return node->conf_host;
-	}
-
-	return conf_listen->host_wildcard;
-}
-
-static bool h2d_conf_listen_add_hostname(struct h2d_conf_listen *conf_listen,
-		struct h2d_conf_host *conf_host, char *name)
-{
-	if (name[0] == '\0') {
-		printf("invalid empty host name\n");
-		return false;
-	}
-
-	/* wildcard hostname */
-	if (strcmp(name, "*") == 0) {
-		if (conf_listen->host_wildcard != NULL) {
-			printf("duplicate wildcard host\n");
-			return false;
-		}
-		conf_listen->host_wildcard = conf_host;
-		return true;
-	}
-
-	/* case insensitive */
-	x_strlow(name);
-
-	/* omit the tail dot */
-	int len = strlen(name);
-	if (name[len-1] == '.') {
-		name[len-1] = '\0';
-		len--;
-	}
-
-	const char *wild = strchr(name, '*');
-	if (wild != NULL) {
-		if (wild == name) {
-			if (name[1] != '.') {
-				printf("`.` must follows leading wildcast `*`\n");
-				return false;
-			}
-			if (strchr(name + 1, '*') != NULL) {
-				printf("at most 1 wildcast in hostname\n");
-				return false;
-			}
-		} else if (wild == name + len - 1) {
-			if (name[len-2] != '.') {
-				printf("`.` must before tail wildcast `*`\n");
-				return false;
-			}
-		} else {
-			printf("wildcast `*` is not allowed in middle of hostname\n");
-			return false;
-		}
-	}
-
-	if (wuy_dict_get(conf_listen->host_dict, name) != NULL) {
-		printf("duplicate hostname %s\n", name);
-		return false;
-	}
-
-	struct h2d_conf_listen_hostname *node = malloc(sizeof(struct h2d_conf_listen_hostname));
-	node->name = name;
-	node->conf_host = conf_host;
-	node->hits = 0;
-	wuy_dict_add(conf_listen->host_dict, node);
-	return true;
 }
 
 static int h2d_conf_listen_name(void *data, char *buf, int size)
@@ -102,6 +11,8 @@ static int h2d_conf_listen_name(void *data, char *buf, int size)
 	struct h2d_conf_listen *conf_listen = data;
 	return snprintf(buf, size, "Listen(%s)>", conf_listen->addresses[0]);
 }
+
+bool h2d_conf_host_register(struct h2d_conf_listen *conf_listen);
 
 static bool h2d_conf_listen_post(void *data)
 {
@@ -115,21 +26,13 @@ static bool h2d_conf_listen_post(void *data)
 		return true;
 	}
 
-	/* build hostname:conf_host dict */
-	conf_listen->host_dict = wuy_dict_new_type(WUY_DICT_KEY_STRING,
-			offsetof(struct h2d_conf_listen_hostname, name),
-			offsetof(struct h2d_conf_listen_hostname, dict_node));
+	if (!h2d_conf_host_register(conf_listen)) {
+		return false;
+	}
 
 	bool is_ssl = false, is_plain = false;
 	struct h2d_conf_host *conf_host;
 	for (int i = 0; (conf_host = conf_listen->hosts[i]) != NULL; i++) {
-		for (int j = 0; conf_host->hostnames[j] != NULL; j++) {
-			if (!h2d_conf_listen_add_hostname(conf_listen, conf_host,
-						conf_host->hostnames[j])) {
-				return false;
-			}
-		}
-
 		if (conf_host->ssl->ctx != NULL) {
 			is_ssl = true;
 		} else {
