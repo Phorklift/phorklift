@@ -58,7 +58,8 @@ static void h2d_upstream_hash_update(struct h2d_upstream_conf *upstream)
 		conf->vnode_num += h2d_upstream_hash_address_vnode_num(address);
 	}
 
-	conf->vnodes = realloc(conf->vnodes, sizeof(struct h2d_upstream_hash_vnode) * conf->vnode_num);
+	free(conf->vnodes);
+	conf->vnodes = malloc(sizeof(struct h2d_upstream_hash_vnode) * conf->vnode_num);
 
 	struct h2d_upstream_hash_vnode *vnode = conf->vnodes;
 	wuy_list_iter_type(&upstream->address_head, address, upstream_node) {

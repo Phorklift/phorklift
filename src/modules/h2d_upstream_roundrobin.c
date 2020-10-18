@@ -1,9 +1,14 @@
 #include "h2d_main.h"
 
+struct h2d_upstream_roundrobin_address {
+	double				hash;
+	struct h2d_upstream_address	*address;
+};
+
 struct h2d_upstream_roundrobin_conf {
 	int				total_num;
 	int				available_num;
-	struct h2d_upstream_address	**addresses;
+	struct h2d_upstream_roundrobin_address	*addresses;
 };
 
 struct h2d_upstream_loadbalance h2d_upstream_roundrobin;
@@ -20,74 +25,87 @@ static void h2d_upstream_roundrobin_update(struct h2d_upstream_conf *upstream)
 		upstream->lb_confs[h2d_upstream_roundrobin.index] = conf;
 	}
 
-	conf->total_num = conf->available_num = upstream->address_num;
-	conf->addresses = realloc(conf->addresses,
-			sizeof(struct h2d_upstream_address *) * conf->total_num);
+	conf->total_num = upstream->address_num;
+	conf->available_num = upstream->address_num;
 
-	int i = 0;
+	free(conf->addresses);
+	conf->addresses = malloc(sizeof(struct h2d_upstream_roundrobin_address) *
+			(conf->total_num + 1));
+
+	double hash = 0.0;
 	struct h2d_upstream_address *address;
+	struct h2d_upstream_roundrobin_address *rr_addr = conf->addresses;
 	wuy_list_iter_type(&upstream->address_head, address, upstream_node) {
-		conf->addresses[i++] = address;
+		rr_addr->address = address;
+		rr_addr->hash = hash;
+		rr_addr++;
+		hash += address->weight;
 	}
+
+	/* sentinel */
+	rr_addr->address = NULL;
+	rr_addr->hash = hash;
 }
 
-static void h2d_upstream_roundrobin_expire(struct h2d_upstream_roundrobin_conf *conf, int index)
+static void h2d_upstream_roundrobin_exchange(struct h2d_upstream_roundrobin_conf *conf,
+		int index1, int index2)
 {
-	assert(index < conf->available_num);
-
-	struct h2d_upstream_address *address = conf->addresses[index];
-	address->lb_data.d = 0.0;
-
-	if (conf->available_num == 1) { /* begin new round */
-		conf->available_num = conf->total_num;
+	printf("exchange %d %d\n", index1, index2);
+	if (index1 == index2) { /* no need exchange */
 		return;
 	}
 
-	conf->addresses[index] = conf->addresses[conf->available_num - 1];
-	conf->addresses[conf->available_num - 1] = address;
-	conf->available_num--;
-}
+	assert(index1 < index2);
 
-static bool h2d_upstream_roundrobin_check(struct h2d_upstream_roundrobin_conf *conf, int index)
-{
-	struct h2d_upstream_address *address = conf->addresses[index];
+	struct h2d_upstream_roundrobin_address *addr1 = &conf->addresses[index1];
+	struct h2d_upstream_roundrobin_address *addr2 = &conf->addresses[index2];
 
-	if (!h2d_upstream_address_is_pickable(address)) {
-		h2d_upstream_roundrobin_expire(conf, index);
-		return false;
-	}
+	/* exchange address */
+	struct h2d_upstream_address *tmp = addr1->address;
+	addr1->address = addr2->address;
+	addr2->address = tmp;
 
-	double left = address->weight - address->lb_data.d;
-	if (left == 1.0) {
-		h2d_upstream_roundrobin_expire(conf, index);
-		return true;
-	}
-	if (left > 1.0) {
-		address->lb_data.d += 1.0;
-		return true;
-	}
-
-	/* left < 1.0 */
-	h2d_upstream_roundrobin_expire(conf, index);
-	return wuy_rand_sample(left);
-}
-
-static struct h2d_upstream_address *h2d_upstream_roundrobin_try_pick(
-		struct h2d_upstream_roundrobin_conf *conf, int index)
-{
-	while (1) {
-		struct h2d_upstream_address *address = conf->addresses[index];
-		if (h2d_upstream_roundrobin_check(conf, index)) {
-			return address;
-		}
-		/* otherwise the address is expired and conf->addresses[index]
-		 * is replaced if still any available */
-
-		if (conf->addresses[index] == address) { /* no available */
-			return NULL;
+	/* update hash in [index1+1, index2] */
+	double diff = addr1->address->weight - addr2->address->weight;
+	if (diff != 0.0) {
+		for (int i = index1 + 1; i <= index2; i++) {
+			conf->addresses[i].hash += diff;
 		}
 	}
-	return NULL; /* should not be here */
+}
+
+/* exchange between @down and last-available address */
+static void h2d_upstream_roundrobin_expire(struct h2d_upstream_roundrobin_conf *conf, int down)
+{
+	h2d_upstream_roundrobin_exchange(conf, down, --conf->available_num);
+}
+
+/* exchange between @recov and first-down address */
+static void h2d_upstream_roundrobin_recover(struct h2d_upstream_roundrobin_conf *conf, int recov)
+{
+	h2d_upstream_roundrobin_exchange(conf, conf->available_num++, recov);
+}
+
+static int h2d_upstream_roundrobin_random(struct h2d_upstream_roundrobin_conf *conf, int limit)
+{
+	double hash = wuy_rand_double() * conf->addresses[limit].hash;
+
+	int low = 0, high = limit - 1, mid = -1;
+	while (low <= high) {
+		mid = (low + high) / 2;
+		double lower = conf->addresses[mid].hash;
+		double upper = conf->addresses[mid + 1].hash;
+
+		if (hash >= upper) {
+			low = mid + 1;
+		} else if (hash < lower) {
+			high = mid - 1;
+		} else {
+			break;
+		}
+	}
+	assert(low <= high && mid >= 0);
+	return mid;
 }
 
 static struct h2d_upstream_address *h2d_upstream_roundrobin_pick(
@@ -95,40 +113,46 @@ static struct h2d_upstream_address *h2d_upstream_roundrobin_pick(
 {
 	struct h2d_upstream_roundrobin_conf *conf = upstream->lb_confs[h2d_upstream_roundrobin.index];
 
-	int original_avail_num = conf->available_num;
-	int picked = wuy_rand_range(conf->available_num);
+	/* pick one amount all addresses */
+	int picked = h2d_upstream_roundrobin_random(conf, conf->total_num);
+	struct h2d_upstream_address *address = conf->addresses[picked].address;
 
-	/* conf->addresses:
-	 *
-	 *    |=2=====|=1=======|-3----------------------|
-	 *    ^       ^         ^                        ^
-	 *    0       picked    original_avail_num       conf->total_num
-	 */
+	h2d_request_log(r, H2D_LOG_DEBUG, "roundrobin pick first: %d", picked);
 
-	/* 1. try to find an available address between [picked, conf->available_num] */
-	struct h2d_upstream_address *address = h2d_upstream_roundrobin_try_pick(conf, picked);
-	if (address != NULL) {
-		return address;
-	}
-
-	/* 2. try between [0, conf->available_num(=picked)]*/
-	if (picked > 0) {
-		address = h2d_upstream_roundrobin_try_pick(conf, 0);
-		if (address != NULL) {
+	/* this one is not-available by now */
+	if (picked >= conf->available_num) {
+		if (address->down_time == 0) {
+			h2d_request_log(r, H2D_LOG_DEBUG, "roundrobin recover: %d", picked);
+			h2d_upstream_roundrobin_recover(conf, picked);
 			return address;
 		}
-	}
-
-	/* 3. new round begins, try between [original_avail_num, conf->available_num(=conf->total_num)]*/
-	if (original_avail_num < conf->total_num) {
-		address = h2d_upstream_roundrobin_try_pick(conf, original_avail_num);
-		if (address != NULL) {
+		if (h2d_upstream_address_is_pickable(address)) {
+			h2d_request_log(r, H2D_LOG_DEBUG, "roundrobin try not-available: %d", picked);
 			return address;
 		}
+
+retry:
+		/* pick again amount available addresses only */
+		if (conf->available_num == 0) { /* no available */
+			h2d_request_log(r, H2D_LOG_DEBUG, "roundrobin return not-available");
+			return address;
+		}
+
+		picked = h2d_upstream_roundrobin_random(conf, conf->available_num);
+		address = conf->addresses[picked].address;
+
+		h2d_request_log(r, H2D_LOG_DEBUG, "roundrobin pick again: %d", picked);
 	}
 
-	/* no available */
-	return NULL;
+	if (h2d_upstream_address_is_pickable(address)) {
+		h2d_request_log(r, H2D_LOG_DEBUG, "roundrobin pick OK");
+		return address; /* done! this is the mostly case */
+	}
+
+	h2d_upstream_roundrobin_expire(conf, picked);
+
+	h2d_request_log(r, H2D_LOG_DEBUG, "roundrobin expire, retry...");
+	goto retry;
 }
 
 static void h2d_upstream_roundrobin_free(struct h2d_upstream_conf *upstream)
