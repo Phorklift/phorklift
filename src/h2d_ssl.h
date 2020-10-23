@@ -18,6 +18,7 @@ struct h2d_ssl_conf {
 	const char	*private_key;
 	const char	*ticket_secret;
 	const char	*ciphers;
+	int		session_timeout;
 
 	SSL_CTX		*ctx;
 

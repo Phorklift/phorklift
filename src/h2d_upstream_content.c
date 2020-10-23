@@ -20,7 +20,8 @@ static bool h2d_upstream_content_status_code_retry(struct h2d_request *r)
 	}
 	for (int *p = upstream->retry_status_codes; *p != 0; p++) {
 		if (r->resp.status_code == *p) {
-			printf("debug retry_status_codes hit: %d\n", *p);
+			h2d_request_log_at(r, upstream->log, H2D_LOG_DEBUG,
+					"retry for status_code=%d", r->resp.status_code);
 			return true;
 		}
 	}
@@ -113,8 +114,8 @@ static int h2d_upstream_content_fail(struct h2d_request *r)
 	h2d_upstream_connection_fail(ctx->upc);
 
 	/* retry */
-	printf("retry %d %d\n", ctx->retries, upstream->max_retries);
 	if (ctx->retries < 0 || ctx->retries++ >= upstream->max_retries) {
+		h2d_request_log_at(r, upstream->log, H2D_LOG_INFO, "no retry %d", ctx->retries);
 		return r->resp.status_code != 0 ? H2D_OK : WUY_HTTP_502;
 	}
 

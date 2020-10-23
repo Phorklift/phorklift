@@ -12,11 +12,12 @@ struct h2d_dynamic_conf {
 	int			error_expire;
 	int			sub_max;
 	int			get_name_meta_level;
+	struct h2d_log		*log;
 
 	/* runtime: father only */
 	wuy_dict_t		*sub_dict;
+	struct wuy_cflua_table	*sub_table;
 	struct {
-		struct wuy_cflua_table	*conf_table;
 		off_t			offset;
 		void			(*del)(void *);
 	} container;

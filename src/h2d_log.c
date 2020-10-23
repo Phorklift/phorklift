@@ -119,10 +119,6 @@ static bool h2d_log_conf_post(void *data)
 		return false;
 	}
 
-	if (log->conf_filename == NULL) {
-		log->conf_filename = "error.log";
-	}
-
 	log->file = h2d_log_file_open(log->conf_filename, log->buf_size);
 	return log->file != NULL;
 }
@@ -131,6 +127,7 @@ static struct wuy_cflua_command h2d_log_conf_commands[] = {
 	{	.type = WUY_CFLUA_TYPE_STRING,
 		.is_single_array = true,
 		.offset = offsetof(struct h2d_log, conf_filename),
+		.default_value.s = "error.log",
 	},
 	{	.name = "buffer_size",
 		.type = WUY_CFLUA_TYPE_INTEGER,

@@ -30,6 +30,7 @@ static bool h2d_conf_listen_post(void *data)
 		return false;
 	}
 
+	/* ssl */
 	bool is_ssl = false, is_plain = false;
 	struct h2d_conf_host *conf_host;
 	for (int i = 0; (conf_host = conf_listen->hosts[i]) != NULL; i++) {
@@ -39,8 +40,6 @@ static bool h2d_conf_listen_post(void *data)
 			is_plain = true;
 		}
 	}
-
-	/* ssl */
 	if (is_ssl) {
 		if (is_plain) {
 			printf("plain vs ssl\n");

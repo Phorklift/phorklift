@@ -60,13 +60,6 @@ struct h2d_upstream_address {
 	wuy_list_node_t		down_node;
 	double			weight;
 
-	union {
-		long		n;
-		unsigned long	u;
-		double		d;
-		void		*p;
-	} lb_data;
-
 	struct h2d_upstream_conf	*upstream;
 
 	struct {
@@ -129,11 +122,14 @@ struct h2d_upstream_conf {
 	struct {
 		int			repeats;
 		int			interval;
+		wuy_cflua_function_t	filter;
 		const char		*req_str;
 		int			req_len;
 		const char		*resp_str;
 		int			resp_len;
 	} healthcheck;
+
+	struct h2d_log			*log;
 
 	struct h2d_dynamic_conf		dynamic;
 	wuy_list_t			wait_head;
@@ -214,7 +210,8 @@ static inline bool h2d_upstream_connection_write_blocked(struct h2d_upstream_con
 }
 /* }}} */
 
-bool h2d_upstream_address_is_pickable(struct h2d_upstream_address *address);
+bool h2d_upstream_address_is_pickable(struct h2d_upstream_address *address,
+		struct h2d_request *r);
 
 void h2d_upstream_stats(wuy_json_ctx_t *json);
 

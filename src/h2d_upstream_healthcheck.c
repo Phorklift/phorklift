@@ -26,9 +26,8 @@ static int h2d_upstream_healthcheck_on_read(loop_stream_t *s, void *data, int da
 		}
 		ok = memcmp(data, resp_str, resp_len) == 0;
 		break;
-	case '~': // TODO lua string.find()
-		// ok = h2d_lua_string_match(data, resp_str+1);
-		ok = true;
+	case '~':
+		ok = h2d_lua_api_str_find(data, resp_str+1);
 		break;
 	default:
 		if (data_len < resp_len) {
@@ -108,7 +107,6 @@ void h2d_upstream_healthcheck(struct h2d_upstream_conf *upstream)
 			continue;
 		}
 		if (now < address->down_time + upstream->healthcheck.interval) {
-			// TODO make sure upstream->healthcheck.interval > 0
 			break;
 		}
 

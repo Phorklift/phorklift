@@ -50,7 +50,6 @@ static void h2d_upstream_roundrobin_update(struct h2d_upstream_conf *upstream)
 static void h2d_upstream_roundrobin_exchange(struct h2d_upstream_roundrobin_conf *conf,
 		int index1, int index2)
 {
-	printf("exchange %d %d\n", index1, index2);
 	if (index1 == index2) { /* no need exchange */
 		return;
 	}
@@ -117,41 +116,42 @@ static struct h2d_upstream_address *h2d_upstream_roundrobin_pick(
 	int picked = h2d_upstream_roundrobin_random(conf, conf->total_num);
 	struct h2d_upstream_address *address = conf->addresses[picked].address;
 
-	h2d_request_log(r, H2D_LOG_DEBUG, "roundrobin pick first: %d", picked);
+	h2d_request_log_at(r, upstream->log, H2D_LOG_DEBUG, "roundrobin pick %d %s", picked, address->name);
 
 	/* this one is not-available by now */
 	if (picked >= conf->available_num) {
 		if (address->down_time == 0) {
-			h2d_request_log(r, H2D_LOG_DEBUG, "roundrobin recover: %d", picked);
+			h2d_request_log_at(r, upstream->log, H2D_LOG_INFO, "roundrobin recover %d %s",
+					picked, address->name);
 			h2d_upstream_roundrobin_recover(conf, picked);
 			return address;
 		}
-		if (h2d_upstream_address_is_pickable(address)) {
-			h2d_request_log(r, H2D_LOG_DEBUG, "roundrobin try not-available: %d", picked);
+		if (h2d_upstream_address_is_pickable(address, r)) {
+			h2d_request_log_at(r, upstream->log, H2D_LOG_DEBUG, "roundrobin try not-available");
 			return address;
 		}
 
 retry:
 		/* pick again amount available addresses only */
 		if (conf->available_num == 0) { /* no available */
-			h2d_request_log(r, H2D_LOG_DEBUG, "roundrobin return not-available");
+			h2d_request_log_at(r, upstream->log, H2D_LOG_DEBUG, "roundrobin return not-available");
 			return address;
 		}
 
 		picked = h2d_upstream_roundrobin_random(conf, conf->available_num);
 		address = conf->addresses[picked].address;
 
-		h2d_request_log(r, H2D_LOG_DEBUG, "roundrobin pick again: %d", picked);
+		h2d_request_log_at(r, upstream->log, H2D_LOG_DEBUG, "roundrobin pick again: %d %s",
+				picked, address->name);
 	}
 
-	if (h2d_upstream_address_is_pickable(address)) {
-		h2d_request_log(r, H2D_LOG_DEBUG, "roundrobin pick OK");
+	if (h2d_upstream_address_is_pickable(address, r)) {
 		return address; /* done! this is the mostly case */
 	}
 
+	h2d_request_log_at(r, upstream->log, H2D_LOG_INFO, "roundrobin expire %d %s", picked, address->name);
 	h2d_upstream_roundrobin_expire(conf, picked);
 
-	h2d_request_log(r, H2D_LOG_DEBUG, "roundrobin expire, retry...");
 	goto retry;
 }
 

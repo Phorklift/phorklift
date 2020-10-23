@@ -161,7 +161,8 @@ static bool h2d_conf_host_post(void *data)
 
 	if (conf_host->paths == NULL /* no Path() */
 			&& conf_host->hostnames != NULL /* not default_host */
-			&& conf_host->default_path->content == NULL) { /* default_path->content not set */
+			&& conf_host->default_path->content == NULL /* default_path->content not set */
+			&& !h2d_dynamic_is_enabled(&conf_host->default_path->dynamic)) { /* none-dynamic */
 		printf("No path is defined in host\n");
 		return false;
 	}

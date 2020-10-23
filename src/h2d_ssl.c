@@ -134,7 +134,7 @@ SSL_CTX *h2d_ssl_ctx_empty_server(void)
 }
 
 static SSL_CTX *h2d_ssl_ctx_new_server(const char *cert_fname, const char *pkey_fname,
-		const char *ticket_secret_fname, const char *cipher)
+		const char *ticket_secret_fname, const char *cipher, int session_timeout)
 {
 	SSL_CTX *ctx = h2d_ssl_new_empty_server_ctx();
 
@@ -170,6 +170,8 @@ static SSL_CTX *h2d_ssl_ctx_new_server(const char *cert_fname, const char *pkey_
 	}
 	SSL_CTX_set_tlsext_ticket_key_cb(ctx, h2d_ssl_ticket_callback);
 	SSL_CTX_set_ex_data(ctx, H2D_SSL_CTX_EX_TICKET_SECRET, secret);
+
+	SSL_CTX_set_timeout(ctx, session_timeout);
 
 	return ctx;
 }
@@ -290,7 +292,7 @@ static bool h2d_ssl_conf_post(void *data)
 	}
 
 	conf->ctx = h2d_ssl_ctx_new_server(conf->certificate, conf->private_key,
-			conf->ticket_secret, conf->ciphers);
+			conf->ticket_secret, conf->ciphers, conf->session_timeout);
 	if (conf->ctx == NULL) {
 		return false;
 	}
@@ -319,14 +321,12 @@ static struct wuy_cflua_command h2d_ssl_conf_commands[] = {
 		.type = WUY_CFLUA_TYPE_STRING,
 		.offset = offsetof(struct h2d_ssl_conf, ticket_secret),
 	},
-	/*
-	{	.name = "ticket_timeout",
+	{	.name = "session_timeout",
 		.type = WUY_CFLUA_TYPE_INTEGER,
-		.offset = offsetof(struct h2d_ssl_conf, ticket_timeout),
+		.offset = offsetof(struct h2d_ssl_conf, session_timeout),
 		.default_value.n = 86400,
 		.limits.n = WUY_CFLUA_LIMITS_NON_NEGATIVE,
 	},
-	*/
 	{ NULL }
 };
 

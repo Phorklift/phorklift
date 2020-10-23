@@ -107,12 +107,12 @@ static struct h2d_upstream_address *h2d_upstream_hash_pick(
 
 	/* check if down */
 	for (struct h2d_upstream_hash_vnode *i = vnode; i < conf->vnodes + conf->vnode_num; i++) {
-		if (h2d_upstream_address_is_pickable(i->address)) {
+		if (h2d_upstream_address_is_pickable(i->address, r)) {
 			return i->address;
 		}
 	}
 	for (struct h2d_upstream_hash_vnode *i = conf->vnodes; i < vnode; i++) {
-		if (h2d_upstream_address_is_pickable(i->address)) {
+		if (h2d_upstream_address_is_pickable(i->address, r)) {
 			return i->address;
 		}
 	}

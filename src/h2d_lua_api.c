@@ -131,8 +131,7 @@ const char *h2d_lua_api_call_lstring(struct h2d_request *r,
 	return str;
 }
 
-int h2d_lua_api_call_boolean(struct h2d_request *r,
-		wuy_cflua_function_t f)
+int h2d_lua_api_call_boolean(struct h2d_request *r, wuy_cflua_function_t f)
 {
 	if (!h2d_lua_api_call(r, f)) {
 		return -1;

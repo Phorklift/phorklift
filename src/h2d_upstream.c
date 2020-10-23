@@ -14,6 +14,12 @@ static WUY_LIST(h2d_upstream_list);
 
 static int h2d_upstream_loadbalance_number;
 
+#define _log(level, fmt, ...) h2d_request_log_at(r, \
+		upstream->log, level, "upstream: " fmt, ##__VA_ARGS__)
+
+#define _log_upc(level, fmt, ...) h2d_request_log_at(upc->request, \
+		upc->address->upstream->log, level, "upstream: " fmt, ##__VA_ARGS__)
+
 static void h2d_upstream_connection_close(struct h2d_upstream_connection *upc)
 {
 	loop_stream_close(upc->loop_stream);
@@ -42,8 +48,11 @@ static bool h2d_upstream_is_active_healthcheck(struct h2d_upstream_conf *upstrea
 
 void h2d_upstream_connection_fail(struct h2d_upstream_connection *upc)
 {
+	struct h2d_request *r = upc->request;
 	struct h2d_upstream_address *address = upc->address;
 	struct h2d_upstream_conf *upstream = address->upstream;
+
+	_log(H2D_LOG_INFO, "connection fail %s", address->name);
 
 	if (upstream->fails == 0) { /* configure never down */
 		return;
@@ -51,7 +60,7 @@ void h2d_upstream_connection_fail(struct h2d_upstream_connection *upc)
 
 	if (address->down_time != 0) { /* down already */
 		if (address->healthchecks > 0) { /* fail in passive healthcheck */
-			printf("upstream address passive healthcheck fail\n");
+			_log(H2D_LOG_DEBUG, "passive healthcheck fail");
 			address->healthchecks = 0;
 			address->down_time = time(NULL);
 		}
@@ -60,12 +69,11 @@ void h2d_upstream_connection_fail(struct h2d_upstream_connection *upc)
 
 	address->fails++;
 	if (address->fails < upstream->fails) {
-		printf("upstream address fail %d\n", address->fails);
 		return;
 	}
 
 	/* go down */
-	printf("upstream address go down\n");
+	_log(H2D_LOG_ERROR, "go down");
 	address->down_time = time(NULL);
 	address->healthchecks = 0;
 
@@ -118,10 +126,11 @@ h2d_upstream_get_connection(struct h2d_upstream_conf *upstream, struct h2d_reque
 	if (h2d_dynamic_is_enabled(&upstream->dynamic)) {
 		upstream = h2d_dynamic_get(&upstream->dynamic, r);
 		if (upstream == NULL) {
+			_log(H2D_LOG_DEBUG, "dynamic get %d", r->resp.status_code);
 			return NULL;
 		}
-		if (upstream->address_num == 0) {
-			/* wait for hostname resolving */
+		if (upstream->address_num == 0) { /* wait for hostname resolving */
+			_log(H2D_LOG_DEBUG, "dynamic wait for resolving");
 			if (wuy_list_node_linked(&r->list_node)) {
 				printf("!!!!! where does it linked???\n");
 				abort();
@@ -129,6 +138,7 @@ h2d_upstream_get_connection(struct h2d_upstream_conf *upstream, struct h2d_reque
 			wuy_list_append(&upstream->wait_head, &r->list_node);
 			return NULL;
 		}
+		_log(H2D_LOG_DEBUG, "dynamic get done");
 	}
 
 	atomic_fetch_add(&upstream->stats->total, 1);
@@ -139,30 +149,29 @@ h2d_upstream_get_connection(struct h2d_upstream_conf *upstream, struct h2d_reque
 
 	struct h2d_upstream_address *address = upstream->loadbalance->pick(upstream, r);
 	if (address == NULL) {
-		printf("upstream pick fail\n");
+		_log(H2D_LOG_ERROR, "pick fail");
 		atomic_fetch_add(&upstream->stats->pick_fail, 1);
 		return NULL;
 	}
 
-	if (!h2d_upstream_address_is_pickable(address)) {
-		printf("upstream all down!\n");
+	if (!h2d_upstream_address_is_pickable(address, r)) {
+		_log(H2D_LOG_ERROR, "all down");
+
 		struct h2d_upstream_address *iaddr;
 		wuy_list_iter_type(&upstream->address_head, iaddr, upstream_node) {
 			iaddr->down_time = 0;
 		}
 	} else if (address->down_time != 0) {
-		printf("upstream address passive healthcheck\n");
+		_log(H2D_LOG_DEBUG, "passive healthcheck");
 		address->healthchecks++;
 	}
 
 	address->stats.pick++;
-	char tmpbuf[100];
-	wuy_sockaddr_ntop(&address->sockaddr.s, tmpbuf, sizeof(tmpbuf));
-	printf("pick %s\n", tmpbuf);
 
 	/* try to reuse */
 	struct h2d_upstream_connection *upc;
 	if (wuy_list_pop_type(&address->idle_head, upc, list_node)) {
+		_log(H2D_LOG_DEBUG, "reuse %s", address->name);
 		wuy_list_append(&address->active_head, &upc->list_node);
 		address->idle_num--;
 		atomic_fetch_add(&upstream->stats->reuse, 1);
@@ -170,6 +179,8 @@ h2d_upstream_get_connection(struct h2d_upstream_conf *upstream, struct h2d_reque
 		upc->request = r;
 		return upc;
 	}
+
+	_log(H2D_LOG_DEBUG, "connect %s", address->name);
 
 	/* new connection */
 	loop_stream_t *s = loop_tcp_connect_sockaddr(h2d_loop, &address->sockaddr.s,
@@ -202,6 +213,8 @@ h2d_upstream_retry_connection(struct h2d_upstream_connection *old)
 	struct h2d_upstream_address *address = old->address;
 	struct h2d_upstream_conf *upstream = address->upstream;
 
+	_log(H2D_LOG_DEBUG, "retry for %s", address->name);
+
 	atomic_fetch_add(&upstream->stats->retry, 1);
 
 	h2d_upstream_connection_close(old);
@@ -229,22 +242,28 @@ void h2d_upstream_release_connection(struct h2d_upstream_connection *upc)
 	assert(upc->request != NULL);
 	assert(upc->loop_stream != NULL);
 
+	struct h2d_request *r = upc->request;
 	struct h2d_upstream_address *address = upc->address;
 	struct h2d_upstream_conf *upstream = address->upstream;
 
+	_log(H2D_LOG_DEBUG, "release %s", address->name);
+
 	/* the connection maybe in passive healthcheck */
 	if (address->down_time > 0 && address->healthchecks >= upstream->healthcheck.repeats) {
-		printf("upstream address recover from passive healthcheck\n");
+		_log(H2D_LOG_INFO, "recover from passive healthcheck");
 		address->down_time = 0;
 	}
 
 	/* close the connection */
-	if (loop_stream_is_closed(upc->loop_stream) || upc->request->state != H2D_REQUEST_STATE_DONE) {
+	if (loop_stream_is_closed(upc->loop_stream) || r->state != H2D_REQUEST_STATE_DONE) {
+		_log(H2D_LOG_DEBUG, "just close, state=%d", r->state);
 		h2d_upstream_connection_close(upc);
 		return;
 	}
 
 	/* put the connection into idle pool */
+	_log(H2D_LOG_DEBUG, "keeplive, idles=%d", address->idle_num);
+
 	if (address->idle_num > upstream->idle_max) {
 		/* close the oldest one if pool is full */
 		struct h2d_upstream_connection *idle;
@@ -269,6 +288,8 @@ int h2d_upstream_connection_read(struct h2d_upstream_connection *upc,
 
 	/* upc->preread_buf was allocated in h2d_upstream_connection_read_notfinish() */
 	if (upc->preread_buf != NULL) {
+		_log_upc(H2D_LOG_DEBUG, "read preread %d", upc->preread_len);
+
 		if (buf_len < upc->preread_len) {
 			memcpy(buffer, upc->preread_buf, buf_len);
 			upc->preread_len -= buf_len;
@@ -290,7 +311,7 @@ int h2d_upstream_connection_read(struct h2d_upstream_connection *upc,
 
 	int read_len = loop_stream_read(upc->loop_stream, buf_pos, buf_len);
 	if (read_len < 0) {
-		printf("upstream read fail %d\n", read_len);
+		_log_upc(H2D_LOG_ERROR, "read fail %d", read_len);
 		return H2D_ERROR;
 	}
 	if (read_len > 0) { /* update timer */
@@ -299,6 +320,8 @@ int h2d_upstream_connection_read(struct h2d_upstream_connection *upc,
 	}
 
 	int ret_len = buf_pos - (uint8_t *)buffer + read_len;
+	_log_upc(H2D_LOG_DEBUG, "read %d", ret_len);
+
 	return ret_len == 0 ? H2D_AGAIN : ret_len;
 }
 void h2d_upstream_connection_read_notfinish(struct h2d_upstream_connection *upc,
@@ -307,6 +330,8 @@ void h2d_upstream_connection_read_notfinish(struct h2d_upstream_connection *upc,
 	if (buf_len == 0) {
 		return;
 	}
+	_log_upc(H2D_LOG_DEBUG, "read not finish %d", buf_len);
+
 	assert(upc->preread_buf == NULL);
 	upc->preread_buf = malloc(buf_len);
 	memcpy(upc->preread_buf, buffer, buf_len);
@@ -328,13 +353,15 @@ int h2d_upstream_connection_write(struct h2d_upstream_connection *upc,
 
 	int write_len = loop_stream_write(upc->loop_stream, data, data_len);
 	if (write_len < 0) {
-		printf("upstream write fail %d\n", write_len);
+		_log_upc(H2D_LOG_ERROR, "write fail %d", write_len);
 		return H2D_ERROR;
 	}
-	if (write_len != data_len) { /* blocking happens */
-		printf(" !!! upstream write block!!! %d %d\n", write_len, data_len);
+	if (write_len != data_len) { /* blocking happens */ // TODO
+		_log_upc(H2D_LOG_ERROR, "write blockes %d %d", write_len, data_len);
 		return H2D_ERROR;
 	}
+
+	_log_upc(H2D_LOG_DEBUG, "write %d", write_len);
 
 	/* we assume that the response is expected just after one write */
 	loop_stream_set_timeout(upc->loop_stream,
@@ -356,19 +383,27 @@ void h2d_upstream_init(void)
 	}
 }
 
-bool h2d_upstream_address_is_pickable(struct h2d_upstream_address *address)
+bool h2d_upstream_address_is_pickable(struct h2d_upstream_address *address,
+		struct h2d_request *r)
 {
+	struct h2d_upstream_conf *upstream = address->upstream;
 	if (address->down_time == 0) {
 		return true;
 	}
-	if (h2d_upstream_is_active_healthcheck(address->upstream)) {
+	if (h2d_upstream_is_active_healthcheck(upstream)) {
 		return false;
 	}
-	if (time(NULL) < address->down_time + address->upstream->healthcheck.interval) {
+	if (time(NULL) < address->down_time + upstream->healthcheck.interval) {
 		return false;
 	}
-	/* at most one connection is allowed in healthcheck */
-	return wuy_list_empty(&address->active_head);
+	if (!wuy_list_empty(&address->active_head)) {
+		/* at most one connection is allowed in healthcheck */
+		return false;
+	}
+	if (wuy_cflua_is_function_set(upstream->healthcheck.filter)) {
+		return h2d_lua_api_call_boolean(r, upstream->healthcheck.filter);
+	}
+	return true;
 }
 
 /* configration */
@@ -424,6 +459,10 @@ static bool h2d_upstream_conf_post(void *data)
 	/* some check for both cases, dynamic or not */
 	if ((conf->healthcheck.req_len == 0) != (conf->healthcheck.resp_len == 0)) {
 		printf("healthcheck request/response must be set both or neigther\n");
+		return false;
+	}
+	if (h2d_upstream_is_active_healthcheck(conf) && wuy_cflua_is_function_set(conf->healthcheck.filter)) {
+		printf("request is for active healthcheck while filter is for passive\n");
 		return false;
 	}
 
@@ -532,6 +571,10 @@ static struct wuy_cflua_command h2d_upstream_healthcheck_commands[] = {
 		.default_value.n = 60,
 		.limits.n = WUY_CFLUA_LIMITS_POSITIVE,
 	},
+	{	.name = "filter",
+		.type = WUY_CFLUA_TYPE_FUNCTION,
+		.offset = offsetof(struct h2d_upstream_conf, healthcheck.filter),
+	},
 	{	.name = "repeats",
 		.type = WUY_CFLUA_TYPE_INTEGER,
 		.offset = offsetof(struct h2d_upstream_conf, healthcheck.repeats),
@@ -620,6 +663,11 @@ static struct wuy_cflua_command h2d_upstream_conf_commands[] = {
 	{	.name = "healthcheck",
 		.type = WUY_CFLUA_TYPE_TABLE,
 		.u.table = &(struct wuy_cflua_table) { h2d_upstream_healthcheck_commands },
+	},
+	{	.name = "log",
+		.type = WUY_CFLUA_TYPE_TABLE,
+		.offset = offsetof(struct h2d_upstream_conf, log),
+		.u.table = &h2d_log_conf_table,
 	},
 	{	.type = WUY_CFLUA_TYPE_END,
 		.u.next = h2d_upstream_next_command,
