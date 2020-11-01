@@ -57,7 +57,7 @@ static void h2d_upstream_address_add(struct h2d_upstream_conf *upstream,
 	address->stats.create_time = time(NULL);
 
 	char buf[128];
-	wuy_sockaddr_ntop(sockaddr, buf, sizeof(buf));
+	wuy_sockaddr_dumps(sockaddr, buf, sizeof(buf));
 	address->name = strdup(buf);
 
 	if (before != NULL) {
@@ -243,11 +243,11 @@ bool h2d_upstream_conf_resolve_init(struct h2d_upstream_conf *conf)
 		}
 
 		/* it's static address, no need resolve */
-		struct sockaddr sockaddr;
-		if (wuy_sockaddr_pton(hostname->name, &sockaddr, conf->default_port)) {
+		struct sockaddr_storage sockaddr;
+		if (wuy_sockaddr_loads(hostname->name, &sockaddr, conf->default_port)) {
 			hostname->need_resolved = false;
 			hostname->port = 0;
-			h2d_upstream_address_add(conf, hostname, &sockaddr, NULL);
+			h2d_upstream_address_add(conf, hostname, (struct sockaddr *)&sockaddr, NULL);
 			conf->address_num++;
 			continue;
 		}

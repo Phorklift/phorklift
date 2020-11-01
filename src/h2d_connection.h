@@ -6,7 +6,7 @@ struct h2d_connection;
 struct h2d_connection {
 	/* set on created */
 	struct h2d_conf_listen	*conf_listen;
-	struct sockaddr		client_addr;
+	struct sockaddr		client_addr; // XXX add padding
 	loop_stream_t		*loop_stream;
 
 	/* set by SSL SNI if any */
