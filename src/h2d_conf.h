@@ -94,6 +94,7 @@ struct h2d_conf_listen {
 
 	struct {
 		int		idle_timeout;
+		int		idle_min_timeout;
 		int		ping_interval;
 
 		loop_group_timer_t	*idle_timer_group;
@@ -101,6 +102,7 @@ struct h2d_conf_listen {
 
 	struct {
 		int		keepalive_timeout;
+		int		keepalive_min_timeout;
 
 		loop_group_timer_t	*keepalive_timer_group;
 	} http1;

@@ -48,8 +48,6 @@ void h2d_connection_set_idle(struct h2d_connection *c)
 
 	loop_group_timer_node_set(c->is_http2 ? c->conf_listen->http2.idle_timer_group
 			: c->conf_listen->http1.keepalive_timer_group, c->recv_timer);
-
-	// TODO link this to conf->idle_head
 }
 
 static int h2d_connection_flush(struct h2d_connection *c)
@@ -191,11 +189,11 @@ static void h2d_connection_on_close(loop_stream_t *s, enum loop_stream_close_rea
 static bool h2d_connection_free_idle(struct h2d_conf_listen *conf_listen)
 {
 	if (loop_group_timer_expire_one_ahead(conf_listen->http1.keepalive_timer_group,
-				conf_listen->http1.keepalive_timeout / 2)) {
+				conf_listen->http1.keepalive_min_timeout)) {
 		return true;
 	}
 	if (loop_group_timer_expire_one_ahead(conf_listen->http2.idle_timer_group,
-				conf_listen->http2.idle_timeout / 2)) {
+				conf_listen->http2.idle_min_timeout)) {
 		return true;
 	}
 	return false;
