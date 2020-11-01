@@ -19,17 +19,6 @@ struct h2d_upstream_hash_vnode {
 
 struct h2d_upstream_loadbalance h2d_upstream_hash;
 
-static uint64_t h2d_upstream_hash_data(const void *data, int len)
-{
-	union {
-		unsigned char out[16];
-		uint64_t ret[2];
-	} u;
-
-	wuy_murmurhash(data, len, u.out);
-	return u.ret[0] ^ u.ret[1];
-}
-
 static int h2d_upstream_hash_vnode_cmp(const void *a, const void *b)
 {
 	const struct h2d_upstream_hash_vnode *va = a;
@@ -63,11 +52,11 @@ static void h2d_upstream_hash_update(struct h2d_upstream_conf *upstream)
 
 	struct h2d_upstream_hash_vnode *vnode = conf->vnodes;
 	wuy_list_iter_type(&upstream->address_head, address, upstream_node) {
-		uint64_t hash = h2d_upstream_hash_data(&address->sockaddr.s,
+		uint64_t hash = wuy_murmurhash_id(&address->sockaddr.s,
 				wuy_sockaddr_size(&address->sockaddr.s));
 
 		for (int i = 0; i < h2d_upstream_hash_address_vnode_num(address); i++) {
-			vnode->hash = hash ^ h2d_upstream_hash_data(&i, sizeof(int));
+			vnode->hash = hash ^ wuy_murmurhash_id(&i, sizeof(int));
 			vnode->address = address;
 			vnode++;
 		}
@@ -87,7 +76,7 @@ static struct h2d_upstream_address *h2d_upstream_hash_pick(
 	if (key_str == NULL) {
 		return NULL;
 	}
-	uint64_t hash = h2d_upstream_hash_data(key_str, key_len);
+	uint64_t hash = wuy_murmurhash_id(key_str, key_len);
 
 	/* pick one address */
 	struct h2d_upstream_hash_vnode *vnode = NULL;

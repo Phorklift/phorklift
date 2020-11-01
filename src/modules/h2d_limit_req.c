@@ -25,17 +25,6 @@ struct h2d_module h2d_limit_req_module;
 #define _log(level, fmt, ...) h2d_request_log_at(r, \
 		conf->log, level, "limit_req: " fmt, ##__VA_ARGS__)
 
-static uint64_t h2d_limit_req_hash_key(const void *raw_key, int len)
-{
-	union {
-		unsigned char out[16];
-		uint64_t ret[2];
-	} u;
-
-	wuy_murmurhash(raw_key, len, u.out);
-	return u.ret[0] ^ u.ret[1];
-}
-
 static void h2d_limit_req_expire(struct h2d_request *r)
 {
 	struct h2d_limit_req_conf *conf = r->conf_path->module_confs[h2d_limit_req_module.index];
@@ -75,7 +64,7 @@ static int h2d_limit_req_process_headers(struct h2d_request *r)
 		len = sizeof(struct in_addr);
 	}
 
-	uint64_t key = h2d_limit_req_hash_key(raw_key, len);
+	uint64_t key = wuy_murmurhash_id(raw_key, len);
 
 	struct h2d_limit_req_node *node = wuy_dict_get(conf->dict, key);
 
