@@ -10,6 +10,7 @@
 	X(h2d_rewrite_module) \
 	X(h2d_echo_module) \
 	X(h2d_auth_basic_module) \
+	X(h2d_limit_req_module) \
 
 #define H2D_UPSTREAM_LOADBALANCE_X_LIST \
 	X(h2d_upstream_roundrobin) \
