@@ -55,7 +55,7 @@ void h2d_log_file_write(struct h2d_log_file *file, int max_line, const char *fmt
 		h2d_log_file_flush(file);
 	}
 
-	file->pos += wuy_time_rfc3339(file->pos, WUY_TIME_PRECISION_MS);
+	file->pos += wuy_time_rfc3339(file->pos, WUY_TIME_ZONE_LOCAL);
 	*file->pos++ = ' ';
 
         va_list ap;
