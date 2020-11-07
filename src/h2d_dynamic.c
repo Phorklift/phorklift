@@ -72,6 +72,10 @@ static void h2d_dynamic_delete(struct h2d_dynamic_conf *sub_dyn)
 		h2d_request_active_list(&sub_dyn->holder_wait_head, "dynamic holder");
 	}
 
+	if (sub_dyn->shmpool != NULL) {
+		wuy_shmpool_release(sub_dyn->shmpool);
+	}
+
 	loop_timer_delete(sub_dyn->timer);
 	wuy_dict_delete(dynamic->sub_dict, sub_dyn);
 	dynamic->container.del(h2d_dynamic_to_container(sub_dyn));
@@ -151,7 +155,11 @@ static int h2d_dynamic_get_conf(struct h2d_dynamic_conf *dynamic,
 	ctx->lth = NULL;
 
 	/* prepare shared-memory pool */
-	wuy_shmpool_new(h2d_dynamic_key(dynamic, name, 0));
+	wuy_shmpool_t *shmpool = wuy_shmpool_new(h2d_dynamic_key(dynamic, name, 0));
+	if (shmpool == NULL) {
+		_log(H2D_LOG_ERROR, "fail in wuy_shmpool_new");
+		return H2D_ERROR;
+	}
 
 	/* parse */
 	void *container = NULL;
@@ -163,10 +171,7 @@ static int h2d_dynamic_get_conf(struct h2d_dynamic_conf *dynamic,
 		return H2D_ERROR;
 	}
 
-	if (!wuy_shmpool_check()) {
-		_log(H2D_LOG_FATAL, "wuy_shmpool_check fail!!! %s", name);
-		return H2D_ERROR;
-	}
+	wuy_shmpool_finish(shmpool);
 
 	/* replace */
 	_log(H2D_LOG_INFO, "%s sub %s", sub_dyn->is_just_holder ? "new" : "update", name);
@@ -180,6 +185,7 @@ static int h2d_dynamic_get_conf(struct h2d_dynamic_conf *dynamic,
 	new_sub->father = dynamic;
 	new_sub->modify_time = time(NULL);
 	new_sub->check_time = new_sub->modify_time;
+	new_sub->shmpool = shmpool;
 	wuy_dict_add(dynamic->sub_dict, new_sub);
 	if (new_sub->idle_timeout > 0) {
 		h2d_dynamic_timer_new(new_sub);

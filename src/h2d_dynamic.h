@@ -34,6 +34,7 @@ struct h2d_dynamic_conf {
 	const char		*name;
 	wuy_list_t		holder_wait_head;
 	wuy_dict_node_t		dict_node;
+	wuy_shmpool_t		*shmpool;
 };
 
 struct h2d_dynamic_ctx {

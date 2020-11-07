@@ -44,6 +44,9 @@ static struct h2d_upstream_address_stats *h2d_upstream_alloc_stats(
 			if (first_idle == NULL) {
 				first_idle = stats;
 			}
+			if (stats->key == 0) { /* has not been touched */
+				break;
+			}
 		} else {
 			if (stats->key == key) {
 				atomic_fetch_add(&stats->refs, 1);
