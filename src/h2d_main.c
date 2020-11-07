@@ -73,6 +73,8 @@ static void h2d_getopt(int argc, char *const *argv)
 
 loop_t *h2d_loop = NULL;
 
+bool h2d_in_worker = false;
+
 static void h2d_signal_worker_quit(int signo)
 {
 	loop_kill(h2d_loop);
@@ -80,6 +82,8 @@ static void h2d_signal_worker_quit(int signo)
 static void h2d_worker_entry(struct h2d_conf_listen **listens, int notify_fd)
 {
 	printf("start worker: %d\n", getpid());
+
+	h2d_in_worker = true;
 
 	signal(SIGQUIT, h2d_signal_worker_quit);
 

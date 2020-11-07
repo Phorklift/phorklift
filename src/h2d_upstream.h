@@ -18,9 +18,20 @@ struct _ups_nonuse {
 
 struct h2d_upstream_stats {
 	atomic_long		pick_fail;
-	atomic_long		total;
-	atomic_long		reuse;
 	atomic_long		retry;
+};
+
+struct h2d_upstream_address_stats {
+	/* protected by lock */
+	uint64_t		key;
+	atomic_int		refs;
+
+	time_t			create_time;
+	atomic_long		pick;
+	atomic_long		reuse;
+	atomic_long		down;
+	atomic_long		connected;
+	atomic_long		connect_acc_ms;
 };
 
 struct h2d_upstream_connection {
@@ -62,19 +73,13 @@ struct h2d_upstream_address {
 
 	struct h2d_upstream_conf	*upstream;
 
-	struct {
-		time_t		create_time;
-		long		pick;
-		long		reuse;
-		long		down;
-		long		connected;
-		long		connect_acc_ms;
-	} stats;
+	struct h2d_upstream_address_stats	*stats;
 };
 
 struct h2d_upstream_hostname {
-	char			*name; /* must at top */
+	const char		*name; /* must at top! FORMAT: host:port#weight */
 	bool			need_resolved;
+	int			host_len;
 	unsigned short		port;
 	double			weight;
 	wuy_list_t		address_head;
@@ -96,9 +101,12 @@ struct h2d_upstream_ops {
 
 	/* optional bellow */
 	void	*(*new_ctx)(struct h2d_request *r);
+
 	int	(*parse_response_headers)(struct h2d_request *r,
 			const char *buffer, int buf_len, bool *is_done);
+
 	bool	(*is_response_body_done)(struct h2d_request *r);
+
 	int	(*build_response_body)(struct h2d_request *r, uint8_t *buffer,
 			int data_len, int buf_size);
 };
@@ -117,6 +125,7 @@ struct h2d_upstream_conf {
 	int				*retry_status_codes;
 	int				default_port;
 	int				resolve_interval;
+	int				resolved_addresses_max;
 	bool				ssl_enable;
 
 	struct {
@@ -136,6 +145,9 @@ struct h2d_upstream_conf {
 
 	wuy_list_t			address_head;
 	int				address_num;
+
+	pthread_mutex_t				*address_stats_lock;
+	struct h2d_upstream_address_stats	*address_stats_start;
 
 	wuy_list_t			down_head;
 	wuy_list_t			deleted_address_defer;

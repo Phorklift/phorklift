@@ -77,7 +77,7 @@ void h2d_upstream_connection_fail(struct h2d_upstream_connection *upc)
 	address->down_time = time(NULL);
 	address->healthchecks = 0;
 
-	address->stats.down++;
+	atomic_fetch_add(&address->stats->down, 1);
 
 	if (h2d_upstream_is_active_healthcheck(upstream)) {
 		wuy_list_del_if(&address->down_node);
@@ -126,7 +126,7 @@ h2d_upstream_get_connection(struct h2d_upstream_conf *upstream, struct h2d_reque
 	if (h2d_dynamic_is_enabled(&upstream->dynamic)) {
 		upstream = h2d_dynamic_get(&upstream->dynamic, r);
 		if (upstream == NULL) {
-			_log(H2D_LOG_DEBUG, "dynamic get %d", r->resp.status_code);
+			h2d_request_log(r, H2D_LOG_DEBUG, "dynamic get %d", r->resp.status_code);
 			return NULL;
 		}
 		if (upstream->address_num == 0) { /* wait for hostname resolving */
@@ -140,8 +140,6 @@ h2d_upstream_get_connection(struct h2d_upstream_conf *upstream, struct h2d_reque
 		}
 		_log(H2D_LOG_DEBUG, "dynamic get done");
 	}
-
-	atomic_fetch_add(&upstream->stats->total, 1);
 
 	/* resolve and healthcheck routines */
 	h2d_upstream_resolve(upstream);
@@ -166,7 +164,7 @@ h2d_upstream_get_connection(struct h2d_upstream_conf *upstream, struct h2d_reque
 		address->healthchecks++;
 	}
 
-	address->stats.pick++;
+	atomic_fetch_add(&address->stats->pick, 1);
 
 	/* try to reuse */
 	struct h2d_upstream_connection *upc;
@@ -174,8 +172,7 @@ h2d_upstream_get_connection(struct h2d_upstream_conf *upstream, struct h2d_reque
 		_log(H2D_LOG_DEBUG, "reuse %s", address->name);
 		wuy_list_append(&address->active_head, &upc->list_node);
 		address->idle_num--;
-		atomic_fetch_add(&upstream->stats->reuse, 1);
-		address->stats.reuse++;
+		atomic_fetch_add(&address->stats->reuse, 1);
 		upc->request = r;
 		return upc;
 	}
@@ -346,8 +343,8 @@ int h2d_upstream_connection_write(struct h2d_upstream_connection *upc,
 	assert(upc->loop_stream != NULL);
 
 	if (upc->create_time != 0) {
-		upc->address->stats.connected += 1;
-		upc->address->stats.connect_acc_ms += wuy_time_ms() - upc->create_time;
+		atomic_fetch_add(&upc->address->stats->connected, 1);
+		atomic_fetch_add(&upc->address->stats->connect_acc_ms, wuy_time_ms() - upc->create_time);
 		upc->create_time = 0;
 	}
 
@@ -529,27 +526,26 @@ static void h2d_upstream_conf_stats(struct h2d_upstream_conf *conf, wuy_json_ctx
 	wuy_json_object_string(json, "name", conf->name);
 
 	struct h2d_upstream_stats *stats = conf->stats;
-	wuy_json_object_int(json, "total", atomic_load(&stats->total));
-	wuy_json_object_int(json, "reuse", atomic_load(&stats->reuse));
 	wuy_json_object_int(json, "retry", atomic_load(&stats->retry));
 	wuy_json_object_int(json, "pick_fail", atomic_load(&stats->pick_fail));
 
-	wuy_json_object_int(json, "worker_pid", getpid());
-	wuy_json_object_array(json, "worker_addresses");
+	wuy_json_object_array(json, "addresses"); /* addresses[] */
 	struct h2d_upstream_address *address;
 	wuy_list_iter_type(&conf->address_head, address, upstream_node) {
 		wuy_json_array_object(json);
 		wuy_json_object_string(json, "name", address->name);
 		wuy_json_object_int(json, "down_time", address->down_time);
-		wuy_json_object_int(json, "create_time", address->stats.create_time);
-		wuy_json_object_int(json, "down", address->stats.down);
-		wuy_json_object_int(json, "pick", address->stats.pick);
-		wuy_json_object_int(json, "reuse", address->stats.reuse);
-		wuy_json_object_int(json, "connected", address->stats.connected);
-		wuy_json_object_int(json, "connect_acc_ms", address->stats.connect_acc_ms);
+
+		struct h2d_upstream_address_stats *stats = address->stats;
+		wuy_json_object_int(json, "create_time", atomic_load(&stats->create_time));
+		wuy_json_object_int(json, "down", atomic_load(&stats->down));
+		wuy_json_object_int(json, "pick", atomic_load(&stats->pick));
+		wuy_json_object_int(json, "reuse", atomic_load(&stats->reuse));
+		wuy_json_object_int(json, "connected", atomic_load(&stats->connected));
+		wuy_json_object_int(json, "connect_acc_ms", atomic_load(&stats->connect_acc_ms));
 		wuy_json_object_close(json);
 	}
-	wuy_json_array_close(json); /* end of worker_addresses[] */
+	wuy_json_array_close(json); /* end of addresses[] */
 
 	wuy_json_object_close(json);
 }
@@ -654,6 +650,12 @@ static struct wuy_cflua_command h2d_upstream_conf_commands[] = {
 		.type = WUY_CFLUA_TYPE_INTEGER,
 		.offset = offsetof(struct h2d_upstream_conf, resolve_interval),
 		.default_value.n = 60,
+		.limits.n = WUY_CFLUA_LIMITS_NON_NEGATIVE,
+	},
+	{	.name = "resolved_addresses_max",
+		.type = WUY_CFLUA_TYPE_INTEGER,
+		.offset = offsetof(struct h2d_upstream_conf, resolved_addresses_max),
+		.default_value.n = 100,
 		.limits.n = WUY_CFLUA_LIMITS_NON_NEGATIVE,
 	},
 	{	.name = "ssl_enable",

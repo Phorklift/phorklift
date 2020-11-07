@@ -1,4 +1,8 @@
 #include "h2d_main.h"
+#include <pthread.h>
+
+#define _log(level, fmt, ...) h2d_log_level(upstream->log, level, "upstream: %s " fmt, \
+		upstream->name, ##__VA_ARGS__)
 
 static void h2d_upstream_address_defer_free(struct h2d_upstream_conf *upstream)
 {
@@ -8,16 +12,59 @@ static void h2d_upstream_address_defer_free(struct h2d_upstream_conf *upstream)
 				|| wuy_list_node_linked(&address->down_node)) {
 			continue;
 		}
+		atomic_fetch_sub(&address->stats->refs, 1);
 		wuy_list_delete(&address->hostname_node);
+		free((void *)address->name);
 		free(address);
 	}
 }
 
 static void h2d_upstream_address_delete(struct h2d_upstream_address *address)
 {
+	struct h2d_upstream_conf *upstream = address->upstream;
+	_log(H2D_LOG_INFO, "delete address %s", address->name);
+
 	wuy_list_delete(&address->hostname_node);
 	wuy_list_delete(&address->upstream_node);
-	wuy_list_append(&address->upstream->deleted_address_defer, &address->hostname_node);
+	wuy_list_append(&upstream->deleted_address_defer, &address->hostname_node);
+}
+
+static struct h2d_upstream_address_stats *h2d_upstream_alloc_stats(
+		struct h2d_upstream_conf *upstream, const char *name)
+{
+	uint64_t key = wuy_murmurhash_id(name, strlen(name));
+
+	struct h2d_upstream_address_stats *first_idle = NULL;
+
+	pthread_mutex_lock(upstream->address_stats_lock);
+
+	for (int i = 0; i < upstream->resolved_addresses_max * 2; i++) {
+		struct h2d_upstream_address_stats *stats = &upstream->address_stats_start[i];
+		if (stats->refs == 0) {
+			if (first_idle == NULL) {
+				first_idle = stats;
+			}
+		} else {
+			if (stats->key == key) {
+				atomic_fetch_add(&stats->refs, 1);
+				pthread_mutex_unlock(upstream->address_stats_lock);
+				return stats;
+			}
+		}
+	}
+	if (first_idle != NULL) {
+		bzero(first_idle, sizeof(struct h2d_upstream_address_stats));
+		first_idle->key = key;
+		first_idle->create_time = time(NULL);
+		atomic_store(&first_idle->refs, h2d_in_worker ? 1 : 4); // XXX 4 is worker number
+	} else {
+		static struct h2d_upstream_address_stats fake_stats;
+		first_idle = &fake_stats;
+		_log(H2D_LOG_ERROR, "no address stats for %s", name);
+	}
+
+	pthread_mutex_unlock(upstream->address_stats_lock);
+	return first_idle;
 }
 
 static void h2d_upstream_address_add(struct h2d_upstream_conf *upstream,
@@ -46,19 +93,25 @@ static void h2d_upstream_address_add(struct h2d_upstream_conf *upstream,
 		break;
 
 	default:
-		printf("sa_family: %d\n", sockaddr->sa_family);
 		abort();
 	}
+
+	char buf[128];
+	wuy_sockaddr_dumps(sockaddr, buf, sizeof(buf));
+	address->name = strdup(buf);
+	_log(H2D_LOG_INFO, "new address %s", address->name);
 
 	wuy_list_init(&address->idle_head);
 	wuy_list_init(&address->active_head);
 	address->upstream = upstream;
 	address->weight = hostname->weight;
-	address->stats.create_time = time(NULL);
 
-	char buf[128];
-	wuy_sockaddr_dumps(sockaddr, buf, sizeof(buf));
-	address->name = strdup(buf);
+	if (hostname->need_resolved) {
+		address->stats = h2d_upstream_alloc_stats(upstream, address->name);
+	} else {
+		address->stats = wuy_shmem_alloc(sizeof(struct h2d_upstream_address_stats));
+		address->stats->create_time = time(NULL);
+	}
 
 	if (before != NULL) {
 		wuy_list_add_before(&before->upstream_node, &address->upstream_node);
@@ -71,68 +124,63 @@ static void h2d_upstream_address_add(struct h2d_upstream_conf *upstream,
 
 static void h2d_upstream_resolve_hostname(struct h2d_upstream_conf *upstream)
 {
-	/* pick next hostname */
-	char *name = NULL;
+	/* try to pick next hostname */
 	while (1) {
 		struct h2d_upstream_hostname *hostname = &upstream->hostnames[upstream->resolve_index++];
 		if (hostname->name == NULL) {
 			break;
 		}
-		if (hostname->need_resolved) {
-			name = hostname->name;
-			break;
-		}
-	}
-
-	/* finish resolve all hostnames */
-	if (name == NULL) {
-		upstream->resolve_last = time(NULL);
-		upstream->resolve_index = 0;
-		if (!upstream->resolve_updated) {
-			return;
+		if (!hostname->need_resolved) {
+			continue;
 		}
 
-		/* clear deleted addresses, just before loadbalance->update() */
-		upstream->address_num = 0;
-		struct h2d_upstream_address *address, *safe;
-		wuy_list_iter_safe_type(&upstream->address_head, address, safe, upstream_node) {
-			if (address->deleted) {
-				h2d_upstream_address_delete(address);
-			} else {
-				upstream->address_num++;
-			}
-		}
-
-		if (upstream->address_num == 0) {
-			printf("!!! no address. no update\n");
-			return;
-		}
-
-		upstream->loadbalance->update(upstream);
-		upstream->resolve_updated = false;
-
-		h2d_request_active_list(&upstream->wait_head, "dynamic upstream resolved");
+		/* picked. send resolve query */
+		struct h2d_resolver_query query;
+		query.expire_after = upstream->resolve_interval;
+		memcpy(query.hostname, hostname->name, hostname->host_len);
+		loop_stream_write(upstream->resolve_stream, &query,
+				sizeof(query.expire_after) + hostname->host_len);
 		return;
 	}
 
-	/* send resolve query */
-	struct h2d_resolver_query query;
-	int name_len = strlen(name);
-	assert(name_len < sizeof(query.hostname));
-	memcpy(query.hostname, name, name_len);
-	query.expire_after = upstream->resolve_interval;
-	loop_stream_write(upstream->resolve_stream, &query,
-			sizeof(query.expire_after) + name_len);
+	/* no picked. finish resolve all hostnames */
+	upstream->resolve_last = time(NULL);
+	upstream->resolve_index = 0;
+	if (!upstream->resolve_updated) {
+		return;
+	}
+
+	/* clear deleted addresses, just before loadbalance->update() */
+	upstream->address_num = 0;
+	struct h2d_upstream_address *address, *safe;
+	wuy_list_iter_safe_type(&upstream->address_head, address, safe, upstream_node) {
+		if (address->deleted) {
+			h2d_upstream_address_delete(address);
+		} else {
+			upstream->address_num++;
+		}
+	}
+
+	if (upstream->address_num == 0) {
+		printf("!!! no address. no update\n");
+		return;
+	}
+
+	upstream->loadbalance->update(upstream);
+	upstream->resolve_updated = false;
+
+	h2d_request_active_list(&upstream->wait_head, "dynamic upstream resolved");
 }
 
 static int h2d_upstream_resolve_on_read(loop_stream_t *s, void *data, int len)
 {
-	if (memcmp(data, "ERROR", 5) == 0) {
-		return len; /* TODO XXX stop or goto resolve next?  and wake up dynamic->wait_head*/
-	}
-
 	struct h2d_upstream_conf *upstream = loop_stream_get_app_data(s);
 	struct h2d_upstream_hostname *hostname = &upstream->hostnames[upstream->resolve_index-1];
+
+	if (memcmp(data, "ERROR", 5) == 0) {
+		_log(H2D_LOG_ERROR, "resolve error");
+		return len; /* TODO XXX stop or goto resolve next?  and wake up dynamic->wait_head*/
+	}
 
 	/* diff */
 	uint8_t *p = data;
@@ -221,21 +269,37 @@ void h2d_upstream_resolve(struct h2d_upstream_conf *upstream)
 
 bool h2d_upstream_conf_resolve_init(struct h2d_upstream_conf *conf)
 {
-	bool is_sub = h2d_dynamic_is_sub(&conf->dynamic);
+	/* pre-alloc lock and shared-memory for resolved address stats */
+	conf->address_stats_lock = wuy_shmem_alloc(sizeof(pthread_mutex_t));
+	pthread_mutexattr_t attr;
+	pthread_mutexattr_init(&attr);
+	pthread_mutexattr_setpshared(&attr, 1);
+	pthread_mutex_init(conf->address_stats_lock, &attr);
+	pthread_mutexattr_destroy(&attr);
 
+	conf->address_stats_start = wuy_shmem_alloc(sizeof(struct h2d_upstream_address_stats)
+			* conf->resolved_addresses_max * 2);
+
+	/* resolve */
 	bool need_resolved = false;
 	for (int i = 0; conf->hostnames[i].name != NULL; i++) {
 		struct h2d_upstream_hostname *hostname = &conf->hostnames[i];
 
 		wuy_list_init(&hostname->address_head);
 
+		hostname->host_len = strlen(hostname->name);
+		if (hostname->host_len > 4096) {
+			printf("too long hostname: %s\n", hostname->name);
+			return false;
+		}
+
 		/* parse weight, marked by # */
-		char *wstr = strchr(hostname->name, '#');
-		if (wstr != NULL) {
-			*wstr++ = '\0';
-			hostname->weight = atof(wstr);
+		const char *pweight = strchr(hostname->name, '#');
+		if (pweight != NULL) {
+			hostname->host_len = pweight - hostname->name;
+			hostname->weight = atof(pweight);
 			if (hostname->weight == 0) {
-				printf("invalid weight of %s %s", hostname->name, wstr);
+				printf("invalid weight of %s %s", hostname->name, pweight);
 				return false;
 			}
 		} else {
@@ -258,17 +322,17 @@ bool h2d_upstream_conf_resolve_init(struct h2d_upstream_conf *conf)
 		hostname->port = conf->default_port;
 
 		/* parse the port */
-		char *pport = strchr(hostname->name, ':');
+		const char *pport = strchr(hostname->name, ':');
 		if (pport != NULL) {
+			hostname->host_len = pport - hostname->name;
 			hostname->port = atoi(pport + 1);
 			if (hostname->port == 0) {
 				printf("invalid port %s\n", hostname->name);
 				return false;
 			}
-			*pport = '\0';
 		}
 
-		if (is_sub) {
+		if (h2d_in_worker) {
 			/* sub-upstream is created during h2tpd running, so we
 			 * can not call h2d_resolver_hostname() which is blocking. */
 			continue;
@@ -276,7 +340,10 @@ bool h2d_upstream_conf_resolve_init(struct h2d_upstream_conf *conf)
 
 		/* resolve the hostname */
 		int length;
-		uint8_t *buffer = h2d_resolver_hostname(hostname->name, &length);
+		char tmpname[hostname->host_len + 1];
+		memcpy(tmpname, hostname->name, hostname->host_len);
+		tmpname[hostname->host_len] = '\0';
+		uint8_t *buffer = h2d_resolver_hostname(tmpname, &length);
 		if (buffer == NULL) {
 			printf("resolve fail %s\n", hostname->name);
 			return false;
@@ -293,7 +360,7 @@ bool h2d_upstream_conf_resolve_init(struct h2d_upstream_conf *conf)
 		free(buffer);
 	}
 
-	if (is_sub) { /* dynamic sub upstreams have different rule */
+	if (h2d_in_worker) { /* dynamic sub upstreams have different checking rule */
 		goto sub_check;
 	}
 

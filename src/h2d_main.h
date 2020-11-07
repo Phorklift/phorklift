@@ -22,6 +22,7 @@
 #include "libwuya/wuy_shmem.h"
 #include "libwuya/wuy_time.h"
 #include "libwuya/wuy_rand.h"
+#include "libwuya/wuy_murmurhash.h"
 
 #include "libloop/loop.h"
 
@@ -60,5 +61,7 @@
 
 /* global event-driven loop */
 extern loop_t *h2d_loop;
+
+extern bool h2d_in_worker;
 
 #endif

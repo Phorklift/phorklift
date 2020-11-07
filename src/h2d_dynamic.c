@@ -200,6 +200,8 @@ void *h2d_dynamic_get(struct h2d_dynamic_conf *dynamic, struct h2d_request *r)
 {
 	_log(H2D_LOG_DEBUG, "h2d_dynamic_get()");
 
+	const char *name = NULL;
+
 	struct h2d_dynamic_ctx *ctx = r->dynamic_ctx;
 	if (ctx == NULL) {
 		ctx = calloc(1, sizeof(struct h2d_dynamic_ctx));
@@ -212,7 +214,6 @@ void *h2d_dynamic_get(struct h2d_dynamic_conf *dynamic, struct h2d_request *r)
 	}
 
 	/* get name to ctx->name */
-	const char *name = NULL;
 	int ret = h2d_dynamic_get_name(dynamic, r, &name);
 	if (ret != H2D_OK) {
 		goto not_ok;
