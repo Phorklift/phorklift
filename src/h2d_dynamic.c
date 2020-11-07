@@ -286,7 +286,7 @@ void *h2d_dynamic_get(struct h2d_dynamic_conf *dynamic, struct h2d_request *r)
 
 		if (!h2d_dynamic_need_check_conf(ctx->sub_dyn, r)) {
 			/* here is the most passed way to end this function! */
-			return h2d_dynamic_to_container(ctx->sub_dyn);
+			goto done;
 		}
 
 		/* also get_conf() to check */
@@ -300,6 +300,7 @@ state_get_conf:
 		goto not_ok;
 	}
 
+done:;
 	struct h2d_dynamic_conf *sub_dyn = ctx->sub_dyn;
 	h2d_dynamic_ctx_free(r);
 
