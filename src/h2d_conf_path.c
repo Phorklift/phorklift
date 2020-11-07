@@ -138,7 +138,7 @@ static bool h2d_conf_path_post(void *data)
 		return false;
 	}
 
-	conf_path->stats = wuy_shmem_alloc(sizeof(struct h2d_conf_path_stats));
+	conf_path->stats = wuy_shmpool_alloc(sizeof(struct h2d_conf_path_stats));
 
 	return true;
 }

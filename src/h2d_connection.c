@@ -177,8 +177,8 @@ static void h2d_connection_on_writable(loop_stream_t *s)
 
 static void h2d_connection_on_close(loop_stream_t *s, enum loop_stream_close_reason reason)
 {
-	printf(" -- stream close %s, SSL: %s\n", loop_stream_close_string(reason),
-			h2d_ssl_stream_error_string(s));
+	// printf(" -- stream close %s, SSL: %s\n", loop_stream_close_string(reason),
+			// h2d_ssl_stream_error_string(s));
 	if (reason == LOOP_STREAM_READ_ERROR || reason == LOOP_STREAM_WRITE_ERROR) {
 		printf("errno: %s\n", strerror(errno));
 	}

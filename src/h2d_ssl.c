@@ -297,7 +297,7 @@ static bool h2d_ssl_conf_post(void *data)
 		return false;
 	}
 
-	conf->stats = wuy_shmem_alloc(sizeof(struct h2d_ssl_stats));
+	conf->stats = wuy_shmpool_alloc(sizeof(struct h2d_ssl_stats));
 	SSL_CTX_set_ex_data(conf->ctx, H2D_SSL_CTX_EX_STATS, conf->stats);
 
 	return true;

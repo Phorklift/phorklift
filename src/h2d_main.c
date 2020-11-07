@@ -159,6 +159,7 @@ int main(int argc, char * const *argv)
 	signal(SIGPIPE, SIG_IGN);
 	signal(SIGQUIT, h2d_signal_dispatch);
 
+	wuy_shmpool_init();
 	h2d_ssl_init();
 	h2d_http2_init();
 	h2d_upstream_init();

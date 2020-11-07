@@ -59,7 +59,7 @@ static bool h2d_conf_listen_post(void *data)
 		conf_listen->name = conf_listen->addresses[0];
 	}
 
-	conf_listen->stats = wuy_shmem_alloc(sizeof(struct h2d_conf_listen_stats));
+	conf_listen->stats = wuy_shmpool_alloc(sizeof(struct h2d_conf_listen_stats));
 
 	return true;
 }

@@ -52,6 +52,15 @@ static struct h2d_dynamic_conf *h2d_dynamic_from_container(void *container,
 	return (void *)(((char *)container) + dynamic->container.offset);
 }
 
+static uint64_t h2d_dynamic_key(struct h2d_dynamic_conf *dynamic,
+		const char *name, int version)
+{
+	uint64_t key = wuy_murmurhash_id(dynamic, sizeof(dynamic));
+	key ^= wuy_murmurhash_id(name, strlen(name));
+	key ^= wuy_murmurhash_id(&version, sizeof(version));
+	return key;
+}
+
 static void h2d_dynamic_delete(struct h2d_dynamic_conf *sub_dyn)
 {
 	struct h2d_dynamic_conf *dynamic = sub_dyn->father;
@@ -141,6 +150,9 @@ static int h2d_dynamic_get_conf(struct h2d_dynamic_conf *dynamic,
 	h2d_lua_api_thread_free(ctx->lth);
 	ctx->lth = NULL;
 
+	/* prepare shared-memory pool */
+	wuy_shmpool_new(h2d_dynamic_key(dynamic, name, 0));
+
 	/* parse */
 	void *container = NULL;
 	int err = wuy_cflua_parse(h2d_L, dynamic->sub_table, &container);
@@ -148,6 +160,11 @@ static int h2d_dynamic_get_conf(struct h2d_dynamic_conf *dynamic,
 	if (err < 0) {
 		_log(H2D_LOG_ERROR, "parse sub %s error: %s",
 				name, wuy_cflua_strerror(h2d_L, err));
+		return H2D_ERROR;
+	}
+
+	if (!wuy_shmpool_check()) {
+		_log(H2D_LOG_FATAL, "wuy_shmpool_check fail!!! %s", name);
 		return H2D_ERROR;
 	}
 
@@ -277,7 +294,10 @@ state_get_conf:
 		goto not_ok;
 	}
 
-	return h2d_dynamic_to_container(ctx->sub_dyn);
+	struct h2d_dynamic_conf *sub_dyn = ctx->sub_dyn;
+	h2d_dynamic_ctx_free(r);
+
+	return h2d_dynamic_to_container(sub_dyn);
 
 not_ok:
 	if (ret == H2D_AGAIN) {

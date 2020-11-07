@@ -19,7 +19,7 @@
 #include "libwuya/wuy_http.h"
 #include "libwuya/wuy_json.h"
 #include "libwuya/wuy_base64.h"
-#include "libwuya/wuy_shmem.h"
+#include "libwuya/wuy_shmpool.h"
 #include "libwuya/wuy_time.h"
 #include "libwuya/wuy_rand.h"
 #include "libwuya/wuy_murmurhash.h"

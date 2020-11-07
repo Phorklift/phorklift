@@ -109,7 +109,7 @@ static void h2d_upstream_address_add(struct h2d_upstream_conf *upstream,
 	if (hostname->need_resolved) {
 		address->stats = h2d_upstream_alloc_stats(upstream, address->name);
 	} else {
-		address->stats = wuy_shmem_alloc(sizeof(struct h2d_upstream_address_stats));
+		address->stats = wuy_shmpool_alloc(sizeof(struct h2d_upstream_address_stats));
 		address->stats->create_time = time(NULL);
 	}
 
@@ -270,14 +270,14 @@ void h2d_upstream_resolve(struct h2d_upstream_conf *upstream)
 bool h2d_upstream_conf_resolve_init(struct h2d_upstream_conf *conf)
 {
 	/* pre-alloc lock and shared-memory for resolved address stats */
-	conf->address_stats_lock = wuy_shmem_alloc(sizeof(pthread_mutex_t));
+	conf->address_stats_lock = wuy_shmpool_alloc(sizeof(pthread_mutex_t));
 	pthread_mutexattr_t attr;
 	pthread_mutexattr_init(&attr);
 	pthread_mutexattr_setpshared(&attr, 1);
 	pthread_mutex_init(conf->address_stats_lock, &attr);
 	pthread_mutexattr_destroy(&attr);
 
-	conf->address_stats_start = wuy_shmem_alloc(sizeof(struct h2d_upstream_address_stats)
+	conf->address_stats_start = wuy_shmpool_alloc(sizeof(struct h2d_upstream_address_stats)
 			* conf->resolved_addresses_max * 2);
 
 	/* resolve */

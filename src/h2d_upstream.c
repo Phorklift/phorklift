@@ -467,7 +467,7 @@ static bool h2d_upstream_conf_post(void *data)
 		return false;
 	}
 
-	conf->stats = wuy_shmem_alloc(sizeof(struct h2d_upstream_stats));
+	conf->stats = wuy_shmpool_alloc(sizeof(struct h2d_upstream_stats));
 
 	/* dynamic */
 	if (h2d_dynamic_is_enabled(&conf->dynamic)) {
