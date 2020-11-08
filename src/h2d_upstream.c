@@ -446,6 +446,8 @@ static struct wuy_cflua_command *h2d_upstream_next_command(struct wuy_cflua_comm
 
 static void h2d_upstream_delete(void *data)
 {
+	struct h2d_upstream_conf *conf = data;
+	wuy_list_delete(&conf->list_node);
 }
 
 bool h2d_upstream_conf_resolve_init(struct h2d_upstream_conf *conf);

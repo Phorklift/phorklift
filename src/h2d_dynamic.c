@@ -52,15 +52,6 @@ static struct h2d_dynamic_conf *h2d_dynamic_from_container(void *container,
 	return (void *)(((char *)container) + dynamic->container.offset);
 }
 
-static uint64_t h2d_dynamic_key(struct h2d_dynamic_conf *dynamic,
-		const char *name, int version)
-{
-	uint64_t key = wuy_murmurhash_id(dynamic, sizeof(dynamic));
-	key ^= wuy_murmurhash_id(name, strlen(name));
-	key ^= wuy_murmurhash_id(&version, sizeof(version));
-	return key;
-}
-
 static void h2d_dynamic_delete(struct h2d_dynamic_conf *sub_dyn)
 {
 	struct h2d_dynamic_conf *dynamic = sub_dyn->father;
@@ -72,13 +63,15 @@ static void h2d_dynamic_delete(struct h2d_dynamic_conf *sub_dyn)
 		h2d_request_active_list(&sub_dyn->holder_wait_head, "dynamic holder");
 	}
 
+	loop_timer_delete(sub_dyn->timer);
+	wuy_dict_delete(dynamic->sub_dict, sub_dyn);
+
 	if (sub_dyn->shmpool != NULL) {
 		wuy_shmpool_release(sub_dyn->shmpool);
 	}
-
-	loop_timer_delete(sub_dyn->timer);
-	wuy_dict_delete(dynamic->sub_dict, sub_dyn);
-	dynamic->container.del(h2d_dynamic_to_container(sub_dyn));
+	if (!sub_dyn->is_just_holder) {
+		dynamic->container.del(h2d_dynamic_to_container(sub_dyn));
+	}
 }
 
 static int64_t h2d_dynamic_timeout_handler(int64_t at, void *data)
@@ -155,7 +148,9 @@ static int h2d_dynamic_get_conf(struct h2d_dynamic_conf *dynamic,
 	ctx->lth = NULL;
 
 	/* prepare shared-memory pool */
-	wuy_shmpool_t *shmpool = wuy_shmpool_new(h2d_dynamic_key(dynamic, name, 0));
+	char pool_name[1000];
+	snprintf(pool_name, sizeof(pool_name), "h2tpd.pid.%s.%p", name, dynamic);
+	wuy_shmpool_t *shmpool = wuy_shmpool_new(pool_name, 40*1024, 40*1024, 10);
 	if (shmpool == NULL) {
 		_log(H2D_LOG_ERROR, "fail in wuy_shmpool_new");
 		return H2D_ERROR;
@@ -171,7 +166,10 @@ static int h2d_dynamic_get_conf(struct h2d_dynamic_conf *dynamic,
 		return H2D_ERROR;
 	}
 
-	wuy_shmpool_finish(shmpool);
+	if (!wuy_shmpool_finish(shmpool)) {
+		_log(H2D_LOG_FATAL, "wuy_shmpool_finish check fail");
+		return H2D_ERROR;
+	}
 
 	/* replace */
 	_log(H2D_LOG_INFO, "%s sub %s", sub_dyn->is_just_holder ? "new" : "update", name);
