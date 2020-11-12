@@ -132,7 +132,8 @@ static int h2d_dynamic_get_conf(struct h2d_dynamic_conf *dynamic,
 			ctx->sub_dyn = NULL;
 			return WUY_HTTP_404;
 		default:
-			_log(H2D_LOG_ERROR, "sub %s return %d", name, lua_tointeger(ctx->lth->L, -1));
+			_log(H2D_LOG_ERROR, "sub %s return %d", name,
+					lua_tointeger(ctx->lth->L, -1));
 			return WUY_HTTP_500;
 		}
 	}
@@ -149,7 +150,8 @@ static int h2d_dynamic_get_conf(struct h2d_dynamic_conf *dynamic,
 
 	/* prepare shared-memory pool */
 	char pool_name[1000];
-	snprintf(pool_name, sizeof(pool_name), "h2tpd.pid.%s.%p", name, dynamic);
+	snprintf(pool_name, sizeof(pool_name), "/h2tpd.pid.%s.%d_%d",
+			name, getpid(), atomic_load(dynamic->shared_id));
 	wuy_shmpool_t *shmpool = wuy_shmpool_new(pool_name, 40*1024, 40*1024, 10);
 	if (shmpool == NULL) {
 		_log(H2D_LOG_ERROR, "fail in wuy_shmpool_new");
@@ -166,10 +168,7 @@ static int h2d_dynamic_get_conf(struct h2d_dynamic_conf *dynamic,
 		return H2D_ERROR;
 	}
 
-	if (!wuy_shmpool_finish(shmpool)) {
-		_log(H2D_LOG_FATAL, "wuy_shmpool_finish check fail");
-		return H2D_ERROR;
-	}
+	wuy_shmpool_finish(shmpool);
 
 	/* replace */
 	_log(H2D_LOG_INFO, "%s sub %s", sub_dyn->is_just_holder ? "new" : "update", name);
@@ -237,6 +236,11 @@ void *h2d_dynamic_get(struct h2d_dynamic_conf *dynamic, struct h2d_request *r)
 	/* get name to ctx->name */
 	int ret = h2d_dynamic_get_name(dynamic, r, &name);
 	if (ret != H2D_OK) {
+		goto not_ok;
+	}
+	if (strlen(name) > 100) {
+		_log(H2D_LOG_ERROR, "too long name");
+		ret = H2D_ERROR;
 		goto not_ok;
 	}
 
@@ -350,10 +354,11 @@ void h2d_dynamic_ctx_free(struct h2d_request *r)
 	r->dynamic_ctx = NULL;
 }
 
-static bool h2d_dynamic_sub_begin = false;
+static bool h2d_dynamic_sub_begin = false; // XXX
 void h2d_dynamic_init(void)
 {
 	h2d_dynamic_sub_begin = true;
+	atexit(wuy_shmpool_cleanup);
 }
 
 void h2d_dynamic_set_container(struct h2d_dynamic_conf *dynamic,
@@ -392,6 +397,12 @@ static bool h2d_dynamic_conf_post(void *data)
 	dynamic->sub_dict = wuy_dict_new_type(WUY_DICT_KEY_STRING,
 			offsetof(struct h2d_dynamic_conf, name),
 			offsetof(struct h2d_dynamic_conf, dict_node));
+
+	static int id = 1;
+	int expected = 0;
+	int desired = id++;
+	dynamic->shared_id = wuy_shmpool_alloc(sizeof(atomic_int));
+	atomic_compare_exchange_strong(dynamic->shared_id, &expected, desired);
 
 	return true;
 }

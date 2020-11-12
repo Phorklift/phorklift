@@ -1,7 +1,7 @@
 CFLAGS = -g -Wall -Werror -O2
 LDFLAGS = -Llibloop -Llibhttp2 -Llibwuya
 LDFLAGS += -Wl,-export-dynamic # for dynamic modules
-LDLIBS = -lloop -lhttp2 -lwuya -lpthread -ldl
+LDLIBS = -lloop -lhttp2 -lwuya -lpthread -ldl -lrt
 LDLIBS += -lluajit-5.1 # use `-llua5.1` for original Lua
 LDLIBS += -lssl -lcrypto
 

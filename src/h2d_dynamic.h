@@ -15,6 +15,7 @@ struct h2d_dynamic_conf {
 	struct h2d_log		*log;
 
 	/* runtime: father only */
+	atomic_int		*shared_id;
 	wuy_dict_t		*sub_dict;
 	struct wuy_cflua_table	*sub_table;
 	struct {
