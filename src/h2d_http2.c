@@ -10,18 +10,18 @@ static bool h2d_lenstr_equal(const char *a_str, int a_len, const char *b_str, in
 
 /* libhttp2 hooks */
 
+static bool h2d_http2_hook_stream_new(http2_stream_t *h2s, http2_connection_t *h2c)
+{
+	struct h2d_request *r = h2d_request_new(http2_connection_get_app_data(h2c));
+	r->h2s = h2s;
+	http2_stream_set_app_data(h2s, r);
+	return true;
+}
+
 static bool h2d_http2_hook_stream_header(http2_stream_t *h2s, const char *name_str,
 		int name_len, const char *value_str, int value_len)
 {
 	struct h2d_request *r = http2_stream_get_app_data(h2s);
-
-	/* create request on first header */
-	if (r == NULL) {
-		r = h2d_request_new(http2_connection_get_app_data(
-					http2_stream_get_connection(h2s)));
-		r->h2s = h2s;
-		http2_stream_set_app_data(h2s, r);
-	}
 
 	/* end of headers */
 	if (name_str == NULL) {
@@ -179,29 +179,39 @@ static bool h2d_http2_hook_control_frame(http2_connection_t *h2c, const uint8_t 
 	return true;
 }
 
-static void h2d_http2_hook_log(http2_connection_t *h2c, const char *fmt, ...)
+static void h2d_http2_hook_log(http2_connection_t *h2c,
+		enum http2_log_level level, const char *fmt, ...)
 {
-	char buffer[1000];
+	struct h2d_connection *c = http2_connection_get_app_data(h2c);
+	if (c == NULL) {
+		return;
+	}
+
+	struct h2d_log *log;
+	if (c->conf_listen->http2.log != NULL) {
+		log = c->conf_listen->http2.log;
+	} else {
+		log = c->conf_listen->default_host->default_path->error_log;
+	}
+
 	va_list ap;
 	va_start(ap, fmt);
-	vsprintf(buffer, fmt, ap);
+	h2d_log_level_v(log, (enum h2d_log_level)level, fmt, ap);
 	va_end(ap);
-
-	struct timeval now;
-	gettimeofday(&now, NULL);
-
-	printf("%ld.%06ld [HTTP2] %s\n", now.tv_sec, now.tv_usec, buffer);
 }
 
 void h2d_http2_init(void)
 {
-	http2_library_init(h2d_http2_hook_stream_header, h2d_http2_hook_stream_body,
-			h2d_http2_hook_stream_close, h2d_http2_hook_stream_response,
-			h2d_http2_hook_control_frame);
-
-	if (0) {
-		http2_set_log(h2d_http2_hook_log);
-	}
+	static struct http2_hooks hooks = {
+		h2d_http2_hook_stream_new,
+		h2d_http2_hook_stream_header,
+		h2d_http2_hook_stream_body,
+		h2d_http2_hook_stream_close,
+		h2d_http2_hook_stream_response,
+		h2d_http2_hook_control_frame,
+		h2d_http2_hook_log,
+	};
+	http2_library_init(&hooks);
 }
 
 /* connection event handlers */
@@ -238,9 +248,9 @@ void h2d_http2_request_close(struct h2d_request *r)
 		h2d_http2_response_body_finish(r);
 	}
 
-	bool become_idle = http2_stream_close(r->h2s);
+	http2_stream_close(r->h2s);
 
-	if (become_idle) {
+	if (http2_connection_in_idle(r->c->u.h2c)) {
 		h2d_connection_set_idle(r->c);
 	}
 }
@@ -250,13 +260,83 @@ void h2d_http2_connection_init(struct h2d_connection *c)
 {
 	printf("to HTTP/2\n");
 
-	static http2_settings_t settings = {
-		.max_concurrent_streams = 100,
-	};
-	http2_connection_t *h2c = http2_connection_new(&settings);
-	//http2_connection_t *h2c = http2_connection_new(&c->conf_listen->http2.settings);
+	http2_connection_t *h2c = http2_connection_new(&c->conf_listen->http2.settings);
 	http2_connection_set_app_data(h2c, c);
+
+	enum h2d_log_level level;
+	if (c->conf_listen->http2.log != NULL) {
+		level = c->conf_listen->http2.log->level;
+	} else {
+		level = c->conf_listen->default_host->default_path->error_log->level;
+	}
+	switch (level) {
+	case H2D_LOG_DEBUG:
+		http2_connection_set_log_level(h2c, HTTP2_LOG_DEBUG);
+		break;
+	case H2D_LOG_INFO:
+		http2_connection_set_log_level(h2c, HTTP2_LOG_ERROR);
+		break;
+	default:
+		; /* do not log */
+	}
 
 	c->is_http2 = true;
 	c->u.h2c = h2c;
 }
+
+struct wuy_cflua_command h2d_conf_listen_http2_commands[] = {
+	{	.name = "idle_timeout",
+		.type = WUY_CFLUA_TYPE_INTEGER,
+		.offset = offsetof(struct h2d_conf_listen, http2.idle_timeout),
+		.default_value.n = 5 * 60,
+		.limits.n = WUY_CFLUA_LIMITS_POSITIVE,
+	},
+	{	.name = "idle_min_timeout",
+		.type = WUY_CFLUA_TYPE_INTEGER,
+		.offset = offsetof(struct h2d_conf_listen, http2.idle_min_timeout),
+		.default_value.n = 2 * 60,
+		.limits.n = WUY_CFLUA_LIMITS_POSITIVE,
+	},
+	{	.name = "ping_interval",
+		.type = WUY_CFLUA_TYPE_INTEGER,
+		.offset = offsetof(struct h2d_conf_listen, http2.ping_interval),
+		.default_value.n = 60,
+		.limits.n = WUY_CFLUA_LIMITS_POSITIVE,
+	},
+	{	.name = "header_table_size",
+		.type = WUY_CFLUA_TYPE_INTEGER,
+		.offset = offsetof(struct h2d_conf_listen, http2.settings.header_table_size),
+		.default_value.n = 4096,
+		.limits.n = WUY_CFLUA_LIMITS_POSITIVE,
+	},
+	{	.name = "max_concurrent_streams",
+		.type = WUY_CFLUA_TYPE_INTEGER,
+		.offset = offsetof(struct h2d_conf_listen, http2.settings.max_concurrent_streams),
+		.default_value.n = 100,
+		.limits.n = WUY_CFLUA_LIMITS_POSITIVE,
+	},
+	{	.name = "initial_window_size",
+		.type = WUY_CFLUA_TYPE_INTEGER,
+		.offset = offsetof(struct h2d_conf_listen, http2.settings.initial_window_size),
+		.default_value.n = 65535,
+		.limits.n = WUY_CFLUA_LIMITS_POSITIVE,
+	},
+	{	.name = "max_frame_size",
+		.type = WUY_CFLUA_TYPE_INTEGER,
+		.offset = offsetof(struct h2d_conf_listen, http2.settings.max_frame_size),
+		.default_value.n = 16384,
+		.limits.n = WUY_CFLUA_LIMITS_POSITIVE,
+	},
+	{	.name = "max_header_list_size",
+		.type = WUY_CFLUA_TYPE_INTEGER,
+		.offset = offsetof(struct h2d_conf_listen, http2.settings.max_header_list_size),
+		.default_value.n = 100,
+		.limits.n = WUY_CFLUA_LIMITS_POSITIVE,
+	},
+	{	.name = "log",
+		.type = WUY_CFLUA_TYPE_TABLE,
+		.offset = offsetof(struct h2d_upstream_conf, log),
+		.u.table = &h2d_log_conf_table,
+	},
+	{ NULL }
+};

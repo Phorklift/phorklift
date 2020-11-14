@@ -22,6 +22,8 @@ void h2d_connection_close(struct h2d_connection *c)
 		h2d_request_close(c->u.request);
 	}
 
+	atomic_fetch_sub(&c->conf_listen->stats->connections, 1);
+
 	if (c->loop_stream == NULL) {
 		goto skip_subr;
 	}
@@ -95,7 +97,6 @@ static void h2d_connection_defer_routine(void *data)
 	struct h2d_connection *c;
 	while (wuy_list_pop_type(&h2d_connection_defer_list, c, list_node)) {
 		if (c->closed) {
-			c->conf_listen->network.current--;
 			free(c);
 		} else {
 			if (h2d_connection_flush(c) == H2D_OK) {
@@ -204,13 +205,13 @@ static bool h2d_connection_on_accept(loop_tcp_listen_t *loop_listen,
 	struct h2d_conf_listen *conf_listen = loop_tcp_listen_get_app_data(loop_listen);
 
 	if (conf_listen->network.connections != 0 &&
-			conf_listen->network.current >= conf_listen->network.connections) {
+			atomic_load(&conf_listen->stats->connections) >= conf_listen->network.connections) {
 		if (!h2d_connection_free_idle(conf_listen)) {
 			return false;
 		}
 	}
 
-	conf_listen->network.current++;
+	atomic_fetch_add(&conf_listen->stats->connections, 1);
 
 	struct h2d_connection *c = calloc(1, sizeof(struct h2d_connection));
 	if (c == NULL) {

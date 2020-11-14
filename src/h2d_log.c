@@ -48,7 +48,7 @@ static void h2d_log_file_flush(struct h2d_log_file *file)
 	file->pos = file->buffer;
 }
 
-void h2d_log_file_write(struct h2d_log_file *file, int max_line, const char *fmt, ...)
+void h2d_log_file_vwrite(struct h2d_log_file *file, int max_line, const char *fmt, va_list ap)
 {
 	char *end = file->buffer + file->buf_size;
 	if (end - file->pos < max_line) {
@@ -58,10 +58,7 @@ void h2d_log_file_write(struct h2d_log_file *file, int max_line, const char *fmt
 	file->pos += wuy_time_rfc3339(file->pos, WUY_TIME_ZONE_LOCAL);
 	*file->pos++ = ' ';
 
-        va_list ap;
-        va_start(ap, fmt);
-        file->pos += vsnprintf(file->pos, end - file->pos - 1, fmt, ap);
-        va_end(ap);
+	file->pos += vsnprintf(file->pos, end - file->pos - 1, fmt, ap);
 
 	if (file->pos > end - 1) {
 		printf("too long line. %ld %d\n", file->pos - end, file->buf_size);
@@ -69,6 +66,14 @@ void h2d_log_file_write(struct h2d_log_file *file, int max_line, const char *fmt
 	}
 
 	*file->pos++ = '\n';
+}
+
+void h2d_log_file_write(struct h2d_log_file *file, int max_line, const char *fmt, ...)
+{
+	va_list ap;
+	va_start(ap, fmt);
+	h2d_log_file_vwrite(file, max_line, fmt, ap);
+	va_end(ap);
 }
 
 static void h2d_log_routine(void *data)

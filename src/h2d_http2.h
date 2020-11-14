@@ -19,4 +19,6 @@ void h2d_http2_init(void);
 
 void h2d_http2_request_close(struct h2d_request *r);
 
+extern struct wuy_cflua_command h2d_conf_listen_http2_commands[];
+
 #endif

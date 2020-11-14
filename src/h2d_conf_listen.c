@@ -4,6 +4,8 @@ void h2d_conf_listen_stats(struct h2d_conf_listen *conf_listen, wuy_json_ctx_t *
 {
 	struct h2d_conf_listen_stats *stats = conf_listen->stats;
 	wuy_json_object_int(json, "fail_no_host", atomic_load(&stats->fail_no_host));
+	wuy_json_object_int(json, "connections", atomic_load(&stats->connections));
+	wuy_json_object_int(json, "total", atomic_load(&stats->total));
 }
 
 static int h2d_conf_listen_name(void *data, char *buf, int size)
@@ -63,28 +65,6 @@ static bool h2d_conf_listen_post(void *data)
 
 	return true;
 }
-
-static struct wuy_cflua_command h2d_conf_listen_http2_commands[] = {
-	{	.name = "idle_timeout",
-		.type = WUY_CFLUA_TYPE_INTEGER,
-		.offset = offsetof(struct h2d_conf_listen, http2.idle_timeout),
-		.default_value.n = 5 * 60,
-		.limits.n = WUY_CFLUA_LIMITS_POSITIVE,
-	},
-	{	.name = "idle_min_timeout",
-		.type = WUY_CFLUA_TYPE_INTEGER,
-		.offset = offsetof(struct h2d_conf_listen, http2.idle_min_timeout),
-		.default_value.n = 2 * 60,
-		.limits.n = WUY_CFLUA_LIMITS_POSITIVE,
-	},
-	{	.name = "ping_interval",
-		.type = WUY_CFLUA_TYPE_INTEGER,
-		.offset = offsetof(struct h2d_conf_listen, http2.ping_interval),
-		.default_value.n = 60,
-		.limits.n = WUY_CFLUA_LIMITS_POSITIVE,
-	},
-	{ NULL }
-};
 
 static struct wuy_cflua_command h2d_conf_listen_http1_commands[] = {
 	{	.name = "keepalive_timeout",

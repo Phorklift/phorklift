@@ -9,6 +9,8 @@ struct h2d_log_file *h2d_log_file_open(const char *filename, int buf_size);
 
 void h2d_log_file_write(struct h2d_log_file *file, int max_line, const char *fmt, ...);
 
+void h2d_log_file_vwrite(struct h2d_log_file *file, int max_line, const char *fmt, va_list ap);
+
 /* error log */
 
 enum h2d_log_level {
@@ -45,8 +47,15 @@ struct h2d_log {
 	h2d_log_file_write(log->file, log->max_line, \
 			"%s %d " fmt, h2d_log_strlevel(level2), 0, ##__VA_ARGS__)
 
+// XXX add level
+#define h2d_log_level_v_nocheck(log, level2, fmt, ap) \
+	h2d_log_file_vwrite(log->file, log->max_line, fmt, ap)
+
 #define h2d_log_level(log, level2, fmt, ...) \
 	if (level2 <= log->level) h2d_log_level_nocheck(log, level2, fmt, ##__VA_ARGS__)
+
+#define h2d_log_level_v(log, level2, fmt, ap) \
+	if (level2 <= log->level) h2d_log_level_v_nocheck(log, level2, fmt, ap)
 
 #define h2d_assert(expr) if (!(expr)) h2d_log_fatal("assert fail: " #expr " at %s()", __FUNCTION__)
 

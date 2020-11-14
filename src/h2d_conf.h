@@ -29,6 +29,8 @@ struct h2d_conf_host_stats {
 
 struct h2d_conf_listen_stats {
 	atomic_long	fail_no_host;
+	atomic_long	connections;
+	atomic_long	total;
 };
 
 struct h2d_conf_path {
@@ -97,6 +99,10 @@ struct h2d_conf_listen {
 		int		idle_min_timeout;
 		int		ping_interval;
 
+		struct h2d_log	*log;
+
+		struct http2_settings	settings;
+
 		loop_group_timer_t	*idle_timer_group;
 	} http2;
 
@@ -108,7 +114,6 @@ struct h2d_conf_listen {
 	} http1;
 
 	struct {
-		long		current; // TODO shared-mem
 		int		connections;
 		int		send_timeout;
 		int		recv_timeout;
