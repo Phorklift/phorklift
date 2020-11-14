@@ -6,12 +6,13 @@
 #include <sys/un.h>
 
 /* calculate H2D_UPSTREAM_LOADBALANCE_STATIC_NUMBER in preprocess */
-struct _ups_nonuse {
-	#define X(m) char m;
+enum _ups_nonuse {
+	#define X(m) h2d_upstream_index_##m,
 	H2D_UPSTREAM_LOADBALANCE_X_LIST
 	#undef X
+
+	H2D_UPSTREAM_LOADBALANCE_STATIC_NUMBER
 };
-#define H2D_UPSTREAM_LOADBALANCE_STATIC_NUMBER (sizeof(struct _ups_nonuse) / sizeof(char))
 
 #define H2D_UPSTREAM_LOADBALANCE_DYNAMIC_MAX	20
 #define H2D_UPSTREAM_LOADBALANCE_MAX		(H2D_MODULE_STATIC_NUMBER + H2D_MODULE_DYNAMIC_MAX)

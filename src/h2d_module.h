@@ -6,12 +6,13 @@
 #include "h2d_module.list.h"
 
 /* calculate H2D_MODULE_STATIC_NUMBER in preprocess */
-struct _nonuse {
-	#define X(m) char m;
+enum _nonuse {
+	#define X(m) h2d_module_index_##m,
 	H2D_MODULE_X_LIST
 	#undef X
+
+	H2D_MODULE_STATIC_NUMBER
 };
-#define H2D_MODULE_STATIC_NUMBER (sizeof(struct _nonuse) / sizeof(char))
 
 #define H2D_MODULE_DYNAMIC_MAX	20
 #define H2D_MODULE_MAX		(H2D_MODULE_STATIC_NUMBER + H2D_MODULE_DYNAMIC_MAX)
