@@ -1,3 +1,4 @@
+#include <ctype.h>
 #include <stdlib.h>
 #include <string.h>
 #include <dlfcn.h>
@@ -6,7 +7,7 @@
 
 #include "h2d_main.h"
 
-int h2d_module_number;
+int h2d_module_number = H2D_MODULE_STATIC_NUMBER;
 
 #define X(m) extern struct h2d_module m;
 H2D_MODULE_X_LIST
@@ -114,31 +115,82 @@ static int h2d_module_cmp_response_body(const void *a, const void *b)
 	return h2d_module_filter_cmp(ma, mb, ma->filters.rank_response_body, mb->filters.rank_response_body);
 }
 
-static void h2d_module_dynamic_add(const char *dirname, const char *filename)
+static const char *trim_whitespace(char *str) // TODO move this out
 {
-	int len = strlen(filename);
-	if (memcmp(filename, "h2d_", 4) != 0 || memcmp(filename + len - 3, ".so", 3) != 0) {
-		return;
+	while (isspace(*str)) {
+		str++;
+	}
+	if (*str == 0) {
+		return str;
+	}
+
+	char *end = str + strlen(str) - 1;
+	while (end > str && isspace(*end)) {
+		end--;
+	}
+	end[1] = '\0';
+
+	return str;
+}
+
+void h2d_module_dynamic_add(const char *filename)
+{
+	/* list-file of module files */
+	if (filename[0] == '@') {
+		FILE *fp = fopen(filename + 1, "r");
+		if (fp == NULL) {
+			fprintf(stderr, "error in open module list file: %s: %s\n",
+					filename, strerror(errno));
+			exit(H2D_EXIT_DYNAMIC);
+		}
+		char line[2000];
+		while (fgets(line, sizeof(line), fp) != NULL) {
+			const char *name = trim_whitespace(line);
+			if (name[0] == '#' || name[0] == '\0') {
+				continue;
+			}
+			if (name[0] == '@') {
+				fprintf(stderr, "no @ in module list file!\n");
+				exit(H2D_EXIT_DYNAMIC);
+			}
+			h2d_module_dynamic_add(name);
+		}
+	}
+
+	if (h2d_module_number++ >= H2D_MODULE_MAX) {
+		fprintf(stderr, "excess dynamic module limit: %d\n", H2D_MODULE_DYNAMIC_MAX);
+		exit(H2D_EXIT_DYNAMIC);
 	}
 
 	/* make the module name */
+	const char *p = strrchr(filename, '/');
+	if (p == NULL) {
+		p = filename;
+	} else {
+		p++;
+	}
+
+	int len = strlen(p);
+	if (memcmp(p, "h2d_", 4) != 0 || memcmp(p + len - 3, ".so", 3) != 0) {
+		fprintf(stderr, "invalid dynamic module filename: %s\n", filename);
+		exit(H2D_EXIT_DYNAMIC);
+	}
+
 	char mod_name[len + sizeof("_module") - 3];
-	memcpy(mod_name, filename, len - 3);
+	memcpy(mod_name, p, len - 3);
 	memcpy(mod_name + len - 3, "_module", 7);
 	mod_name[len + 7 - 3] = '\0';
 
 	/* load */
-	char pathname[strlen(dirname) + strlen(filename) + 2];
-	sprintf(pathname, "%s/%s", dirname, filename);
-	void *dyn = dlopen(pathname, RTLD_NOW | RTLD_NODELETE);
+	void *dyn = dlopen(filename, RTLD_NOW | RTLD_NODELETE);
 	if (dyn == NULL) {
-		printf("fail in dlopen %s\n", dlerror());
-		return;
+		fprintf(stderr, "fail in dlopen: %s\n", dlerror());
+		exit(H2D_EXIT_DYNAMIC);
 	}
 	struct h2d_module *m = dlsym(dyn, mod_name);
 	if (m == NULL) {
-		printf("fail in dlsym %s\n", dlerror());
-		return;
+		fprintf(stderr, "fail in dlsym: %s\n", dlerror());
+		exit(H2D_EXIT_DYNAMIC);
 	}
 	dlclose(dyn);
 
@@ -146,26 +198,8 @@ static void h2d_module_dynamic_add(const char *dirname, const char *filename)
 	printf("load module: %s\n", mod_name);
 }
 
-void h2d_module_master_init(const char *dynamic_dir)
+void h2d_module_master_init(void)
 {
-	h2d_module_number = H2D_MODULE_STATIC_NUMBER;
-
-	/* load dynamic modules */
-	if (dynamic_dir != NULL) {
-		DIR *dir = opendir(dynamic_dir);
-		if (dir == NULL) {
-			perror("open dynamic directory");
-			exit(H2D_EXIT_MODULE_INIT);
-		}
-
-		struct dirent *ent;
-		while ((ent = readdir(dir)) != NULL) {
-			h2d_module_dynamic_add(dynamic_dir, ent->d_name);
-		}
-		closedir(dir);
-	}
-
-	/* init modules */
 	int iph = 0, ipb = 0, irh = 0, irb = 0;
 	for (int i = 0; i < h2d_module_number; i++) {
 		struct h2d_module *m = h2d_modules[i];

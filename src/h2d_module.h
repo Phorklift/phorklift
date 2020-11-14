@@ -57,7 +57,9 @@ struct h2d_module {
 	void	(*worker_init)(void);
 };
 
-void h2d_module_master_init(const char *dynamic_dir);
+void h2d_module_dynamic_add(const char *filename);
+
+void h2d_module_master_init(void);
 void h2d_module_master_post(void);
 void h2d_module_worker_init(void);
 

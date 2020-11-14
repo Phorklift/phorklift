@@ -1,6 +1,7 @@
 #include <signal.h>
 #include <errno.h>
 #include <time.h>
+#include <unistd.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <sys/prctl.h>
@@ -9,33 +10,25 @@
 
 #define H2D_VERSION "0.1"
 
-static int opt_worker_num = 4;
-static const char *opt_worker_user = NULL;
-static const char *opt_pid_file = "logs/h2tpd.pid";
-static const char *opt_conf_file = "conf/h2tpd.lua";
-static const char *opt_dynamic_dir = NULL;
+static int opt_worker_num = 0;
+static const char *opt_pid_file = "h2tpd.pid";
 
-static void h2d_getopt(int argc, char *const *argv)
+static const char *h2d_getopt(int argc, char *const *argv)
 {
-	const char *help = "Usage: h2tpd [options]\n"
+	const char *help = "Usage: h2tpd [options] conf_file\n"
 		"Options:\n"
-		"    -u USER     set worker processes user, only for root []\n"
-		"    -w NUM      set worker processes number, 0 means no worker [4]\n"
-		"    -p PREFIX   change directory []\n"
-		"    -i PID      set pid file [logs/h2tpd.pid]\n"
-		"    -d DIR      set dynamic module directory [dynamics/]\n"
-		"    -f DEFAULT  set user defaults file [conf/defaults.lua]\n"
-		"    -c CONF     set configuration file [conf/h2tpd.lua]\n"
+		"    -p PREFIX   change directory\n"
+		"    -w NUM      set #worker processes, 0:#cpu-core, -1:disable [0]\n"
+		"    -i FILE     set pid file [h2tpd.pid]\n"
+		"    -m MODULE   add dynamic module\n"
+		"    -m @FILE    add dynamic module list file\n"
 		"    -v          show version and quit\n"
 		"    -h          show this help and quit\n";
 
 	int opt;
 	char *endptr;
-	while ((opt = getopt(argc, argv, "u:w:p:i:d:c:vh")) != -1) {
+	while ((opt = getopt(argc, argv, "w:p:i:m:vh")) != -1) {
 		switch (opt) {
-		case 'u':
-			opt_worker_user = optarg;
-			break;
 		case 'w':
 			opt_worker_num = strtol(optarg, &endptr, 0);
 			if (endptr[0] != '\0') {
@@ -52,11 +45,8 @@ static void h2d_getopt(int argc, char *const *argv)
 		case 'i':
 			opt_pid_file = optarg;
 			break;
-		case 'd':
-			opt_dynamic_dir = optarg;
-			break;
-		case 'c':
-			opt_conf_file = optarg;
+		case 'm':
+			h2d_module_dynamic_add(optarg);
 			break;
 		case 'v':
 			printf("version: %s\n", H2D_VERSION);
@@ -69,6 +59,16 @@ static void h2d_getopt(int argc, char *const *argv)
 			exit(H2D_EXIT_GETOPT);
 		}
 	}
+
+	if (optind > argc - 1) {
+		fprintf(stderr, "argument conf_file is need!\n");
+		exit(H2D_EXIT_GETOPT);
+	}
+	if (optind < argc - 1) {
+		fprintf(stderr, "only 1 conf_file is allowed!\n");
+		exit(H2D_EXIT_GETOPT);
+	}
+	return argv[optind];
 }
 
 loop_t *h2d_loop = NULL;
@@ -154,7 +154,7 @@ static pid_t h2d_worker_new(struct h2d_conf_listen **listens)
 
 int main(int argc, char * const *argv)
 {
-	h2d_getopt(argc, argv);
+	const char *conf_file = h2d_getopt(argc, argv);
 
 	signal(SIGPIPE, SIG_IGN);
 	signal(SIGQUIT, h2d_signal_dispatch);
@@ -164,21 +164,24 @@ int main(int argc, char * const *argv)
 	h2d_upstream_init();
 	h2d_resolver_init();
 
-	h2d_module_master_init(opt_dynamic_dir);
+	h2d_module_master_init();
 
-	struct h2d_conf_listen **listens = h2d_conf_parse(opt_conf_file);
+	struct h2d_conf_listen **listens = h2d_conf_parse(conf_file);
 
 	h2d_module_master_post();
 
 	h2d_dynamic_init();
 	h2d_lua_api_init();
 
-	if (opt_worker_num == 0) {
+	if (opt_worker_num < 0) {
 		h2d_worker_entry(listens, -1);
 		return 0;
 	}
 
 	/* start workers */
+	if (opt_worker_num == 0) {
+		opt_worker_num = sysconf(_SC_NPROCESSORS_ONLN);
+	}
 	for (int i = 0; i < opt_worker_num; i++) {
 		if (h2d_worker_new(listens) < 0) {
 			return H2D_EXIT_FORK_WORKER;

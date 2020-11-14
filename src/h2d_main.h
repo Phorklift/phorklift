@@ -55,6 +55,7 @@
 #define H2D_EXIT_FORK_WORKER	4
 #define H2D_EXIT_LISTEN		5
 #define H2D_EXIT_RESOLVER	6
+#define H2D_EXIT_DYNAMIC	7
 
 #define MIN(a, b) (a)<(b)?(a):(b)
 #define MAX(a, b) (a)>(b)?(a):(b)
