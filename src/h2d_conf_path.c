@@ -82,6 +82,7 @@ static const char *h2d_conf_path_post(void *data)
 	}
 
 	/* there is one and only one content module is enabled */
+	struct h2d_module *same_level_mod = NULL;
 	for (int i = 0; i < h2d_module_number; i++) {
 		void *mod_conf = conf_path->module_confs[i];
 		if (mod_conf == NULL) {
@@ -102,13 +103,17 @@ static const char *h2d_conf_path_post(void *data)
 		int meta_level_new = conf_path->content_meta_levels[i];
 		int meta_level_old = conf_path->content_meta_levels[conf_path->content->index];
 		if (meta_level_new == meta_level_old) {
-			fprintf(stderr, "duplicate content %s %s\n", conf_path->content->name, m->name);
-			wuy_cflua_post_arg = conf_path->pathnames[i]; // XXX
-			return "duplicate content set";
-		}
-		if (meta_level_new < meta_level_old) {
+			same_level_mod = m;
+		} else if (meta_level_new < meta_level_old) {
 			conf_path->content = m;
+			same_level_mod = NULL;
 		}
+	}
+	if (same_level_mod != NULL) {
+		static char arg[100];
+		snprintf(arg, sizeof(arg), "%s, %s", conf_path->content->name, same_level_mod->name);
+		wuy_cflua_post_arg = arg;
+		return "duplicate content set";
 	}
 
 	if (h2d_dynamic_is_enabled(&conf_path->dynamic)) {
