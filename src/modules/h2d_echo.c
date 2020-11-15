@@ -31,14 +31,13 @@ static int h2d_echo_generate_response_body(struct h2d_request *r, uint8_t *buf, 
 
 /* configuration */
 
-static bool h2d_echo_conf_post(void *data)
+static const char *h2d_echo_conf_post(void *data)
 {
 	struct h2d_echo_conf *conf = data;
 	if (conf->len > 1024) {
-		printf("string can not longer that 1024");
-		return false;
+		return "too long string while the limit is 1024";
 	}
-	return true;
+	return WUY_CFLUA_OK;
 }
 
 static struct wuy_cflua_command h2d_echo_conf_commands[] = {

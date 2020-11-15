@@ -185,7 +185,7 @@ struct h2d_upstream_content_ctx {
 };
 void h2d_upstream_content_ctx_free(struct h2d_request *r);
 
-bool h2d_upstream_content_set_ops(struct h2d_upstream_conf *conf,
+const char *h2d_upstream_content_set_ops(struct h2d_upstream_conf *conf,
 		struct h2d_upstream_ops *ops);
 
 int h2d_upstream_content_generate_response_headers(struct h2d_request *r);

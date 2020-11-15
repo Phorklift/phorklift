@@ -8,7 +8,7 @@
  * This is persistent because of the functions defined in config file. */
 lua_State *h2d_L;
 
-/* say nothing. for wuy_cflua_strerror() print. */
+/* say nothing */
 static int h2d_conf_name(void *data, char *buf, int size)
 {
 	return 0;
@@ -22,7 +22,7 @@ struct h2d_conf_listen **h2d_conf_parse(const char *conf_file)
 
 	int ret = luaL_loadstring(h2d_L, h2d_conf_parse_lua_str);
 	if (ret != 0) {
-		printf("load conf/parse/parse.lua fail: %d\n", ret);
+		fprintf(stderr, "load h2d_conf_parse.lua fail: %d\n", ret);
 		exit(H2D_EXIT_CONF);
 	}
 
@@ -33,7 +33,7 @@ struct h2d_conf_listen **h2d_conf_parse(const char *conf_file)
 	ret = lua_pcall(h2d_L, 2, 1, 0);
 	if (ret != 0) {
 		const char *errmsg = lua_tostring(h2d_L, -1);
-		printf("load config fail: %d. %s\n", ret, errmsg);
+		fprintf(stderr, "load conf_file fail(%d): %s\n", ret, errmsg);
 		exit(H2D_EXIT_CONF);
 	}
 
@@ -50,9 +50,9 @@ struct h2d_conf_listen **h2d_conf_parse(const char *conf_file)
 	};
 
 	static struct h2d_conf_listen **h2d_conf_listens;
-	int err = wuy_cflua_parse(h2d_L, &global, &h2d_conf_listens);
-	if (err < 0) {
-		printf("parse config error: %s\n", wuy_cflua_strerror(h2d_L, err));
+	const char *err = wuy_cflua_parse(h2d_L, &global, &h2d_conf_listens);
+	if (err != WUY_CFLUA_OK) {
+		fprintf(stderr, "parse conf_file fail: %s\n", err);
 		exit(H2D_EXIT_CONF);
 	}
 

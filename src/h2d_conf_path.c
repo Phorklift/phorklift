@@ -67,7 +67,7 @@ static void h2d_conf_path_delete(void *data)
 {
 }
 
-static bool h2d_conf_path_post(void *data)
+static const char *h2d_conf_path_post(void *data)
 {
 	struct h2d_conf_path *conf_path = data;
 
@@ -75,8 +75,7 @@ static bool h2d_conf_path_post(void *data)
 		for (int i = 0; conf_path->pathnames[i] != NULL; i++) {
 			char first = conf_path->pathnames[i][0];
 			if (first != '=' && first != '~' && first != '/') {
-				printf("invalid path name: %s\n", conf_path->pathnames[i]);
-				return false;
+				return "pathname must start with `/`, `=` or `~`";
 			}
 		}
 	}
@@ -102,8 +101,8 @@ static bool h2d_conf_path_post(void *data)
 		int meta_level_new = conf_path->content_meta_levels[i];
 		int meta_level_old = conf_path->content_meta_levels[conf_path->content->index];
 		if (meta_level_new == meta_level_old) {
-			printf("duplicate content %s %s\n", conf_path->content->name, m->name);
-			return false;
+			fprintf(stderr, "duplicate content %s %s\n", conf_path->content->name, m->name);
+			return "duplicate content set";
 		}
 		if (meta_level_new < meta_level_old) {
 			conf_path->content = m;
@@ -116,8 +115,7 @@ static bool h2d_conf_path_post(void *data)
 				h2d_conf_path_delete);
 
 	} else if (conf_path->content == NULL && conf_path->pathnames != NULL) {
-		printf("no content set, %s\n", conf_path->pathnames[0]);
-		return false;
+		return "no content set";
 	}
 
 	if (conf_path->name == NULL) {
@@ -127,20 +125,19 @@ static bool h2d_conf_path_post(void *data)
 	/* access log */
 	struct h2d_conf_access_log *log = &conf_path->access_log;
 	if (log->max_line > log->buf_size) {
-		printf("expect: max_line <= buffer_size\n");
-		return false;
+		return "access_log asks for max_line <= buffer_size";
 	}
 	if (log->filename == NULL) {
 		log->filename = "access.log";
 	}
 	log->file = h2d_log_file_open(log->filename, log->buf_size);
 	if (log->file == NULL) {
-		return false;
+		return "fail in open access_log file";
 	}
 
 	conf_path->stats = wuy_shmpool_alloc(sizeof(struct h2d_conf_path_stats));
 
-	return true;
+	return WUY_CFLUA_OK;
 }
 
 static struct wuy_cflua_command h2d_conf_path_access_log_commands[] = {

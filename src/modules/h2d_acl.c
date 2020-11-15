@@ -45,12 +45,12 @@ static int h2d_acl_process_headers(struct h2d_request *r)
 
 /* configuration */
 
-static bool h2d_acl_conf_post(void *data)
+static const char *h2d_acl_conf_post(void *data)
 {
 	struct h2d_acl_conf *conf = data;
 
 	if (conf->strs == NULL) {
-		return true;
+		return WUY_CFLUA_OK;
 	}
 
 	conf->rules = malloc(sizeof(struct h2d_acl_rule) * conf->num);
@@ -74,19 +74,16 @@ static bool h2d_acl_conf_post(void *data)
 			char *endp;
 			mask = strtol(p, &endp, 10);
 			if (errno != 0 || *endp != '\0') {
-				printf("invalid mask %s\n", p);
-				return false;
+				return "invalid mask";
 			}
 			if (mask < 0 || mask > 32) {
-				printf("invalid mask %s\n", p);
-				return false;
+				return "invalid mask";
 			}
 		}
 
 		struct in_addr ip;
 		if (!inet_pton(AF_INET, str, &ip)) {
-			printf("invalid IP %s\n", str);
-			return false;
+			return "invalid IP";
 		}
 
 		rule->start = ntohl(ip.s_addr);
@@ -98,7 +95,7 @@ static bool h2d_acl_conf_post(void *data)
 		}
 	}
 
-	return true;
+	return WUY_CFLUA_OK;
 }
 
 static struct wuy_cflua_command h2d_acl_conf_commands[] = {

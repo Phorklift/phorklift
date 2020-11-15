@@ -53,21 +53,20 @@ static int h2d_auth_basic_process_headers(struct h2d_request *r)
 
 /* configuration */
 
-static bool h2d_auth_basic_conf_post(void *data)
+static const char *h2d_auth_basic_conf_post(void *data)
 {
 	struct h2d_auth_basic_conf *conf = data;
 	if (conf->users == NULL) {
-		return true;
+		return WUY_CFLUA_OK;
 	}
 
 	for (const char **p = conf->users; *p != NULL; p++) {
 		if (strchr(*p, ':') == NULL) {
-			printf("invalid format, should be 'user:password'\n");
-			return false;
+			return "invalid format, should be 'user:password'";
 		}
 	}
 
-	return true;
+	return WUY_CFLUA_OK;
 }
 
 static struct wuy_cflua_command h2d_auth_basic_conf_commands[] = {

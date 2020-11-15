@@ -160,11 +160,9 @@ static int h2d_dynamic_get_conf(struct h2d_dynamic_conf *dynamic,
 
 	/* parse */
 	void *container = NULL;
-	int err = wuy_cflua_parse(h2d_L, dynamic->sub_table, &container);
-
-	if (err < 0) {
-		_log(H2D_LOG_ERROR, "parse sub %s error: %s",
-				name, wuy_cflua_strerror(h2d_L, err));
+	const char *err = wuy_cflua_parse(h2d_L, dynamic->sub_table, &container);
+	if (err != WUY_CFLUA_OK) {
+		_log(H2D_LOG_ERROR, "parse sub %s error: %s", name, err);
 		return H2D_ERROR;
 	}
 
@@ -372,27 +370,25 @@ void h2d_dynamic_set_container(struct h2d_dynamic_conf *dynamic,
 			h2d_dynamic_to_container(dynamic));
 }
 
-static bool h2d_dynamic_conf_post(void *data)
+static const char *h2d_dynamic_conf_post(void *data)
 {
 	struct h2d_dynamic_conf *dynamic = data;
 
 	/* created dynamic-sub */
 	if (h2d_dynamic_sub_begin) {
 		if (dynamic->get_name_meta_level != -1) {
-			printf("get_name is not allowed in dynamic sub\n");
-			return false;
+			return "get_name is not allowed in dynamic sub";
 		}
 		dynamic->get_name = 0;
-		return true;
+		return WUY_CFLUA_OK;
 	}
 
 	/* defined in configuration file */
 	if (!wuy_cflua_is_function_set(dynamic->get_name)) {
-		return true;
+		return WUY_CFLUA_OK;
 	}
 	if (!wuy_cflua_is_function_set(dynamic->get_conf)) {
-		printf("dynamic get_conf must be set too\n");
-		return false;
+		return "dynamic get_conf must be set too";
 	}
 	dynamic->sub_dict = wuy_dict_new_type(WUY_DICT_KEY_STRING,
 			offsetof(struct h2d_dynamic_conf, name),
@@ -404,7 +400,7 @@ static bool h2d_dynamic_conf_post(void *data)
 	dynamic->shared_id = wuy_shmpool_alloc(sizeof(atomic_int));
 	atomic_compare_exchange_strong(dynamic->shared_id, &expected, desired);
 
-	return true;
+	return WUY_CFLUA_OK;
 }
 
 static struct wuy_cflua_command h2d_dynamic_conf_commands[] = {

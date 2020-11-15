@@ -30,18 +30,17 @@ static int h2d_rewrite_process_headers(struct h2d_request *r)
 	return H2D_OK;
 }
 
-static bool h2d_rewrite_conf_post(void *data)
+static const char *h2d_rewrite_conf_post(void *data)
 {
 	struct h2d_rewrite_conf *conf = data;
 
 	if (conf->strs == NULL) {
-		return true;
+		return WUY_CFLUA_OK;
 	}
 	if ((conf->num % 2) != 0) {
-		printf("rewrite rules: (pattern, repl)*\n");
-		return false;
+		return "rewrite rules: (pattern, repl)*";
 	}
-	return true;
+	return WUY_CFLUA_OK;
 }
 
 static struct wuy_cflua_command h2d_rewrite_conf_commands[] = {

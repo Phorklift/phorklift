@@ -112,18 +112,18 @@ static int h2d_cache_response_body(struct h2d_request *r, uint8_t *data, int dat
 
 /* configuration */
 
-static bool h2d_cache_conf_post(void *data)
+static const char *h2d_cache_conf_post(void *data)
 {
 	struct h2d_cache_conf *conf = data;
 	if (conf->size == 0) {
-		return true;
+		return WUY_CFLUA_OK;
 	}
 
 	conf->cache = wuy_dict_new_type(WUY_DICT_KEY_STRING,
 			offsetof(struct h2d_cache_item, key),
 			offsetof(struct h2d_cache_item, dict_node));
 
-	return true;
+	return WUY_CFLUA_OK;
 }
 
 static struct wuy_cflua_command h2d_cache_conf_commands[] = {

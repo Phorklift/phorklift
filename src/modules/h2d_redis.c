@@ -40,7 +40,7 @@ static struct h2d_upstream_ops h2d_redis_upstream_ops = {
 	.build_request = h2d_redis_build_request,
 };
 
-static bool h2d_redis_conf_post(void *data)
+static const char *h2d_redis_conf_post(void *data)
 {
 	struct h2d_redis_conf *conf = data;
 	return h2d_upstream_content_set_ops(conf->upstream, &h2d_redis_upstream_ops);

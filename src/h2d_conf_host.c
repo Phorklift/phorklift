@@ -6,22 +6,20 @@ struct h2d_conf_host_search_name {
 	wuy_dict_node_t		dict_node;
 };
 
-static bool h2d_conf_host_add_name(struct h2d_conf_listen *conf_listen,
+static const char *h2d_conf_host_add_name(struct h2d_conf_listen *conf_listen,
 		struct h2d_conf_host *conf_host, char *name)
 {
 	if (name[0] == '\0') {
-		printf("invalid empty host name\n");
-		return false;
+		return "invalid empty host name";
 	}
 
 	/* wildcard hostname */
 	if (strcmp(name, "*") == 0) {
 		if (conf_listen->host_wildcard != NULL) {
-			printf("duplicate wildcard host\n");
-			return false;
+			return "duplicate wildcard host";
 		}
 		conf_listen->host_wildcard = conf_host;
-		return true;
+		return WUY_CFLUA_OK;
 	}
 
 	/* case insensitive */
@@ -38,39 +36,34 @@ static bool h2d_conf_host_add_name(struct h2d_conf_listen *conf_listen,
 	if (wild != NULL) {
 		if (wild == name) {
 			if (name[1] != '.') {
-				printf("`.` must follows leading wildcast `*`\n");
-				return false;
+				return "leading wildcast `*` must be followed by `.`";
 			}
 			if (strchr(name + 1, '*') != NULL) {
-				printf("at most 1 wildcast in hostname\n");
-				return false;
+				return "at most 1 wildcast in hostname";
 			}
 			conf_listen->any_prefix_hostname = true;
 		} else if (wild == name + len - 1) {
 			if (name[len-2] != '.') {
-				printf("`.` must before tail wildcast `*`\n");
-				return false;
+				return "the front of tail wildcast `*` must be `.`";
 			}
 			conf_listen->any_subfix_hostname = true;
 		} else {
-			printf("wildcast `*` is not allowed in middle of hostname\n");
-			return false;
+			return "wildcast `*` is not allowed in middle of hostname";
 		}
 	}
 
 	if (wuy_dict_get(conf_listen->host_dict, name) != NULL) {
-		printf("duplicate hostname %s\n", name);
-		return false;
+		return "duplicate hostname";
 	}
 
 	struct h2d_conf_host_search_name *node = malloc(sizeof(struct h2d_conf_host_search_name));
 	node->name = name;
 	node->conf_host = conf_host;
 	wuy_dict_add(conf_listen->host_dict, node);
-	return true;
+	return WUY_CFLUA_OK;
 }
 
-bool h2d_conf_host_register(struct h2d_conf_listen *conf_listen)
+const char *h2d_conf_host_register(struct h2d_conf_listen *conf_listen)
 {
 	conf_listen->host_dict = wuy_dict_new_type(WUY_DICT_KEY_STRING,
 			offsetof(struct h2d_conf_host_search_name, name),
@@ -79,13 +72,14 @@ bool h2d_conf_host_register(struct h2d_conf_listen *conf_listen)
 	struct h2d_conf_host *conf_host;
 	for (int i = 0; (conf_host = conf_listen->hosts[i]) != NULL; i++) {
 		for (int j = 0; conf_host->hostnames[j] != NULL; j++) {
-			if (!h2d_conf_host_add_name(conf_listen, conf_host,
-						conf_host->hostnames[j])) {
-				return false;
+			const char *err = h2d_conf_host_add_name(conf_listen, conf_host,
+						conf_host->hostnames[j]);
+			if (err != WUY_CFLUA_OK) {
+				return err;
 			}
 		}
 	}
-	return true;
+	return WUY_CFLUA_OK;
 }
 
 struct h2d_conf_host *h2d_conf_host_locate(struct h2d_conf_listen *conf_listen,
@@ -155,7 +149,7 @@ static int h2d_conf_host_name(void *data, char *buf, int size)
 	return snprintf(buf, size, "Host(%s)>", conf_host->hostnames[0]);
 }
 
-static bool h2d_conf_host_post(void *data)
+static const char *h2d_conf_host_post(void *data)
 {
 	struct h2d_conf_host *conf_host = data;
 
@@ -163,8 +157,7 @@ static bool h2d_conf_host_post(void *data)
 			&& conf_host->hostnames != NULL /* not default_host */
 			&& conf_host->default_path->content == NULL /* default_path->content not set */
 			&& !h2d_dynamic_is_enabled(&conf_host->default_path->dynamic)) { /* none-dynamic */
-		printf("No path is defined in host\n");
-		return false;
+		return "no Path defined in Host";
 	}
 
 	if (conf_host->name == NULL) {
@@ -173,7 +166,7 @@ static bool h2d_conf_host_post(void *data)
 
 	conf_host->stats = wuy_shmpool_alloc(sizeof(struct h2d_conf_host_stats));
 
-	return true;
+	return WUY_CFLUA_OK;
 }
 
 static struct wuy_cflua_command h2d_conf_host_commands[] = {

@@ -270,7 +270,7 @@ void h2d_upstream_resolve(struct h2d_upstream_conf *upstream)
 	h2d_upstream_resolve_hostname(upstream);
 }
 
-bool h2d_upstream_conf_resolve_init(struct h2d_upstream_conf *conf)
+const char *h2d_upstream_conf_resolve_init(struct h2d_upstream_conf *conf)
 {
 	/* pre-alloc lock and shared-memory for resolved address stats */
 	conf->address_stats_lock = wuy_shmpool_alloc(sizeof(pthread_mutex_t));
@@ -292,8 +292,7 @@ bool h2d_upstream_conf_resolve_init(struct h2d_upstream_conf *conf)
 
 		hostname->host_len = strlen(hostname->name);
 		if (hostname->host_len > 4096) {
-			printf("too long hostname: %s\n", hostname->name);
-			return false;
+			return "too long hostname";
 		}
 
 		/* parse weight, marked by # */
@@ -302,8 +301,7 @@ bool h2d_upstream_conf_resolve_init(struct h2d_upstream_conf *conf)
 			hostname->host_len = pweight - hostname->name;
 			hostname->weight = atof(pweight);
 			if (hostname->weight == 0) {
-				printf("invalid weight of %s %s", hostname->name, pweight);
-				return false;
+				return "invalid weight";
 			}
 		} else {
 			hostname->weight = 1.0;
@@ -330,8 +328,7 @@ bool h2d_upstream_conf_resolve_init(struct h2d_upstream_conf *conf)
 			hostname->host_len = pport - hostname->name;
 			hostname->port = atoi(pport + 1);
 			if (hostname->port == 0) {
-				printf("invalid port %s\n", hostname->name);
-				return false;
+				return "invalid port";
 			}
 		}
 
@@ -348,8 +345,7 @@ bool h2d_upstream_conf_resolve_init(struct h2d_upstream_conf *conf)
 		tmpname[hostname->host_len] = '\0';
 		uint8_t *buffer = h2d_resolver_hostname(tmpname, &length);
 		if (buffer == NULL) {
-			printf("resolve fail %s\n", hostname->name);
-			return false;
+			return "resolve fail";
 		}
 
 		uint8_t *p = buffer;
@@ -368,8 +364,7 @@ bool h2d_upstream_conf_resolve_init(struct h2d_upstream_conf *conf)
 	}
 
 	if (conf->address_num == 0) {
-		printf("no address for upstream\n");
-		return false;
+		return "no address for upstream";
 	}
 
 	/* resolve stream */
@@ -377,22 +372,20 @@ bool h2d_upstream_conf_resolve_init(struct h2d_upstream_conf *conf)
 		conf->resolve_last = time(NULL);
 	}
 
-	return true;
+	return WUY_CFLUA_OK;
 
 sub_check:
 	if (need_resolved) {
 		if (conf->resolve_interval == 0) {
-			printf("resolve_interval can not be 0 for dynamic upstream with hostnames\n");
-			return false;
+			return "resolve_interval can not be 0 for dynamic upstream with hostnames";
 		}
 		conf->resolve_last = 1;
 		h2d_upstream_resolve(conf);
 	} else {
 		if (conf->address_num == 0) {
-			printf("no address for dynamic upstream\n");
-			return false;
+			return "no address for dynamic upstream";
 		}
 	}
 
-	return true;
+	return WUY_CFLUA_OK;
 }

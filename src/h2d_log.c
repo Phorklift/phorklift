@@ -29,7 +29,6 @@ struct h2d_log_file *h2d_log_file_open(const char *filename, int buf_size)
 	file = malloc(sizeof(struct h2d_log_file) + buf_size);
 	file->fd = open(filename, O_WRONLY | O_APPEND | O_CREAT, 0644);
 	if (file->fd < 0) {
-		printf("error in open log file %s %s\n", filename, strerror(errno));
 		return NULL;
 	}
 	file->name = filename;
@@ -110,22 +109,24 @@ static enum h2d_log_level h2d_log_parse_level(const char *str)
 	}
 }
 
-static bool h2d_log_conf_post(void *data)
+static const char *h2d_log_conf_post(void *data)
 {
 	struct h2d_log *log = data;
 
 	log->level = h2d_log_parse_level(log->conf_level);
 	if (log->level < 0) {
-		printf("invalid log level\n");
-		return false;
+		return "invalid log level";
 	}
 	if (log->max_line > log->buf_size) {
-		printf("expect: max_line <= buffer_size\n");
-		return false;
+		return "expect max_line <= buffer_size";
 	}
 
 	log->file = h2d_log_file_open(log->conf_filename, log->buf_size);
-	return log->file != NULL;
+	if (log->file == NULL) {
+		return "fail in open log file";
+	}
+
+	return WUY_CFLUA_OK;
 }
 
 static struct wuy_cflua_command h2d_log_conf_commands[] = {

@@ -163,19 +163,18 @@ void h2d_upstream_content_ctx_free(struct h2d_request *r)
 	free(ctx);
 }
 
-bool h2d_upstream_content_set_ops(struct h2d_upstream_conf *conf,
+const char *h2d_upstream_content_set_ops(struct h2d_upstream_conf *conf,
 		struct h2d_upstream_ops *ops)
 {
 	if (conf == NULL) {
-		return true;
+		return WUY_CFLUA_OK;
 	}
 	if (conf->ops != NULL) {
 		if (conf->ops != ops) {
-			printf("Error: different ops for one upstream\n");
-			return false;
+			return "different ops for one upstream";
 		}
-		return true;
+		return WUY_CFLUA_OK;
 	}
 	conf->ops = ops;
-	return true;
+	return WUY_CFLUA_OK;
 }

@@ -405,14 +405,13 @@ bool h2d_upstream_address_is_pickable(struct h2d_upstream_address *address,
 
 /* configration */
 
-static bool h2d_upstream_conf_loadbalance_select(struct h2d_upstream_conf *conf)
+static const char *h2d_upstream_conf_loadbalance_select(struct h2d_upstream_conf *conf)
 {
 	for (int i = 1; i < h2d_upstream_loadbalance_number; i++) {
 		struct h2d_upstream_loadbalance *lb = h2d_upstream_loadbalances[i];
 		if (h2d_module_command_is_set(&lb->command, conf->lb_confs[i])) {
 			if (conf->loadbalance != NULL) {
-				printf("duplicate loadbalance\n");
-				return false;
+				return "duplicate loadbalance";
 			}
 			conf->loadbalance = lb;
 		}
@@ -423,7 +422,7 @@ static bool h2d_upstream_conf_loadbalance_select(struct h2d_upstream_conf *conf)
 		conf->loadbalance = h2d_upstream_loadbalances[0];
 	}
 
-	return true;
+	return WUY_CFLUA_OK;
 }
 
 static struct wuy_cflua_command *h2d_upstream_next_command(struct wuy_cflua_command *cmd)
@@ -450,23 +449,22 @@ static void h2d_upstream_delete(void *data)
 	wuy_list_delete(&conf->list_node);
 }
 
-bool h2d_upstream_conf_resolve_init(struct h2d_upstream_conf *conf);
-static bool h2d_upstream_conf_post(void *data)
+const char *h2d_upstream_conf_resolve_init(struct h2d_upstream_conf *conf);
+static const char *h2d_upstream_conf_post(void *data)
 {
 	struct h2d_upstream_conf *conf = data;
 
 	/* some check for both cases, dynamic or not */
 	if ((conf->healthcheck.req_len == 0) != (conf->healthcheck.resp_len == 0)) {
-		printf("healthcheck request/response must be set both or neigther\n");
-		return false;
+		return "healthcheck request/response must be set both or neigther";
 	}
 	if (h2d_upstream_is_active_healthcheck(conf) && wuy_cflua_is_function_set(conf->healthcheck.filter)) {
-		printf("request is for active healthcheck while filter is for passive\n");
-		return false;
+		return "request is for active healthcheck while filter is for passive";
 	}
 
-	if (!h2d_upstream_conf_loadbalance_select(conf)) {
-		return false;
+	const char *lb_err = h2d_upstream_conf_loadbalance_select(conf);
+	if (lb_err != WUY_CFLUA_OK) {
+		return lb_err;
 	}
 
 	conf->stats = wuy_shmpool_alloc(sizeof(struct h2d_upstream_stats));
@@ -474,8 +472,7 @@ static bool h2d_upstream_conf_post(void *data)
 	/* dynamic */
 	if (h2d_dynamic_is_enabled(&conf->dynamic)) {
 		if (conf->hostnames != NULL) {
-			printf("hostname is not allowed for dynamic upstream\n");
-			return false;
+			return "hostname is not allowed for dynamic upstream";
 		}
 		conf->hostnames = (void *)1; /* used by h2d_module_command_is_set() */
 
@@ -487,12 +484,12 @@ static bool h2d_upstream_conf_post(void *data)
 			conf->name = "dynamic";
 		}
 
-		return true;
+		return WUY_CFLUA_OK;
 	}
 
 	/* non-dynamic: static configured or created dynamic-sub */
 	if (conf->hostnames == NULL) {
-		return true;
+		return WUY_CFLUA_OK;
 	}
 
 	wuy_list_init(&conf->wait_head);
@@ -508,8 +505,9 @@ static bool h2d_upstream_conf_post(void *data)
 		conf->ssl_ctx = h2d_ssl_ctx_new_client();
 	}
 
-	if (!h2d_upstream_conf_resolve_init(conf)) {
-		return false;
+	const char *resv_err = h2d_upstream_conf_resolve_init(conf);
+	if (resv_err != WUY_CFLUA_OK) {
+		return resv_err;
 	}
 
 	conf->loadbalance->update(conf);
@@ -518,7 +516,7 @@ static bool h2d_upstream_conf_post(void *data)
 		wuy_list_append(&h2d_upstream_list, &conf->list_node);
 	}
 
-	return true;
+	return WUY_CFLUA_OK;
 }
 
 static void h2d_upstream_conf_stats(struct h2d_upstream_conf *conf, wuy_json_ctx_t *json)

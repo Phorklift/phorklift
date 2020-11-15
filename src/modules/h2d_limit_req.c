@@ -88,19 +88,18 @@ static int h2d_limit_req_process_headers(struct h2d_request *r)
 	return WUY_HTTP_503;
 }
 
-static bool h2d_limit_req_conf_post(void *data)
+static const char *h2d_limit_req_conf_post(void *data)
 {
 	struct h2d_limit_req_conf *conf = data;
 
 	if (conf->meter.rate == 0) {
-		return true;
+		return WUY_CFLUA_OK;
 	}
 
 	if (conf->meter.burst == 0) {
 		conf->meter.burst = conf->meter.rate;
 	} else if (conf->meter.burst < conf->meter.rate) {
-		printf("limit req burst >= rate\n");
-		return false;
+		return "expect burst >= rate";
 	}
 
 	wuy_list_init(&conf->lru_list);
@@ -108,7 +107,7 @@ static bool h2d_limit_req_conf_post(void *data)
 			offsetof(struct h2d_limit_req_node, key),
 			offsetof(struct h2d_limit_req_node, dict_node));
 
-	return true;
+	return WUY_CFLUA_OK;
 }
 
 static struct wuy_cflua_command h2d_limit_req_conf_commands[] = {

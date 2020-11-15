@@ -239,22 +239,20 @@ static void h2d_static_ctx_free(struct h2d_request *r)
 
 /* configuration */
 
-static bool h2d_static_conf_post(void *data)
+static const char *h2d_static_conf_post(void *data)
 {
 	struct h2d_static_conf *conf = data;
 
 	if (conf->dir_name == NULL) {
-		return true;
+		return WUY_CFLUA_OK;
 	}
 
 	conf->dirfd = open(conf->dir_name, O_RDONLY, O_DIRECTORY);
 	if (conf->dirfd < 0) {
-		printf("static: fail to open dir: %s\n", conf->dir_name);
-		return false;
+		return "fail to open dir";
 	}
-	// printf("debug: open %s\n", conf->dir_name);
 
-	return true;
+	return WUY_CFLUA_OK;
 }
 
 static struct wuy_cflua_command h2d_static_conf_commands[] = {

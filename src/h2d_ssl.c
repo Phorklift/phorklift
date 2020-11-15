@@ -275,32 +275,30 @@ void h2d_ssl_init(void)
 
 /* configuration */
 
-static bool h2d_ssl_conf_post(void *data)
+static const char *h2d_ssl_conf_post(void *data)
 {
 	struct h2d_ssl_conf *conf = data;
 
 	if (conf->certificate == NULL) {
 		if (conf->private_key != NULL) {
-			printf("ssl certificate miss.\n");
-			return false;
+			return "certificate miss";
 		}
-		return true;
+		return WUY_CFLUA_OK;
 	}
 	if (conf->private_key == NULL) {
-		printf("ssl private_key miss.\n");
-		return false;
+		return "private_key miss";
 	}
 
 	conf->ctx = h2d_ssl_ctx_new_server(conf->certificate, conf->private_key,
 			conf->ticket_secret, conf->ciphers, conf->session_timeout);
 	if (conf->ctx == NULL) {
-		return false;
+		return "TODO fail in ctx";
 	}
 
 	conf->stats = wuy_shmpool_alloc(sizeof(struct h2d_ssl_stats));
 	SSL_CTX_set_ex_data(conf->ctx, H2D_SSL_CTX_EX_STATS, conf->stats);
 
-	return true;
+	return WUY_CFLUA_OK;
 }
 
 static struct wuy_cflua_command h2d_ssl_conf_commands[] = {

@@ -14,22 +14,22 @@ static int h2d_conf_listen_name(void *data, char *buf, int size)
 	return snprintf(buf, size, "Listen(%s)>", conf_listen->addresses[0]);
 }
 
-bool h2d_conf_host_register(struct h2d_conf_listen *conf_listen);
+const char *h2d_conf_host_register(struct h2d_conf_listen *conf_listen);
 
-static bool h2d_conf_listen_post(void *data)
+static const char *h2d_conf_listen_post(void *data)
 {
 	struct h2d_conf_listen *conf_listen = data;
 
 	if (conf_listen->hosts == NULL) {
 		if (conf_listen->default_host->default_path->content == NULL) {
-			printf("error: No host defined in listen\n");
-			return false;
+			return "no Host defined in Listen";
 		}
-		return true;
+		return WUY_CFLUA_OK;
 	}
 
-	if (!h2d_conf_host_register(conf_listen)) {
-		return false;
+	const char *err = h2d_conf_host_register(conf_listen);
+	if (err != WUY_CFLUA_OK) {
+		return err;
 	}
 
 	/* ssl */
@@ -44,8 +44,7 @@ static bool h2d_conf_listen_post(void *data)
 	}
 	if (is_ssl) {
 		if (is_plain) {
-			printf("plain vs ssl\n");
-			return false;
+			return "use ssl or not consistent amount Host() under one Listen()";
 		}
 
 		if (conf_listen->default_host->ssl->ctx != NULL) {
@@ -63,7 +62,7 @@ static bool h2d_conf_listen_post(void *data)
 
 	conf_listen->stats = wuy_shmpool_alloc(sizeof(struct h2d_conf_listen_stats));
 
-	return true;
+	return WUY_CFLUA_OK;
 }
 
 static struct wuy_cflua_command h2d_conf_listen_http1_commands[] = {

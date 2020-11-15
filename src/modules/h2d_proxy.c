@@ -200,7 +200,7 @@ static struct h2d_upstream_ops h2d_proxy_upstream_ops = {
 	.build_response_body = h2d_proxy_build_response_body,
 };
 
-static bool h2d_proxy_conf_post(void *data)
+static const char *h2d_proxy_conf_post(void *data)
 {
 	struct h2d_proxy_conf *conf = data;
 	return h2d_upstream_content_set_ops(conf->upstream, &h2d_proxy_upstream_ops);
