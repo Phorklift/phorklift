@@ -133,49 +133,6 @@ SSL_CTX *h2d_ssl_ctx_empty_server(void)
 	return empty;
 }
 
-static SSL_CTX *h2d_ssl_ctx_new_server(const char *cert_fname, const char *pkey_fname,
-		const char *ticket_secret_fname, const char *cipher, int session_timeout)
-{
-	SSL_CTX *ctx = h2d_ssl_new_empty_server_ctx();
-
-	if (SSL_CTX_use_certificate_chain_file(ctx, cert_fname) != 1) {
-		printf("fail in load certificate: %s\n", cert_fname);
-		return NULL;
-	}
-	if (SSL_CTX_use_PrivateKey_file(ctx, pkey_fname, SSL_FILETYPE_PEM) != 1) {
-		printf("fail in load private_key: %s\n", pkey_fname);
-		return NULL;
-	}
-
-#define H2D_SECRET_SIZE sizeof(struct h2d_ssl_ticket_secret)
-	struct h2d_ssl_ticket_secret *secret = malloc(H2D_SECRET_SIZE + 1);
-	if (ticket_secret_fname != NULL) {
-		FILE *fp = fopen(ticket_secret_fname, "r");
-		if (fp == NULL) {
-			printf("fail in open ticket_secret file: %s\n", ticket_secret_fname);
-			return NULL;
-		}
-
-		size_t len = fread(secret, H2D_SECRET_SIZE + 1, 1, fp);
-		if (len != H2D_SECRET_SIZE) {
-			printf("fail in load ticket_secret: %ld\n", len);
-			return NULL;
-		}
-		fclose(fp);
-	} else {
-		if (!RAND_bytes((unsigned char *)secret, H2D_SECRET_SIZE)) {
-			printf("fail in generate random ticket_secret\n");
-			return NULL;
-		}
-	}
-	SSL_CTX_set_tlsext_ticket_key_cb(ctx, h2d_ssl_ticket_callback);
-	SSL_CTX_set_ex_data(ctx, H2D_SSL_CTX_EX_TICKET_SECRET, secret);
-
-	SSL_CTX_set_timeout(ctx, session_timeout);
-
-	return ctx;
-}
-
 SSL_CTX *h2d_ssl_ctx_new_client(void)
 {
 	SSL_CTX *ctx = SSL_CTX_new(SSLv23_client_method());
@@ -289,12 +246,45 @@ static const char *h2d_ssl_conf_post(void *data)
 		return "private_key miss";
 	}
 
-	conf->ctx = h2d_ssl_ctx_new_server(conf->certificate, conf->private_key,
-			conf->ticket_secret, conf->ciphers, conf->session_timeout);
-	if (conf->ctx == NULL) {
-		return "TODO fail in ctx";
+	conf->ctx = h2d_ssl_new_empty_server_ctx();
+
+	/* certificate and private_key */
+	if (SSL_CTX_use_certificate_chain_file(conf->ctx, conf->certificate) != 1) {
+		wuy_cflua_post_arg = conf->certificate;;
+		return "fail in load certificate";
+	}
+	if (SSL_CTX_use_PrivateKey_file(conf->ctx, conf->private_key, SSL_FILETYPE_PEM) != 1) {
+		wuy_cflua_post_arg = conf->private_key;
+		return "fail in load private_key";
 	}
 
+	/* ticket secret */
+#define H2D_SECRET_SIZE sizeof(struct h2d_ssl_ticket_secret)
+	struct h2d_ssl_ticket_secret *secret = malloc(H2D_SECRET_SIZE + 1);
+	if (conf->ticket_secret != NULL) {
+		FILE *fp = fopen(conf->ticket_secret, "r");
+		if (fp == NULL) {
+			wuy_cflua_post_arg = conf->ticket_secret;
+			return "fail in open ticket_secret file";
+		}
+
+		size_t len = fread(secret, H2D_SECRET_SIZE + 1, 1, fp);
+		fclose(fp);
+		if (len != H2D_SECRET_SIZE) {
+			wuy_cflua_post_arg = conf->ticket_secret;
+			return "invalid ticket_secret length, expect ";
+		}
+	} else {
+		if (!RAND_bytes((unsigned char *)secret, H2D_SECRET_SIZE)) {
+			printf("fail in generate random ticket_secret");
+		}
+	}
+	SSL_CTX_set_tlsext_ticket_key_cb(conf->ctx, h2d_ssl_ticket_callback);
+	SSL_CTX_set_ex_data(conf->ctx, H2D_SSL_CTX_EX_TICKET_SECRET, secret);
+
+	SSL_CTX_set_timeout(conf->ctx, conf->session_timeout);
+
+	/* others */
 	conf->stats = wuy_shmpool_alloc(sizeof(struct h2d_ssl_stats));
 	SSL_CTX_set_ex_data(conf->ctx, H2D_SSL_CTX_EX_STATS, conf->stats);
 

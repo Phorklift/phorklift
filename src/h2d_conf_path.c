@@ -75,6 +75,7 @@ static const char *h2d_conf_path_post(void *data)
 		for (int i = 0; conf_path->pathnames[i] != NULL; i++) {
 			char first = conf_path->pathnames[i][0];
 			if (first != '=' && first != '~' && first != '/') {
+				wuy_cflua_post_arg = conf_path->pathnames[i];
 				return "pathname must start with `/`, `=` or `~`";
 			}
 		}
@@ -102,6 +103,7 @@ static const char *h2d_conf_path_post(void *data)
 		int meta_level_old = conf_path->content_meta_levels[conf_path->content->index];
 		if (meta_level_new == meta_level_old) {
 			fprintf(stderr, "duplicate content %s %s\n", conf_path->content->name, m->name);
+			wuy_cflua_post_arg = conf_path->pathnames[i]; // XXX
 			return "duplicate content set";
 		}
 		if (meta_level_new < meta_level_old) {

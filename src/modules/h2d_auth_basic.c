@@ -62,6 +62,7 @@ static const char *h2d_auth_basic_conf_post(void *data)
 
 	for (const char **p = conf->users; *p != NULL; p++) {
 		if (strchr(*p, ':') == NULL) {
+			wuy_cflua_post_arg = *p;
 			return "invalid format, should be 'user:password'";
 		}
 	}

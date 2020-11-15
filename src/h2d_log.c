@@ -123,6 +123,7 @@ static const char *h2d_log_conf_post(void *data)
 
 	log->file = h2d_log_file_open(log->conf_filename, log->buf_size);
 	if (log->file == NULL) {
+		wuy_cflua_post_arg = log->conf_filename;
 		return "fail in open log file";
 	}
 

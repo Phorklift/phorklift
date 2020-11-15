@@ -74,15 +74,18 @@ static const char *h2d_acl_conf_post(void *data)
 			char *endp;
 			mask = strtol(p, &endp, 10);
 			if (errno != 0 || *endp != '\0') {
+				wuy_cflua_post_arg = str;
 				return "invalid mask";
 			}
 			if (mask < 0 || mask > 32) {
+				wuy_cflua_post_arg = str;
 				return "invalid mask";
 			}
 		}
 
 		struct in_addr ip;
 		if (!inet_pton(AF_INET, str, &ip)) {
+			wuy_cflua_post_arg = str;
 			return "invalid IP";
 		}
 

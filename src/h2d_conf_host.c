@@ -75,6 +75,7 @@ const char *h2d_conf_host_register(struct h2d_conf_listen *conf_listen)
 			const char *err = h2d_conf_host_add_name(conf_listen, conf_host,
 						conf_host->hostnames[j]);
 			if (err != WUY_CFLUA_OK) {
+				wuy_cflua_post_arg = conf_host->hostnames[j];
 				return err;
 			}
 		}
