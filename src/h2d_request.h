@@ -132,8 +132,9 @@ static inline struct h2d_log *h2d_request_get_log(struct h2d_request *r)
 
 #define h2d_request_log_at(r, log, level2, fmt, ...) \
 	do { \
-		if (level2 < log->level) break; \
-		struct h2d_log *_log = log->file ? log : h2d_request_get_log(r); \
+		struct h2d_log *_log = h2d_request_get_log(r); \
+		if (level2 < (log->level_meta_level >= 0 ? log->level : _log->level)) break; \
+		if (log->filename_meta_level >= 0) _log = log; \
 		h2d_request_do_log(r, _log, level2, fmt, ##__VA_ARGS__); \
 	} while(0)
 

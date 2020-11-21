@@ -85,6 +85,21 @@ static void h2d_log_routine(void *data)
 	}
 }
 
+struct h2d_log h2d_global_log;
+void h2d_log_global(const char *filename)
+{
+	h2d_global_log.level = H2D_LOG_ERROR;
+	h2d_global_log.max_line = 2 * 1024;
+	h2d_global_log.buf_size = 16 * 1024;
+	h2d_global_log.file = h2d_log_file_open(filename, 16*1024);
+
+	if (h2d_global_log.file == NULL) {
+		fprintf(stderr, "fail in open global error.log: %s %s\n",
+				filename, strerror(errno));
+		exit(H2D_EXIT_GETOPT);
+	}
+}
+
 void h2d_log_init(void)
 {
 	loop_idle_add(h2d_loop, h2d_log_routine, NULL);
@@ -113,7 +128,7 @@ static const char *h2d_log_conf_post(void *data)
 {
 	struct h2d_log *log = data;
 
-	log->level = h2d_log_parse_level(log->conf_level);
+	log->level = h2d_log_parse_level(log->level_str);
 	if (log->level < 0) {
 		return "invalid log level";
 	}
@@ -121,9 +136,14 @@ static const char *h2d_log_conf_post(void *data)
 		return "expect max_line <= buffer_size";
 	}
 
-	log->file = h2d_log_file_open(log->conf_filename, log->buf_size);
+	if (log->filename == NULL) {
+		log->file = h2d_global_log.file;
+		return WUY_CFLUA_OK;
+	}
+
+	log->file = h2d_log_file_open(log->filename, log->buf_size);
 	if (log->file == NULL) {
-		wuy_cflua_post_arg = log->conf_filename;
+		wuy_cflua_post_arg = log->filename;
 		return "fail in open log file";
 	}
 
@@ -133,8 +153,8 @@ static const char *h2d_log_conf_post(void *data)
 static struct wuy_cflua_command h2d_log_conf_commands[] = {
 	{	.type = WUY_CFLUA_TYPE_STRING,
 		.is_single_array = true,
-		.offset = offsetof(struct h2d_log, conf_filename),
-		.default_value.s = "error.log",
+		.offset = offsetof(struct h2d_log, filename),
+		.meta_level_offset = offsetof(struct h2d_log, filename_meta_level),
 	},
 	{	.name = "buffer_size",
 		.type = WUY_CFLUA_TYPE_INTEGER,
@@ -149,7 +169,8 @@ static struct wuy_cflua_command h2d_log_conf_commands[] = {
 	},
 	{	.name = "level",
 		.type = WUY_CFLUA_TYPE_STRING,
-		.offset = offsetof(struct h2d_log, conf_level),
+		.offset = offsetof(struct h2d_log, level_str),
+		.meta_level_offset = offsetof(struct h2d_log, level_meta_level),
 		.default_value.s = "error",
 	},
 	{ NULL },

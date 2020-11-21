@@ -12,6 +12,7 @@
 
 static int opt_worker_num = 0;
 static const char *opt_pid_file = "h2tpd.pid";
+static const char *opt_error_file = "error.log";
 
 static const char *h2d_getopt(int argc, char *const *argv)
 {
@@ -20,6 +21,7 @@ static const char *h2d_getopt(int argc, char *const *argv)
 		"    -p PREFIX   change directory\n"
 		"    -w NUM      set #worker processes, 0:#cpu-core, -1:disable [0]\n"
 		"    -i FILE     set pid file [h2tpd.pid]\n"
+		"    -e FILE     set error log file [error.log]\n"
 		"    -m MODULE   add dynamic module\n"
 		"    -m @FILE    add dynamic module list file\n"
 		"    -v          show version and quit\n"
@@ -27,7 +29,7 @@ static const char *h2d_getopt(int argc, char *const *argv)
 
 	int opt;
 	char *endptr;
-	while ((opt = getopt(argc, argv, "w:p:i:m:vh")) != -1) {
+	while ((opt = getopt(argc, argv, "w:p:i:m:e:vh")) != -1) {
 		switch (opt) {
 		case 'w':
 			opt_worker_num = strtol(optarg, &endptr, 0);
@@ -44,6 +46,9 @@ static const char *h2d_getopt(int argc, char *const *argv)
 			break;
 		case 'i':
 			opt_pid_file = optarg;
+			break;
+		case 'e':
+			opt_error_file = optarg;
 			break;
 		case 'm':
 			h2d_module_dynamic_add(optarg);
@@ -159,6 +164,7 @@ int main(int argc, char * const *argv)
 	signal(SIGPIPE, SIG_IGN);
 	signal(SIGQUIT, h2d_signal_dispatch);
 
+	h2d_log_global(opt_error_file);
 	h2d_ssl_init();
 	h2d_http2_init();
 	h2d_upstream_init();

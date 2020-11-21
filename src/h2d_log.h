@@ -34,8 +34,10 @@ static inline const char *h2d_log_strlevel(enum h2d_log_level level)
 }
 
 struct h2d_log {
-	const char		*conf_filename;
-	const char		*conf_level;
+	const char		*filename;
+	const char		*level_str;
+	int			filename_meta_level;
+	int			level_meta_level;
 	int			buf_size;
 	int			max_line;
 
@@ -60,6 +62,10 @@ struct h2d_log {
 #define h2d_assert(expr) if (!(expr)) h2d_log_fatal("assert fail: " #expr " at %s()", __FUNCTION__)
 
 extern struct wuy_cflua_table h2d_log_conf_table; 
+
+extern struct h2d_log h2d_global_log;
+
+void h2d_log_global(const char *filename);
 
 void h2d_log_init(void);
 
