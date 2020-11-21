@@ -24,7 +24,7 @@ static const char *h2d_conf_listen_post(void *data)
 		if (conf_listen->default_host->default_path->content == NULL) {
 			return "no Host defined in Listen";
 		}
-		return WUY_CFLUA_OK;
+		return WUY_CFLUA_OK; // XXX check ssl and stats
 	}
 
 	const char *err = h2d_conf_host_register(conf_listen);
@@ -64,22 +64,6 @@ static const char *h2d_conf_listen_post(void *data)
 
 	return WUY_CFLUA_OK;
 }
-
-static struct wuy_cflua_command h2d_conf_listen_http1_commands[] = {
-	{	.name = "keepalive_timeout",
-		.type = WUY_CFLUA_TYPE_INTEGER,
-		.offset = offsetof(struct h2d_conf_listen, http1.keepalive_timeout),
-		.default_value.n = 60,
-		.limits.n = WUY_CFLUA_LIMITS_POSITIVE,
-	},
-	{	.name = "keepalive_min_timeout",
-		.type = WUY_CFLUA_TYPE_INTEGER,
-		.offset = offsetof(struct h2d_conf_listen, http1.keepalive_min_timeout),
-		.default_value.n = 30,
-		.limits.n = WUY_CFLUA_LIMITS_POSITIVE,
-	},
-	{ NULL }
-};
 
 static struct wuy_cflua_command h2d_conf_listen_network_commands[] = {
 	{	.name = "connections",

@@ -2,12 +2,16 @@
 
 #define _log(level, fmt, ...) h2d_request_log_at(r, dynamic->log, level, "dynamic: " fmt, ##__VA_ARGS__)
 
+#define _log_conf(level, fmt, ...) h2d_log_level(dynamic->log, level, "dynamic: " fmt, ##__VA_ARGS__)
+
 /* Call dynamic->get_name() which returns a name.
  * Return H2D_AGAIN, H2D_ERROR or H2D_OK. */
 static int h2d_dynamic_get_name(struct h2d_dynamic_conf *dynamic,
 		struct h2d_request *r, const char **p_name)
 {
 	struct h2d_dynamic_ctx *ctx = r->dynamic_ctx;
+
+	_log(H2D_LOG_DEBUG, "get_name");
 
 	const char *name;
 	if (dynamic->is_name_blocking) {
@@ -56,6 +60,8 @@ static void h2d_dynamic_delete(struct h2d_dynamic_conf *sub_dyn)
 {
 	struct h2d_dynamic_conf *dynamic = sub_dyn->father;
 
+	_log_conf(H2D_LOG_DEBUG, "delete %s", sub_dyn->name);
+
 	if (sub_dyn->is_just_holder) {
 		if (sub_dyn->error_ret == 0) {
 			sub_dyn->error_ret = WUY_HTTP_500;
@@ -76,7 +82,6 @@ static void h2d_dynamic_delete(struct h2d_dynamic_conf *sub_dyn)
 
 static int64_t h2d_dynamic_timeout_handler(int64_t at, void *data)
 {
-	printf("dynamic idle timedout\n");
 	h2d_dynamic_delete(data);
 	return 0;
 }
@@ -100,6 +105,8 @@ static int h2d_dynamic_get_conf(struct h2d_dynamic_conf *dynamic,
 	struct h2d_dynamic_ctx *ctx = r->dynamic_ctx;
 	struct h2d_dynamic_conf *sub_dyn = ctx->sub_dyn;
 	const char *name = sub_dyn->name;
+
+	_log(H2D_LOG_DEBUG, "get_conf of %s", name);
 
 	if (ctx->lth == NULL) {
 		ctx->lth = h2d_lua_api_thread_new(dynamic->get_conf, r);
@@ -127,7 +134,6 @@ static int h2d_dynamic_get_conf(struct h2d_dynamic_conf *dynamic,
 			}
 			return H2D_OK;
 		case WUY_HTTP_404:
-			_log(H2D_LOG_INFO, "delete sub %s", name);
 			h2d_dynamic_delete(sub_dyn);
 			ctx->sub_dyn = NULL;
 			return WUY_HTTP_404;

@@ -1,5 +1,8 @@
 #include "h2d_main.h"
 
+#define _log(level, fmt, ...) h2d_request_log_at(r, \
+		r->c->conf_listen->http1.log, level, "http1: " fmt, ##__VA_ARGS__)
+
 static int h2d_http1_request_headers(struct h2d_request *r, const char *buffer, int buf_len)
 {
 	const char *buf_pos = buffer;
@@ -11,7 +14,7 @@ static int h2d_http1_request_headers(struct h2d_request *r, const char *buffer, 
 		int proc_len = wuy_http_request_line(buf_pos, buf_len,
 				&r->req.method, &url_str, &url_len, &r->req.version);
 		if (proc_len < 0) {
-			printf("invalid request line !!!!\n");
+			_log(H2D_LOG_INFO, "invalid request line");
 			return H2D_ERROR;
 		}
 		if (proc_len == 0) {
@@ -21,6 +24,8 @@ static int h2d_http1_request_headers(struct h2d_request *r, const char *buffer, 
 		if (!h2d_request_set_uri(r, url_str, url_len)) {
 			return H2D_ERROR;
 		}
+
+		_log(H2D_LOG_DEBUG, "request URI %.*s", url_len, url_str);
 
 		buf_pos += proc_len;
 	}
@@ -34,6 +39,7 @@ static int h2d_http1_request_headers(struct h2d_request *r, const char *buffer, 
 		int proc_len = wuy_http_header(buf_pos, buf_end - buf_pos, &name_len,
 				&value_str, &value_len);
 		if (proc_len < 0) {
+			_log(H2D_LOG_INFO, "invalid request header");
 			return H2D_ERROR;
 		}
 		if (proc_len == 0) {
@@ -44,6 +50,9 @@ static int h2d_http1_request_headers(struct h2d_request *r, const char *buffer, 
 			r->state = H2D_REQUEST_STATE_PROCESS_HEADERS;
 			break;
 		}
+
+		_log(H2D_LOG_DEBUG, "request header: %.*s %.*s",
+				name_len, name_str, value_len, value_str);
 
 		/* handle some */
 		if (memcmp(name_str, "Content-Length", 14) == 0) {
@@ -99,6 +108,8 @@ int h2d_http1_response_headers(struct h2d_request *r)
 	}
 	p += sprintf(p, "\r\n");
 
+	_log(H2D_LOG_DEBUG, "response headers: %ld", (uint8_t *)p - r->c->send_buf_pos);
+
 	r->c->send_buf_pos = (uint8_t *)p;
 
 	return H2D_OK;
@@ -150,6 +161,8 @@ int h2d_http1_on_read(struct h2d_connection *c, void *data, int buf_len)
 
 	struct h2d_request *r = c->u.request;
 
+	_log(H2D_LOG_DEBUG, "on_read len=%d, state=%d", buf_len, r->state);
+
 	uint8_t *body_buf = data;
 	int body_len = buf_len;
 
@@ -199,9 +212,32 @@ void h2d_http1_request_close(struct h2d_request *r)
 	assert(c->u.request == r);
 
 	if (r->state != H2D_REQUEST_STATE_DONE || r->req.version == 0) {
+		_log(H2D_LOG_DEBUG, "close connection");
 		h2d_connection_close(c);
 	} else {
+		_log(H2D_LOG_DEBUG, "keepalive");
 		c->u.request = NULL;
 		h2d_connection_set_idle(c);
 	}
 }
+
+struct wuy_cflua_command h2d_conf_listen_http1_commands[] = {
+	{	.name = "keepalive_timeout",
+		.type = WUY_CFLUA_TYPE_INTEGER,
+		.offset = offsetof(struct h2d_conf_listen, http1.keepalive_timeout),
+		.default_value.n = 60,
+		.limits.n = WUY_CFLUA_LIMITS_POSITIVE,
+	},
+	{	.name = "keepalive_min_timeout",
+		.type = WUY_CFLUA_TYPE_INTEGER,
+		.offset = offsetof(struct h2d_conf_listen, http1.keepalive_min_timeout),
+		.default_value.n = 30,
+		.limits.n = WUY_CFLUA_LIMITS_POSITIVE,
+	},
+	{	.name = "log",
+		.type = WUY_CFLUA_TYPE_TABLE,
+		.offset = offsetof(struct h2d_conf_listen, http1.log),
+		.u.table = &h2d_log_conf_table,
+	},
+	{ NULL }
+};

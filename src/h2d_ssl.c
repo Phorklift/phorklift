@@ -251,11 +251,11 @@ static const char *h2d_ssl_conf_post(void *data)
 	/* certificate and private_key */
 	if (SSL_CTX_use_certificate_chain_file(conf->ctx, conf->certificate) != 1) {
 		wuy_cflua_post_arg = conf->certificate;;
-		return "fail in load certificate";
+		return ERR_error_string(ERR_get_error(), NULL);
 	}
 	if (SSL_CTX_use_PrivateKey_file(conf->ctx, conf->private_key, SSL_FILETYPE_PEM) != 1) {
 		wuy_cflua_post_arg = conf->private_key;
-		return "fail in load private_key";
+		return ERR_error_string(ERR_get_error(), NULL);
 	}
 
 	/* ticket secret */

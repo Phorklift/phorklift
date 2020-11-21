@@ -110,6 +110,8 @@ struct h2d_conf_listen {
 		int		keepalive_timeout;
 		int		keepalive_min_timeout;
 
+		struct h2d_log	*log;
+
 		loop_group_timer_t	*keepalive_timer_group;
 	} http1;
 

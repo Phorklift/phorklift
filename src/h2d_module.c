@@ -150,7 +150,7 @@ void h2d_module_dynamic_add(const char *filename)
 				continue;
 			}
 			if (name[0] == '@') {
-				fprintf(stderr, "no @ in module list file!\n");
+				fprintf(stderr, "no @ allowed in module list file!\n");
 				exit(H2D_EXIT_DYNAMIC);
 			}
 			h2d_module_dynamic_add(name);

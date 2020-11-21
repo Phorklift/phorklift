@@ -26,6 +26,9 @@ void h2d_request_reset_response(struct h2d_request *r)
 	if (r->resp.status_code == 0) {
 		return;
 	}
+
+	h2d_request_log(r, H2D_LOG_DEBUG, "reset response code=%d", r->resp.status_code);
+
 	r->resp.status_code = 0;
 	r->resp.content_length = H2D_CONTENT_LENGTH_INIT;
 	r->resp.content_generate_length = 0;
@@ -72,6 +75,10 @@ static void h2d_request_stats(struct h2d_request *r)
 
 static void h2d_request_access_log(struct h2d_request *r)
 {
+	if (r->conf_path == NULL) {
+		return;
+	}
+
 	struct h2d_conf_access_log *log = &r->conf_path->access_log;
 
 	if (log->sampling_rate == 0) {
@@ -85,7 +92,6 @@ static void h2d_request_access_log(struct h2d_request *r)
 	}
 
 	if (log->sampling_rate < 1.0 && !wuy_rand_sample(log->sampling_rate)) {
-		printf("skip log\n");
 		return;
 	}
 
@@ -183,7 +189,7 @@ bool h2d_request_set_uri(struct h2d_request *r, const char *uri_str, int uri_len
 	int path_len = wuy_http_uri(r->req.uri.raw, uri_len, &host,
 			&r->req.uri.path_pos, &r->req.uri.query_pos, &fragment);
 	if (path_len < 0) {
-		printf("invalid request uri !!!!\n");
+		h2d_request_log(r, H2D_LOG_INFO, "invalid request URI");
 		return false;
 	}
 
@@ -204,8 +210,8 @@ bool h2d_request_set_uri(struct h2d_request *r, const char *uri_str, int uri_len
 	char *decode = malloc(path_len + 1);
 	path_len = wuy_http_decode_path(decode, r->req.uri.path_pos, path_len);
 	if (path_len < 0) {
+		h2d_request_log(r, H2D_LOG_INFO, "invalid request URI path");
 		free(decode);
-		printf("invalid request uri path!!!!\n");
 		return false;
 	}
 
@@ -219,7 +225,7 @@ static int h2d_request_process_headers(struct h2d_request *r)
 	if (r->conf_host == NULL) {
 		r->conf_host = h2d_conf_host_locate(r->c->conf_listen, r->req.host);
 		if (r->conf_host == NULL) {
-			h2d_request_log(r, H2D_LOG_DEBUG, "invalid host");
+			h2d_request_log(r, H2D_LOG_INFO, "no host matched: %s", r->req.host);
 			return H2D_ERROR;
 		}
 		if (r->c->ssl_sni_conf_host != NULL && r->conf_host != r->c->ssl_sni_conf_host) {
@@ -227,18 +233,16 @@ static int h2d_request_process_headers(struct h2d_request *r)
 		}
 	}
 
-	// h2d_request_log(r, H2D_LOG_DEBUG, "debug only");
-
 	/* locate path */
 	if (r->conf_path == NULL) {
 		if (r->req.uri.raw == NULL) {
-			h2d_request_log(r, H2D_LOG_DEBUG, "no path");
+			h2d_request_log(r, H2D_LOG_INFO, "no request path");
 			return H2D_ERROR;
 		}
 		r->conf_path = h2d_conf_path_locate(r->conf_host, r->req.uri.path);
 		if (r->conf_path == NULL) {
 			r->conf_path = r->conf_host->default_path;
-			h2d_request_log(r, H2D_LOG_DEBUG, "no path matched %s", r->req.uri.raw);
+			h2d_request_log(r, H2D_LOG_DEBUG, "no path matched: %s", r->req.uri.raw);
 			return WUY_HTTP_404;
 		}
 		if (h2d_dynamic_is_enabled(&r->conf_path->dynamic)) {

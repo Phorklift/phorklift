@@ -15,4 +15,6 @@ int h2d_http1_response_body_pack(struct h2d_request *r, uint8_t *payload,
 
 void h2d_http1_request_close(struct h2d_request *r);
 
+extern struct wuy_cflua_command h2d_conf_listen_http1_commands[];
+
 #endif

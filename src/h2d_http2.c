@@ -1,6 +1,12 @@
 #include <sys/time.h>
 #include "h2d_main.h"
 
+#define _log(level, fmt, ...) h2d_request_log_at(r, \
+		r->c->conf_listen->http2.log, level, "http2: " fmt, ##__VA_ARGS__)
+
+#define _log_conn(level, fmt, ...) h2d_log_level(c->conf_listen->http2.log, \
+		level, "http2: " fmt, ##__VA_ARGS__)
+
 // move other where
 #define h2d_litestr_equal(a_str, a_len, b_str) h2d_lenstr_equal(a_str, a_len, b_str, sizeof(b_str)-1)
 static bool h2d_lenstr_equal(const char *a_str, int a_len, const char *b_str, int b_len)
@@ -13,6 +19,9 @@ static bool h2d_lenstr_equal(const char *a_str, int a_len, const char *b_str, in
 static bool h2d_http2_hook_stream_new(http2_stream_t *h2s, http2_connection_t *h2c)
 {
 	struct h2d_request *r = h2d_request_new(http2_connection_get_app_data(h2c));
+
+	_log(H2D_LOG_DEBUG, "new stream");
+
 	r->h2s = h2s;
 	http2_stream_set_app_data(h2s, r);
 	return true;
@@ -40,6 +49,9 @@ static bool h2d_http2_hook_stream_header(http2_stream_t *h2s, const char *name_s
 		r->state = H2D_REQUEST_STATE_PROCESS_HEADERS;
 		return true; //  return what ??
 	}
+
+	_log(H2D_LOG_DEBUG, "request header: %.*s %.*s",
+			name_len, name_str, value_len, value_str);
 
 	/* parse this one header */
 	if (name_str[0] == ':') {
@@ -74,8 +86,10 @@ static bool h2d_http2_hook_stream_body(http2_stream_t *h2s, const uint8_t *buf, 
 {
 	struct h2d_request *r = http2_stream_get_app_data(h2s);
 
+	_log(H2D_LOG_DEBUG, "request body %d", len);
+
 	if (buf == NULL) {
-		printf("set r->req.body_finished\n");
+		_log(H2D_LOG_DEBUG, "set r->req.body_finished");
 		r->req.body_finished = true;
 		h2d_request_run(r, -1); // TODO only for POST, should remove this
 		return true;
@@ -131,6 +145,8 @@ int h2d_http2_response_headers(struct h2d_request *r)
 
 	c->send_buf_pos += p - pos_frame;
 
+	_log(H2D_LOG_DEBUG, "response headers %ld", p - pos_frame);
+
 	return H2D_OK;
 }
 
@@ -167,6 +183,8 @@ static bool h2d_http2_hook_stream_response(http2_stream_t *h2s, int window)
 static bool h2d_http2_hook_control_frame(http2_connection_t *h2c, const uint8_t *buf, int len)
 {
 	struct h2d_connection *c = http2_connection_get_app_data(h2c);
+
+	_log_conn(H2D_LOG_DEBUG, "send control frame type=%d len=%d", buf[3], len);
 
 	int ret = h2d_connection_make_space(c, len);
 	if (ret < 0) {
@@ -222,6 +240,8 @@ int h2d_http2_on_read(struct h2d_connection *c, void *data, int len)
 
 	/* h2d_http2_hook_stream_header/_body/_close() are called inside here */
 	int proc_len = http2_process_input(h2c, data, len);
+
+	_log_conn(H2D_LOG_DEBUG, "on_read %d, process=%d", len, proc_len);
 	if (proc_len < 0) {
 		return H2D_ERROR;
 	}
@@ -238,6 +258,8 @@ int h2d_http2_on_read(struct h2d_connection *c, void *data, int len)
 
 void h2d_http2_on_writable(struct h2d_connection *c)
 {
+	_log_conn(H2D_LOG_DEBUG, "on_writable");
+
 	/* h2d_http2_hook_stream_response() is called inside here */
 	http2_schedular(c->u.h2c);
 }
@@ -258,7 +280,7 @@ void h2d_http2_request_close(struct h2d_request *r)
 /* on the connection negotiated to HTTP/2, by ALPN or Upgrade */
 void h2d_http2_connection_init(struct h2d_connection *c)
 {
-	printf("to HTTP/2\n");
+	_log_conn(H2D_LOG_DEBUG, "upgrade!");
 
 	http2_connection_t *h2c = http2_connection_new(&c->conf_listen->http2.settings);
 	http2_connection_set_app_data(h2c, c);
@@ -335,7 +357,7 @@ struct wuy_cflua_command h2d_conf_listen_http2_commands[] = {
 	},
 	{	.name = "log",
 		.type = WUY_CFLUA_TYPE_TABLE,
-		.offset = offsetof(struct h2d_upstream_conf, log),
+		.offset = offsetof(struct h2d_conf_listen, http2.log),
 		.u.table = &h2d_log_conf_table,
 	},
 	{ NULL }
