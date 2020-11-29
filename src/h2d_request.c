@@ -546,5 +546,5 @@ static void h2d_request_defer_run(void *data)
 
 void h2d_request_init(void)
 {
-	loop_idle_add(h2d_loop, h2d_request_defer_run, NULL);
+	loop_defer_add(h2d_loop, h2d_request_defer_run, NULL);
 }

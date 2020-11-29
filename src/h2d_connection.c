@@ -286,7 +286,7 @@ static int64_t h2d_connection_send_timedout(int64_t at, void *data)
 
 void h2d_connection_listen(struct h2d_conf_listen **listens)
 {
-	loop_idle_add(h2d_loop, h2d_connection_defer_routine, NULL);
+	loop_defer_add(h2d_loop, h2d_connection_defer_routine, NULL);
 
 	struct h2d_conf_listen *conf_listen;
 	for (int i = 0; (conf_listen = listens[i]) != NULL; i++) {

@@ -102,7 +102,7 @@ void h2d_log_global(const char *filename)
 
 void h2d_log_init(void)
 {
-	loop_idle_add(h2d_loop, h2d_log_routine, NULL);
+	loop_defer_add(h2d_loop, h2d_log_routine, NULL);
 }
 
 /* error log */
