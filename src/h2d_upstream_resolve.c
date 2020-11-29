@@ -299,7 +299,7 @@ const char *h2d_upstream_conf_resolve_init(struct h2d_upstream_conf *conf)
 		const char *pweight = strchr(hostname->name, '#');
 		if (pweight != NULL) {
 			hostname->host_len = pweight - hostname->name;
-			hostname->weight = atof(pweight);
+			hostname->weight = atof(pweight + 1);
 			if (hostname->weight == 0) {
 				return "invalid weight";
 			}
