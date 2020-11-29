@@ -20,13 +20,25 @@ static const char *h2d_conf_listen_post(void *data)
 {
 	struct h2d_conf_listen *conf_listen = data;
 
-	if (conf_listen->hosts == NULL) {
-		if (conf_listen->default_host->default_path->content == NULL) {
-			return "no Host defined in Listen";
-		}
-		return WUY_CFLUA_OK; // XXX check ssl and stats
+	if (conf_listen->name == NULL) {
+		conf_listen->name = conf_listen->addresses[0];
 	}
 
+	conf_listen->stats = wuy_shmpool_alloc(sizeof(struct h2d_conf_listen_stats));
+
+	/* if no Host() is set in Listen(), use default_host */
+	if (conf_listen->hosts == NULL) {
+		struct h2d_conf_host *default_host = conf_listen->default_host;
+		if (default_host->default_path->content == NULL) {
+			return "no Host defined in Listen";
+		}
+		if (default_host->ssl->ctx != NULL) {
+			conf_listen->ssl_ctx = default_host->ssl->ctx;
+		}
+		return WUY_CFLUA_OK;
+	}
+
+	/* register Host() */
 	const char *err = h2d_conf_host_register(conf_listen);
 	if (err != WUY_CFLUA_OK) {
 		return err;
@@ -55,12 +67,6 @@ static const char *h2d_conf_listen_post(void *data)
 			conf_listen->ssl_ctx = h2d_ssl_ctx_empty_server();
 		}
 	}
-
-	if (conf_listen->name == NULL) {
-		conf_listen->name = conf_listen->addresses[0];
-	}
-
-	conf_listen->stats = wuy_shmpool_alloc(sizeof(struct h2d_conf_listen_stats));
 
 	return WUY_CFLUA_OK;
 }
