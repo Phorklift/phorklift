@@ -13,6 +13,8 @@
 #include "libwuya/wuy_dict.h"
 #include "libwuya/wuy_slist.h"
 #include "libwuya/wuy_list.h"
+#include "libwuya/wuy_nop_list.h"
+#include "libwuya/wuy_nop_hlist.h"
 #include "libwuya/wuy_cflua.h"
 #include "libwuya/wuy_tcp.h"
 #include "libwuya/wuy_sockaddr.h"
