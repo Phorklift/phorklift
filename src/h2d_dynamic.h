@@ -47,8 +47,7 @@ void *h2d_dynamic_get(struct h2d_dynamic_conf *dynamic, struct h2d_request *r);
 void h2d_dynamic_ctx_free(struct h2d_request *r);
 
 void h2d_dynamic_set_container(struct h2d_dynamic_conf *dynamic,
-		struct wuy_cflua_table *conf_table,
-		off_t offset, void (*del)(void *));
+		struct wuy_cflua_table *conf_table, void (*del)(void *));
 
 static inline bool h2d_dynamic_is_enabled(struct h2d_dynamic_conf *dynamic)
 {

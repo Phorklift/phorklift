@@ -245,7 +245,7 @@ static int h2d_request_process_headers(struct h2d_request *r)
 			h2d_request_log(r, H2D_LOG_DEBUG, "no path matched: %s", r->req.uri.raw);
 			return WUY_HTTP_404;
 		}
-		if (h2d_dynamic_is_enabled(&r->conf_path->dynamic)) {
+		while (h2d_dynamic_is_enabled(&r->conf_path->dynamic)) {
 			struct h2d_conf_path *sub_path = h2d_dynamic_get(&r->conf_path->dynamic, r);
 			if (sub_path == NULL) {
 				h2d_request_log(r, H2D_LOG_DEBUG, "get dynamic sub_path %d", r->resp.status_code);

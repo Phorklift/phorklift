@@ -4,6 +4,9 @@
 
 #define _log_conf(level, fmt, ...) h2d_log_level(dynamic->log, level, "dynamic: " fmt, ##__VA_ARGS__)
 
+
+static atomic_int *h2d_dynamic_id;
+
 /* Call dynamic->get_name() which returns a name.
  * Return H2D_AGAIN, H2D_ERROR or H2D_OK. */
 static int h2d_dynamic_get_name(struct h2d_dynamic_conf *dynamic,
@@ -156,8 +159,8 @@ static int h2d_dynamic_get_conf(struct h2d_dynamic_conf *dynamic,
 
 	/* prepare shared-memory pool */
 	char pool_name[1000];
-	snprintf(pool_name, sizeof(pool_name), "/h2tpd.pid.%s.%d_%d",
-			name, getpid(), atomic_load(dynamic->shared_id));
+	snprintf(pool_name, sizeof(pool_name), "/h2tpd.pid.%d.%s",
+			atomic_load(dynamic->shared_id), name);
 	wuy_shmpool_t *shmpool = wuy_shmpool_new(pool_name, 40*1024, 40*1024, 10);
 	if (shmpool == NULL) {
 		_log(H2D_LOG_ERROR, "fail in wuy_shmpool_new");
@@ -358,38 +361,47 @@ void h2d_dynamic_ctx_free(struct h2d_request *r)
 	r->dynamic_ctx = NULL;
 }
 
-static bool h2d_dynamic_sub_begin = false; // XXX
 void h2d_dynamic_init(void)
 {
-	h2d_dynamic_sub_begin = true;
+	h2d_dynamic_id = wuy_shmpool_alloc(sizeof(atomic_int));
+	atomic_store(h2d_dynamic_id, 1);
+
 	atexit(wuy_shmpool_cleanup);
 }
 
-void h2d_dynamic_set_container(struct h2d_dynamic_conf *dynamic,
-		struct wuy_cflua_table *conf_table,
-		off_t offset, void (*del)(void *))
+static struct wuy_cflua_command *h2d_dynamic_get_cmd(struct wuy_cflua_table *table)
 {
-	dynamic->container.offset = offset;
-	dynamic->container.del = del;
+	for (struct wuy_cflua_command *cmd = table->commands; cmd->type != WUY_CFLUA_TYPE_END; cmd++) {
+		if (cmd->name != NULL && strcmp(cmd->name, "dynamic") == 0) {
+			return cmd;
+		}
+	}
+	return NULL;
+}
+void h2d_dynamic_set_container(struct h2d_dynamic_conf *dynamic,
+		struct wuy_cflua_table *conf_table, void (*del)(void *))
+{
+	/* get the offset */
+	struct wuy_cflua_command *cmd = h2d_dynamic_get_cmd(conf_table);
+	dynamic->container.offset = cmd->offset;
 
+	/* duplicate a wuy_cflua_table from @conf_table, and copy default
+	 * values from the container */
 	dynamic->sub_table = wuy_cflua_copy_table_default(conf_table,
 			h2d_dynamic_to_container(dynamic));
+
+	/* find and clear dynamic->get_name */
+	cmd = h2d_dynamic_get_cmd(dynamic->sub_table);
+	cmd->u.table->commands[0].default_value.f = 0;
+
+	/* others */
+	dynamic->container.del = del;
 }
 
 static const char *h2d_dynamic_conf_post(void *data)
 {
 	struct h2d_dynamic_conf *dynamic = data;
 
-	/* created dynamic-sub */
-	if (h2d_dynamic_sub_begin) {
-		if (dynamic->get_name_meta_level != -1) {
-			return "get_name is not allowed in dynamic sub";
-		}
-		dynamic->get_name = 0;
-		return WUY_CFLUA_OK;
-	}
-
-	/* defined in configuration file */
 	if (!wuy_cflua_is_function_set(dynamic->get_name)) {
 		return WUY_CFLUA_OK;
 	}
@@ -400,9 +412,8 @@ static const char *h2d_dynamic_conf_post(void *data)
 			offsetof(struct h2d_dynamic_conf, name),
 			offsetof(struct h2d_dynamic_conf, dict_node));
 
-	static int id = 1;
 	int expected = 0;
-	int desired = id++;
+	int desired = atomic_fetch_add(h2d_dynamic_id, 1);
 	dynamic->shared_id = wuy_shmpool_alloc(sizeof(atomic_int));
 	atomic_compare_exchange_strong(dynamic->shared_id, &expected, desired);
 

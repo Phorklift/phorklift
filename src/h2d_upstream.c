@@ -123,22 +123,23 @@ void h2d_upstream_healthcheck(struct h2d_upstream_conf *upstream);
 struct h2d_upstream_connection *
 h2d_upstream_get_connection(struct h2d_upstream_conf *upstream, struct h2d_request *r)
 {
-	if (h2d_dynamic_is_enabled(&upstream->dynamic)) {
+	while (h2d_dynamic_is_enabled(&upstream->dynamic)) {
 		upstream = h2d_dynamic_get(&upstream->dynamic, r);
 		if (upstream == NULL) {
 			h2d_request_log(r, H2D_LOG_DEBUG, "dynamic get %d", r->resp.status_code);
 			return NULL;
 		}
-		if (upstream->address_num == 0) { /* wait for hostname resolving */
-			_log(H2D_LOG_DEBUG, "dynamic wait for resolving");
-			if (wuy_list_node_linked(&r->list_node)) {
-				printf("!!!!! where does it linked???\n");
-				abort();
-			}
-			wuy_list_append(&upstream->wait_head, &r->list_node);
-			return NULL;
-		}
 		_log(H2D_LOG_DEBUG, "dynamic get done");
+	}
+
+	if (upstream->address_num == 0) { /* only for dynamic upstream */
+		_log(H2D_LOG_DEBUG, "dynamic wait for resolving");
+		if (wuy_list_node_linked(&r->list_node)) {
+			printf("!!!!! where does it linked???\n");
+			abort();
+		}
+		wuy_list_append(&upstream->wait_head, &r->list_node);
+		return NULL;
 	}
 
 	/* resolve and healthcheck routines */
@@ -477,7 +478,6 @@ static const char *h2d_upstream_conf_post(void *data)
 		conf->hostnames = (void *)1; /* used by h2d_module_command_is_set() */
 
 		h2d_dynamic_set_container(&conf->dynamic, &h2d_upstream_conf_table,
-				offsetof(struct h2d_upstream_conf, dynamic),
 				h2d_upstream_delete);
 
 		if (conf->name == NULL) {

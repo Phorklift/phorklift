@@ -118,7 +118,6 @@ static const char *h2d_conf_path_post(void *data)
 
 	if (h2d_dynamic_is_enabled(&conf_path->dynamic)) {
 		h2d_dynamic_set_container(&conf_path->dynamic, &h2d_conf_path_table,
-				offsetof(struct h2d_conf_path, dynamic),
 				h2d_conf_path_delete);
 
 	} else if (conf_path->content == NULL && conf_path->pathnames != NULL) {
