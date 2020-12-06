@@ -321,18 +321,21 @@ static int h2d_request_response_headers(struct h2d_request *r)
 		r->req_end_time = wuy_time_ms();
 	}
 
+	int ret = H2D_OK;
 	if (!r->is_broken) {
-		int ret = r->conf_path->content->content.response_headers(r);
-		if (ret != H2D_OK) {
-			return ret;
-		}
-	} else if (r->resp.broken_body_len != 0) {
-		r->resp.content_length = r->resp.broken_body_len;
+		ret = r->conf_path->content->content.response_headers(r);
+
+	} else if (r->filter_terminal && r->filter_terminal->content.response_headers != NULL) {
+		ret = r->filter_terminal->content.response_headers(r);
 	} else {
 		r->resp.content_length = h2d_request_simple_response_body(r->resp.status_code, NULL, 0);
 	}
 
-	int ret = h2d_module_filter_response_headers(r);
+	if (ret != H2D_OK) {
+		return ret;
+	}
+
+	ret = h2d_module_filter_response_headers(r);
 	if (ret != H2D_OK) {
 		return ret;
 	}
@@ -380,9 +383,9 @@ static int h2d_request_response_body(struct h2d_request *r)
 	}
 	if (!r->is_broken) {
 		body_len = r->conf_path->content->content.response_body(r, buf_pos, buf_len);
-	} else if (r->resp.broken_body_len != 0) {
-		memcpy(buf_pos, r->resp.broken_body_buf, r->resp.broken_body_len);
-		body_len = r->resp.broken_body_len;
+
+	} else if (r->filter_terminal && r->filter_terminal->content.response_body != NULL) {
+		body_len = r->filter_terminal->content.response_body(r, buf_pos, buf_len);
 	} else {
 		body_len = h2d_request_simple_response_body(r->resp.status_code, (char *)buf_pos, buf_len);
 	}
@@ -473,8 +476,8 @@ void h2d_request_run(struct h2d_request *r, int window)
 		}
 	}
 	if (ret != H2D_OK) { /* returns status code and breaks the normal process */
-		r->resp.status_code = ret;
 		r->is_broken = true;
+		r->resp.status_code = ret;
 		r->state = H2D_REQUEST_STATE_RESPONSE_HEADERS;
 	} else {
 		r->state++;

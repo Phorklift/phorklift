@@ -14,7 +14,7 @@ h2d_conf_parse_lua.h: h2d_conf_parse.lua
 	@echo '";' >> $@
 
 MODULES = modules/h2d_static.o modules/h2d_proxy.o modules/h2d_lua.o modules/h2d_acl.o \
-	  modules/h2d_test_subreq.o modules/h2d_stats.o modules/h2d_cache.o \
+	  modules/h2d_test_subreq.o modules/h2d_stats.o modules/h2d_file_cache.o \
 	  modules/h2d_auth_basic.o modules/h2d_redis.o modules/h2d_rewrite.o \
 	  modules/h2d_echo.o modules/h2d_limit_req.o \
 	  modules/h2d_upstream_roundrobin.o modules/h2d_upstream_hash.o

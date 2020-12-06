@@ -33,6 +33,7 @@ struct h2d_module {
 	void		(*stats_host)(void *conf, wuy_json_ctx_t *json);
 
 	struct {
+		bool	(*is_enabled)(void *conf);
 		int	(*process_headers)(struct h2d_request *);
 		int	(*process_body)(struct h2d_request *);
 		int	(*response_headers)(struct h2d_request *);

@@ -63,6 +63,7 @@ struct h2d_request {
 
 	int			filter_step_process_headers;
 	int			filter_step_process_body;
+	const struct h2d_module	*filter_terminal;
 
 	long			create_time;
 	long			req_end_time;

@@ -340,7 +340,14 @@ struct h2d_module *h2d_module_content_is_enabled(int i, void *conf)
 		return NULL;
 	}
 
-	return h2d_module_command_is_set(&m->command_path, conf) ? m : NULL;
+	bool is_enabled;
+	if (m->content.is_enabled != NULL) {
+		is_enabled = m->content.is_enabled(conf);
+	} else {
+		is_enabled = h2d_module_command_is_set(&m->command_path, conf);
+	}
+
+	return is_enabled ? m : NULL;
 }
 
 void h2d_module_request_ctx_free(struct h2d_request *r)
@@ -364,6 +371,9 @@ int h2d_module_filter_process_headers(struct h2d_request *r)
 		}
 		int ret = m->filters.process_headers(r);
 		if (ret != H2D_OK) {
+			if (ret > 0) { /* HTTP status_code */
+				r->filter_terminal = m;
+			}
 			return ret;
 		}
 		r->filter_step_process_headers++;
@@ -378,6 +388,9 @@ int h2d_module_filter_process_body(struct h2d_request *r)
 		}
 		int ret = m->filters.process_body(r);
 		if (ret != H2D_OK) {
+			if (ret > 0) { /* HTTP status_code */
+				r->filter_terminal = m;
+			}
 			return ret;
 		}
 		r->filter_step_process_body++;
