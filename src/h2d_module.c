@@ -298,7 +298,7 @@ static int h2d_module_filter_run(struct h2d_request *r, int index)
 {
 	struct h2d_module **modules = r->conf_path->filters->modules[index];
 	while (1) {
-		struct h2d_module *m = modules[r->filter_index];
+		struct h2d_module *m = modules[r->filter_indexs[index]];
 		if (m == NULL) {
 			return H2D_OK;
 		}
@@ -309,7 +309,7 @@ static int h2d_module_filter_run(struct h2d_request *r, int index)
 			}
 			return ret;
 		}
-		r->filter_index++;
+		r->filter_indexs[index]++;
 	}
 }
 int h2d_module_filter_process_headers(struct h2d_request *r)

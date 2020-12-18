@@ -53,7 +53,9 @@ struct h2d_request {
 		H2D_REQUEST_STATE_PARSE_HEADERS = 0,
 		H2D_REQUEST_STATE_PROCESS_HEADERS,
 		H2D_REQUEST_STATE_PROCESS_BODY,
-		H2D_REQUEST_STATE_RESPONSE_HEADERS,
+		H2D_REQUEST_STATE_RESPONSE_HEADERS_1,
+		H2D_REQUEST_STATE_RESPONSE_HEADERS_2,
+		H2D_REQUEST_STATE_RESPONSE_HEADERS_3,
 		H2D_REQUEST_STATE_RESPONSE_BODY,
 		H2D_REQUEST_STATE_DONE,
 	} state;
@@ -61,8 +63,7 @@ struct h2d_request {
 	bool			closed;
 	bool			is_broken; //TODO may put in h2d_request_run()?
 
-	int			filter_step_process_headers;
-	int			filter_step_process_body;
+	int			filter_indexs[3];
 	const struct h2d_module	*filter_terminal;
 
 	long			create_time;
