@@ -46,10 +46,7 @@ struct h2d_module {
 		int	(*response_headers)(struct h2d_request *);
 		int	(*response_body)(struct h2d_request *, uint8_t *data, int data_len, int buf_len);
 
-		double	rank_process_headers;
-		double	rank_process_body;
-		double	rank_response_headers;
-		double	rank_response_body;
+		double	ranks[4];
 	} filters;
 
 	void	(*ctx_free)(struct h2d_request *);
@@ -83,5 +80,7 @@ int h2d_module_filter_response_headers(struct h2d_request *r);
 int h2d_module_filter_response_body(struct h2d_request *r, uint8_t *data, int data_len, int buf_len);
 
 extern int h2d_module_number;
+
+extern struct wuy_cflua_table h2d_module_filters_conf_table;
 
 #endif

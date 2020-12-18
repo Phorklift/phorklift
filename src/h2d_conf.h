@@ -56,10 +56,11 @@ struct h2d_conf_path {
 		struct h2d_log_file	*file;
 	} access_log;
 
-	struct h2d_module	*content;
+	struct h2d_module		*content;
+	struct h2d_module_filters	*filters;
 
-	void			*module_confs[H2D_MODULE_MAX];
-	int			content_meta_levels[H2D_MODULE_MAX];
+	void				*module_confs[H2D_MODULE_MAX];
+	int				content_meta_levels[H2D_MODULE_MAX];
 
 	struct h2d_conf_path_stats	*stats;
 };
