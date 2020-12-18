@@ -80,4 +80,21 @@ static inline void h2d_header_dup_list(wuy_slist_t *to, wuy_slist_t *from)
 	}
 }
 
+static inline int h2d_header_dump_length(struct h2d_header *h)
+{
+	int len = 4 + h->name_len + h->value_len + 2;
+	if ((len % 2) != 0) {
+		len++;
+	}
+	return len;
+}
+static inline void *h2d_header_dump_pos(struct h2d_header *h)
+{
+	return &h->name_len;
+}
+static inline struct h2d_header *h2d_header_load_from(char *pos)
+{
+	return (struct h2d_header *)(pos - sizeof(wuy_slist_node_t));
+}
+
 #endif

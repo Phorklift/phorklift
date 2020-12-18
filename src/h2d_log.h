@@ -54,10 +54,10 @@ struct h2d_log {
 	h2d_log_file_vwrite(log->file, log->max_line, fmt, ap)
 
 #define h2d_log_level(log, level2, fmt, ...) \
-	if (level2 <= log->level) h2d_log_level_nocheck(log, level2, fmt, ##__VA_ARGS__)
+	if (level2 >= log->level) h2d_log_level_nocheck(log, level2, fmt, ##__VA_ARGS__)
 
 #define h2d_log_level_v(log, level2, fmt, ap) \
-	if (level2 <= log->level) h2d_log_level_v_nocheck(log, level2, fmt, ap)
+	if (level2 >= log->level) h2d_log_level_v_nocheck(log, level2, fmt, ap)
 
 #define h2d_assert(expr) if (!(expr)) h2d_log_fatal("assert fail: " #expr " at %s()", __FUNCTION__)
 

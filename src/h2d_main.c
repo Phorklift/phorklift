@@ -94,10 +94,6 @@ static void h2d_worker_entry(struct h2d_conf_listen **listens, int notify_fd)
 
 	prctl(PR_SET_NAME, (unsigned long)"h2tpd-worker", 0, 0, 0);
 
-	h2d_loop = loop_new();
-
-	h2d_log_init();
-	h2d_request_init();
 	h2d_module_worker_init();
 
 	h2d_connection_listen(listens);
@@ -164,12 +160,19 @@ int main(int argc, char * const *argv)
 	signal(SIGPIPE, SIG_IGN);
 	signal(SIGQUIT, h2d_signal_dispatch);
 
+	/* The loop is run at workers. We create it here because some
+	 * initialization need to create timer or defer at the loop.
+	 * It will be duplicated to the workers during fork(). */
+	h2d_loop = loop_new();
+
 	h2d_log_global(opt_error_file);
 	h2d_ssl_init();
 	h2d_http2_init();
 	h2d_upstream_init();
 	h2d_resolver_init();
 	h2d_dynamic_init();
+	h2d_log_init();
+	h2d_request_init();
 
 	h2d_module_master_init();
 

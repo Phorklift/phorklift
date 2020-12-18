@@ -247,7 +247,7 @@ static const char *h2d_static_conf_post(void *data)
 		return WUY_CFLUA_OK;
 	}
 
-	conf->dirfd = open(conf->dir_name, O_RDONLY, O_DIRECTORY);
+	conf->dirfd = open(conf->dir_name, O_RDONLY|O_DIRECTORY);
 	if (conf->dirfd < 0) {
 		wuy_cflua_post_arg = conf->dir_name;
 		return "fail to open dir";
