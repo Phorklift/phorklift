@@ -133,12 +133,10 @@ h2d_upstream_get_connection(struct h2d_upstream_conf *upstream, struct h2d_reque
 	}
 
 	if (upstream->address_num == 0) { /* only for dynamic upstream */
-		_log(H2D_LOG_DEBUG, "dynamic wait for resolving");
-		if (wuy_list_node_linked(&r->list_node)) {
-			printf("!!!!! where does it linked???\n");
-			abort();
+		if (!wuy_list_node_linked(&r->list_node)) {
+			_log(H2D_LOG_DEBUG, "dynamic wait for resolving");
+			wuy_list_append(&upstream->wait_head, &r->list_node);
 		}
-		wuy_list_append(&upstream->wait_head, &r->list_node);
 		return NULL;
 	}
 
