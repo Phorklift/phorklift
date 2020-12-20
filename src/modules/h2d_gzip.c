@@ -50,15 +50,12 @@ static int h2d_gzip_filter_response_headers(struct h2d_request *r)
 	return H2D_OK;
 }
 
-static int h2d_gzip_filter_response_body(struct h2d_request *r,
-		uint8_t *data, int data_len, int buf_len)
+static int h2d_gzip_filter_response_body(struct h2d_request *r, uint8_t *data,
+		int data_len, int buf_len, bool *p_is_last)
 {
 	z_streamp zs = r->module_ctxs[h2d_gzip_module.index];
 	if (zs == NULL) {
 		return data_len;
-	}
-	if (data_len == 0) {
-		return 0;
 	}
 
 	zs->next_in = data;
@@ -68,14 +65,11 @@ static int h2d_gzip_filter_response_body(struct h2d_request *r,
 	zs->next_out = out_buf;
 	zs->avail_out = buf_len;
 
-	int ret = deflate(zs, Z_FINISH); // XXX Z_NO_FLUSH
-	if (ret == Z_STREAM_ERROR) {
-		return H2D_ERROR;
-	}
-	if (ret == Z_OK) { // XXX
-		h2d_request_log(r, H2D_LOG_ERROR, "gzip: not finish: "
+	int ret = deflate(zs, *p_is_last ? Z_FINISH : Z_NO_FLUSH);
+	if (ret != Z_STREAM_END) {
+		h2d_request_log(r, H2D_LOG_ERROR, "gzip: defalte() %d: "
 				"in=%d out=%d, avail_in=%d avail_out=%d",
-				data_len, buf_len, zs->avail_in, zs->avail_out);
+				ret, data_len, buf_len, zs->avail_in, zs->avail_out);
 		return H2D_ERROR;
 	}
 

@@ -157,10 +157,9 @@ void h2d_http2_response_body_packfix(struct h2d_request *r,
 	*p_buf_len -= HTTP2_FRAME_HEADER_SIZE;
 }
 int h2d_http2_response_body_pack(struct h2d_request *r, uint8_t *payload,
-		int length, bool is_body_finished)
+		int length, bool is_last)
 {
-	http2_make_frame_body(r->h2s, payload - HTTP2_FRAME_HEADER_SIZE,
-			length, is_body_finished);
+	http2_make_frame_body(r->h2s, payload - HTTP2_FRAME_HEADER_SIZE, length, is_last);
 	return length + HTTP2_FRAME_HEADER_SIZE;
 }
 

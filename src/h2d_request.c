@@ -30,9 +30,9 @@ void h2d_request_reset_response(struct h2d_request *r)
 	h2d_request_log(r, H2D_LOG_DEBUG, "reset response code=%d", r->resp.status_code);
 
 	r->resp.status_code = 0;
-	r->resp.content_length = H2D_CONTENT_LENGTH_INIT;
-	r->resp.content_generate_length = 0;
+	r->resp.content_generated_length = 0;
 	r->resp.sent_length = 0;
+	r->resp.content_length = H2D_CONTENT_LENGTH_INIT;
 	h2d_header_free_list(&r->resp.headers);
 }
 
@@ -321,15 +321,19 @@ static int h2d_request_response_headers_1(struct h2d_request *r)
 		r->req_end_time = wuy_time_ms();
 	}
 
+	int ret = H2D_OK;
 	if (!r->is_broken) {
-		return r->conf_path->content->content.response_headers(r);
+		ret = r->conf_path->content->content.response_headers(r);
 
 	} else if (r->filter_terminal && r->filter_terminal->content.response_headers != NULL) {
-		return r->filter_terminal->content.response_headers(r);
+		ret = r->filter_terminal->content.response_headers(r);
 	} else {
 		r->resp.content_length = h2d_request_simple_response_body(r->resp.status_code, NULL, 0);
-		return H2D_OK;
 	}
+
+	r->resp.content_original_length = r->resp.content_length;
+
+	return ret;
 }
 
 static int h2d_request_response_headers_2(struct h2d_request *r)
@@ -373,10 +377,10 @@ static int h2d_request_response_body(struct h2d_request *r)
 	}
 
 	int body_len = 0;
-	bool is_body_finished = false;
+	bool is_last = true;
 
 	/* generate */
-	if (r->resp.content_generate_length >= r->resp.content_length) {
+	if (r->resp.content_generated_length >= r->resp.content_original_length) {
 		goto skip_generate;
 	}
 	if (!r->is_broken) {
@@ -392,40 +396,33 @@ static int h2d_request_response_body(struct h2d_request *r)
 		return body_len;
 	}
 
-	r->resp.content_generate_length += body_len;
+	r->resp.content_generated_length += body_len;
 
-	/* This checking works only if @r->resp.content_length is set in
-	 * content.response_headers() when the response body's length is explicit.
-	 * Otherwise (e.g. in chunked encoding) this checking is always false
-	 * because @r->resp.content_length was inited as (SIZE_MAX-1). In this
-	 * case content.response_body() and h2d_module_filter_response_body()
-	 * need to return 0 to indicate @is_body_finished. */
-	if (r->resp.content_generate_length >= r->resp.content_length) {
-		is_body_finished = true;
+	if (r->resp.content_original_length != H2D_CONTENT_LENGTH_INIT) {
+		is_last = r->resp.content_generated_length >= r->resp.content_original_length;
+	} else {
+		is_last = body_len == 0;
 	}
 
 skip_generate:
 
 	/* filter */
-	body_len = h2d_module_filter_response_body(r, buf_pos, body_len, buf_len);
+	body_len = h2d_module_filter_response_body(r, buf_pos, body_len, buf_len, &is_last);
 	if (body_len < 0) {
 		return body_len;
-	}
-	if (body_len == 0) {
-		is_body_finished = true;
 	}
 
 	/* pack, HTTP2 frame or HTTP1 chunked */
 	if (c->is_http2) {
-		body_len = h2d_http2_response_body_pack(r, buf_pos, body_len, is_body_finished);
+		body_len = h2d_http2_response_body_pack(r, buf_pos, body_len, is_last);
 	} else {
-		body_len = h2d_http1_response_body_pack(r, buf_pos, body_len, is_body_finished);
+		body_len = h2d_http1_response_body_pack(r, buf_pos, body_len, is_last);
 	}
 
 	r->resp.sent_length += body_len;
 	c->send_buf_pos += body_len;
 
-	return is_body_finished ? H2D_OK : h2d_request_response_body(r);
+	return is_last ? H2D_OK : h2d_request_response_body(r);
 }
 
 void h2d_request_run(struct h2d_request *r, int window)

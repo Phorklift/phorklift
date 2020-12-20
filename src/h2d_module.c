@@ -324,7 +324,8 @@ int h2d_module_filter_response_headers(struct h2d_request *r)
 {
 	return h2d_module_filter_run(r, H2D_MODULE_FILTER_RESPONSE_HEADERS);
 }
-int h2d_module_filter_response_body(struct h2d_request *r, uint8_t *data, int data_len, int buf_len)
+int h2d_module_filter_response_body(struct h2d_request *r, uint8_t *data,
+		int data_len, int buf_len, bool *p_is_last)
 {
 	struct h2d_module **modules = r->conf_path->filters->modules[H2D_MODULE_FILTER_RESPONSE_BODY];
 
@@ -334,7 +335,7 @@ int h2d_module_filter_response_body(struct h2d_request *r, uint8_t *data, int da
 		if (m == NULL) {
 			break;
 		}
-		data_len = m->filters.response_body(r, data, data_len, buf_len);
+		data_len = m->filters.response_body(r, data, data_len, buf_len, p_is_last);
 		if (data_len < 0) {
 			return data_len;
 		}

@@ -126,7 +126,7 @@ void h2d_http1_response_body_packfix(struct h2d_request *r,
 	*p_buf_len -= H2D_CHUNKED_PREFIX_LENGTH + 5;
 }
 int h2d_http1_response_body_pack(struct h2d_request *r, uint8_t *payload,
-		int length, bool is_body_finished)
+		int length, bool is_last)
 {
 	if (!h2d_http1_response_is_chunked(r)) {
 		return length;
@@ -135,7 +135,7 @@ int h2d_http1_response_body_pack(struct h2d_request *r, uint8_t *payload,
 	sprintf((char *)payload - H2D_CHUNKED_PREFIX_LENGTH, "%-8x\r", length);
 	payload[-1] = '\n';
 
-	if (length != 0 && is_body_finished) {
+	if (length != 0 && is_last) {
 		memcpy(payload + length, "\r\n0\r\n", 5);
 		return length + H2D_CHUNKED_PREFIX_LENGTH + 5;
 	} else {

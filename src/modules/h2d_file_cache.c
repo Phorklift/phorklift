@@ -49,7 +49,8 @@ struct h2d_file_cache_item {
 
 struct h2d_file_cache_ctx {
 	int				fd;
-	const char			*filename;
+	const char			*new_filename;
+	size_t				new_length;
 	struct h2d_file_cache_item	item;
 };
 
@@ -198,28 +199,17 @@ static void h2d_file_cache_ctx_free(struct h2d_request *r)
 	struct h2d_file_cache_conf *conf = r->conf_path->module_confs[h2d_file_cache_module.index];
 	struct h2d_file_cache_ctx *ctx = r->module_ctxs[h2d_file_cache_module.index];
 
-	if (ctx->filename != NULL && ctx->fd > 0) { /* create new item */
-		if (r->state == H2D_REQUEST_STATE_DONE) {
-			atomic_fetch_add(&conf->stats->store_ok, 1);
-
-			off_t file_len = lseek(ctx->fd, 0, SEEK_CUR);
-			size_t content_length = file_len - sizeof(struct h2d_file_cache_item)
-					- ctx->item.header_total_length;
-			lseek(ctx->fd, 0, SEEK_SET);
-			if (write(ctx->fd, &content_length, sizeof(size_t)) < 0) {
-				_log(H2D_LOG_ERROR, "write fail");
-			}
-		} else {
-			atomic_fetch_add(&conf->stats->store_fail, 1);
-
-			unlinkat(conf->current_dirfd, ctx->filename, 0);
-		}
-	}
-
 	if (ctx->fd > 0) {
 		close(ctx->fd);
 	}
-	free((char *)ctx->filename);
+	if (ctx->new_filename != NULL) {
+		/* created a new item but not finished */
+		if (ctx->new_length > 0) {
+			atomic_fetch_add(&conf->stats->store_fail, 1);
+		}
+		unlinkat(conf->current_dirfd, ctx->new_filename, 0);
+		free((char *)ctx->new_filename);
+	}
 	free(ctx);
 }
 
@@ -290,7 +280,7 @@ cache_miss:
 		/* save the filename and store response into it in filters later */
 		_log(H2D_LOG_DEBUG, "miss");
 		atomic_fetch_add(&conf->stats->miss, 1);
-		ctx->filename = strdup(filename);
+		ctx->new_filename = strdup(filename);
 		return H2D_OK;
 	}
 
@@ -314,8 +304,8 @@ cache_miss:
 
 		close(ctx->fd);
 		unlinkat(conf->current_dirfd, filename, 0);
-		ctx->fd = 0;
-		ctx->filename = strdup(filename);
+		ctx->fd = -1;
+		ctx->new_filename = strdup(filename);
 		return H2D_OK;
 	}
 
@@ -326,7 +316,7 @@ static int h2d_file_cache_filter_response_headers(struct h2d_request *r)
 {
 	struct h2d_file_cache_conf *conf = r->conf_path->module_confs[h2d_file_cache_module.index];
 	struct h2d_file_cache_ctx *ctx = r->module_ctxs[h2d_file_cache_module.index];
-	if (ctx == NULL || ctx->filename == NULL) {
+	if (ctx == NULL || ctx->new_filename == NULL) {
 		return H2D_OK;
 	}
 	if (r->resp.status_code != WUY_HTTP_200) { // TODO cache more status_code
@@ -363,7 +353,7 @@ static int h2d_file_cache_filter_response_headers(struct h2d_request *r)
 	}
 
 	/* create item */
-	ctx->fd = h2d_file_cache_create_file(conf, ctx->filename);
+	ctx->fd = h2d_file_cache_create_file(conf, ctx->new_filename);
 	if (ctx->fd < 0) {
 		h2d_file_cache_abort(r);
 		return H2D_OK;
@@ -389,8 +379,7 @@ static int h2d_file_cache_filter_response_headers(struct h2d_request *r)
 
 	int ret = write(ctx->fd, buffer, sizeof(buffer));
 	if (ret < 0) {
-		_log(H2D_LOG_ERROR, "write headers fail %s %s", ctx->filename, strerror(errno));
-		unlinkat(conf->current_dirfd, ctx->filename, 0);
+		_log(H2D_LOG_ERROR, "write headers fail %s %s", ctx->new_filename, strerror(errno));
 		h2d_file_cache_abort(r);
 		return H2D_OK;
 	}
@@ -399,18 +388,34 @@ static int h2d_file_cache_filter_response_headers(struct h2d_request *r)
 }
 
 static int h2d_file_cache_filter_response_body(struct h2d_request *r,
-		uint8_t *data, int data_len, int buf_len)
+		uint8_t *data, int data_len, int buf_len, bool *p_is_last)
 {
 	struct h2d_file_cache_conf *conf = r->conf_path->module_confs[h2d_file_cache_module.index];
 	struct h2d_file_cache_ctx *ctx = r->module_ctxs[h2d_file_cache_module.index];
 
-	if (ctx != NULL && ctx->filename != NULL && data_len > 0) {
-		if (write(ctx->fd, data, data_len) != data_len) {
-			_log(H2D_LOG_ERROR, "write body fail %s %s",
-					ctx->filename, strerror(errno));
-			unlinkat(conf->current_dirfd, ctx->filename, 0);
-			h2d_file_cache_abort(r);
+	if (ctx == NULL || ctx->new_filename == NULL) {
+		return data_len;
+	}
+
+	if (write(ctx->fd, data, data_len) != data_len) {
+		_log(H2D_LOG_ERROR, "write body fail %s %s",
+				ctx->new_filename, strerror(errno));
+		h2d_file_cache_abort(r);
+	}
+
+	ctx->new_length += data_len;
+
+	if (*p_is_last) {
+		atomic_fetch_add(&conf->stats->store_ok, 1);
+
+		lseek(ctx->fd, 0, SEEK_SET);
+		if (write(ctx->fd, &ctx->new_length, sizeof(size_t)) < 0) {
+			_log(H2D_LOG_ERROR, "write fail");
 		}
+
+		/* mark finished */
+		free((char *)ctx->new_filename);
+		ctx->new_filename = NULL;
 	}
 
 	return data_len;
