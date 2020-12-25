@@ -29,8 +29,6 @@ struct h2d_connection {
 	wuy_list_node_t		list_node;
 };
 
-void h2d_connection_listen(struct h2d_conf_listen **listens);
-
 static inline bool h2d_connection_write_blocked(struct h2d_connection *c)
 {
 	return c->send_buf_pos != c->send_buffer;
@@ -46,5 +44,13 @@ int h2d_connection_make_space(struct h2d_connection *c, int size);
 void h2d_connection_set_idle(struct h2d_connection *c);
 
 void h2d_connection_close(struct h2d_connection *c);
+
+const char *h2d_connection_listen_conf(struct h2d_conf_listen *conf_listen);
+
+void h2d_connection_add_listen_event(void);
+
+void h2d_connection_init(void);
+
+extern struct wuy_cflua_command h2d_conf_listen_network_commands[];
 
 #endif

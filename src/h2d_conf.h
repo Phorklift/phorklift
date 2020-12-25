@@ -84,6 +84,8 @@ struct h2d_conf_listen {
 	const char		*name;
 
 	char			**addresses;
+	int			address_num;
+	int			*fds;
 
 	SSL_CTX			*ssl_ctx;
 
@@ -121,6 +123,9 @@ struct h2d_conf_listen {
 		int		send_timeout;
 		int		recv_timeout;
 		int		send_buffer_size;
+		int		defer_accept;
+		int		backlog;
+		bool		reuse_port;
 
 		loop_group_timer_t	*send_timer_group;
 		loop_group_timer_t	*recv_timer_group;
@@ -132,6 +137,8 @@ struct h2d_conf_listen {
 };
 
 extern lua_State *h2d_L;
+
+extern struct h2d_conf_listen **h2d_conf_listens;
 
 struct h2d_conf_listen **h2d_conf_parse(const char *conf_file);
 

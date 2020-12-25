@@ -256,7 +256,6 @@ static bool h2d_connection_on_accept(loop_tcp_listen_t *loop_listen,
 }
 
 static loop_tcp_listen_ops_t h2d_connection_listen_ops = {
-	.reuse_port = true,
 	.on_accept = h2d_connection_on_accept,
 };
 static loop_stream_ops_t h2d_connection_stream_ops = {
@@ -284,40 +283,111 @@ static int64_t h2d_connection_send_timedout(int64_t at, void *data)
 	return 0;
 }
 
-void h2d_connection_listen(struct h2d_conf_listen **listens)
+void h2d_connection_add_listen_event(void)
 {
-	loop_defer_add(h2d_loop, h2d_connection_defer_routine, NULL);
+	for (int i = 0; h2d_conf_listens[i] != NULL; i++) {
+		struct h2d_conf_listen *conf_listen = h2d_conf_listens[i];
 
-	struct h2d_conf_listen *conf_listen;
-	for (int i = 0; (conf_listen = listens[i]) != NULL; i++) {
-
-		/* group timers */
-		conf_listen->http1.keepalive_timer_group = loop_group_timer_new(h2d_loop,
-				h2d_connection_recv_timedout,
-				conf_listen->http1.keepalive_timeout * 1000);
-		conf_listen->http2.idle_timer_group = loop_group_timer_new(h2d_loop,
-				h2d_connection_recv_timedout,
-				conf_listen->http2.idle_timeout * 1000);
-		conf_listen->network.recv_timer_group = loop_group_timer_new(h2d_loop,
-				h2d_connection_recv_timedout,
-				conf_listen->network.recv_timeout * 1000);
-		conf_listen->network.send_timer_group = loop_group_timer_new(h2d_loop,
-				h2d_connection_send_timedout,
-				conf_listen->network.send_timeout * 1000);
-
-		/* listen */
-		for (int j = 0; conf_listen->addresses[j] != NULL; j++) {
-			loop_tcp_listen_t *loop_listen = loop_tcp_listen(h2d_loop,
-					conf_listen->addresses[j], &h2d_connection_listen_ops,
+		for (int j = 0; j < conf_listen->address_num; j++) {
+			loop_tcp_listen_t *loop_listen = loop_tcp_listen_fd(h2d_loop,
+					conf_listen->fds[j], &h2d_connection_listen_ops,
 					&h2d_connection_stream_ops);
-
-			if (loop_listen == NULL) {
-				fprintf(stderr, "listen on %s fail: %s\n",
-						conf_listen->addresses[j], strerror(errno));
-				exit(H2D_EXIT_LISTEN);
-			}
+			assert(loop_listen != NULL);
 
 			loop_tcp_listen_set_app_data(loop_listen, conf_listen);
 		}
 	}
+}
+
+const char *h2d_connection_listen_conf(struct h2d_conf_listen *conf_listen)
+{
+	for (int i = 0; conf_listen->addresses[i] != NULL; i++) {
+		conf_listen->address_num++;
+	}
+
+	conf_listen->fds = calloc(conf_listen->address_num, sizeof(int));
+
+	for (int i = 0; i < conf_listen->address_num; i++) {
+		const char *address = conf_listen->addresses[i];
+
+		struct sockaddr_storage ss;
+		if (!wuy_sockaddr_loads(address, &ss, 0)) {
+			errno = EINVAL;
+			return address;
+		}
+		int fd = wuy_tcp_listen((struct sockaddr *)&ss, conf_listen->network.backlog,
+				conf_listen->network.reuse_port);
+		if (fd < 0) {
+			return address;
+		}
+
+		wuy_tcp_set_defer_accept(fd, conf_listen->network.defer_accept);
+
+		conf_listen->fds[i] = fd;
+	}
+
+	/* group timers */
+	conf_listen->http1.keepalive_timer_group = loop_group_timer_new(h2d_loop,
+			h2d_connection_recv_timedout,
+			conf_listen->http1.keepalive_timeout * 1000);
+	conf_listen->http2.idle_timer_group = loop_group_timer_new(h2d_loop,
+			h2d_connection_recv_timedout,
+			conf_listen->http2.idle_timeout * 1000);
+	conf_listen->network.recv_timer_group = loop_group_timer_new(h2d_loop,
+			h2d_connection_recv_timedout,
+			conf_listen->network.recv_timeout * 1000);
+	conf_listen->network.send_timer_group = loop_group_timer_new(h2d_loop,
+			h2d_connection_send_timedout,
+			conf_listen->network.send_timeout * 1000);
+
+	return NULL;
+}
+
+struct wuy_cflua_command h2d_conf_listen_network_commands[] = {
+	{	.name = "connections",
+		.type = WUY_CFLUA_TYPE_INTEGER,
+		.offset = offsetof(struct h2d_conf_listen, network.connections),
+		.limits.n = WUY_CFLUA_LIMITS_NON_NEGATIVE,
+	},
+	{	.name = "recv_timeout",
+		.type = WUY_CFLUA_TYPE_INTEGER,
+		.offset = offsetof(struct h2d_conf_listen, network.recv_timeout),
+		.default_value.n = 10,
+		.limits.n = WUY_CFLUA_LIMITS_POSITIVE,
+	},
+	{	.name = "send_timeout",
+		.type = WUY_CFLUA_TYPE_INTEGER,
+		.offset = offsetof(struct h2d_conf_listen, network.send_timeout),
+		.default_value.n = 10,
+		.limits.n = WUY_CFLUA_LIMITS_POSITIVE,
+	},
+	{	.name = "send_buffer_size",
+		.type = WUY_CFLUA_TYPE_INTEGER,
+		.offset = offsetof(struct h2d_conf_listen, network.send_buffer_size),
+		.default_value.n = 16 * 1024,
+		.limits.n = WUY_CFLUA_LIMITS_LOWER(4 * 1024),
+	},
+	{	.name = "backlog",
+		.type = WUY_CFLUA_TYPE_INTEGER,
+		.offset = offsetof(struct h2d_conf_listen, network.backlog),
+		.default_value.n = 1000,
+		.limits.n = WUY_CFLUA_LIMITS_POSITIVE,
+	},
+	{	.name = "reuse_port",
+		.type = WUY_CFLUA_TYPE_BOOLEAN,
+		.offset = offsetof(struct h2d_conf_listen, network.reuse_port),
+		.default_value.b = true,
+	},
+	{	.name = "defer_accept",
+		.type = WUY_CFLUA_TYPE_INTEGER,
+		.offset = offsetof(struct h2d_conf_listen, network.defer_accept),
+		.default_value.n = 10,
+		.limits.n = WUY_CFLUA_LIMITS_NON_NEGATIVE,
+	},
+	{ NULL }
+};
+
+void h2d_connection_init(void)
+{
+	loop_defer_add(h2d_loop, h2d_connection_defer_routine, NULL);
 }

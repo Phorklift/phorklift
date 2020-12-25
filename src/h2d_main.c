@@ -84,26 +84,21 @@ static void h2d_signal_worker_quit(int signo)
 {
 	loop_kill(h2d_loop);
 }
-static void h2d_worker_entry(struct h2d_conf_listen **listens, int notify_fd)
+static void h2d_worker_entry(void)
 {
 	printf("start worker: %d\n", getpid());
-
-	h2d_in_worker = true;
 
 	signal(SIGQUIT, h2d_signal_worker_quit);
 
 	prctl(PR_SET_NAME, (unsigned long)"h2tpd-worker", 0, 0, 0);
 
+	h2d_in_worker = true;
+
+	loop_new_event(h2d_loop);
+
+	h2d_connection_add_listen_event();
+
 	h2d_module_worker_init();
-
-	h2d_connection_listen(listens);
-
-	/* notify master */
-	if (notify_fd >= 0) {
-		char n = 1;
-		assert(write(notify_fd, &n, 1));
-		close(notify_fd);
-	}
 
 	/* go to work! */
 	loop_run(h2d_loop);
@@ -125,31 +120,17 @@ static void h2d_signal_dispatch(int signo)
 	kill(0, signo);
 }
 
-static pid_t h2d_worker_new(struct h2d_conf_listen **listens)
+static pid_t h2d_worker_new(void)
 {
-	int notify_fds[2];
-	assert(pipe(notify_fds) == 0);
-
 	pid_t pid = fork();
 	if (pid < 0) {
 		perror("fail in fork");
 		return -1;
 	}
 	if (pid == 0) {
-		close(notify_fds[0]);
-		h2d_worker_entry(listens, notify_fds[1]);
+		h2d_worker_entry();
 		exit(0);
 	}
-
-	/* wait the notification */
-	char c;
-	close(notify_fds[1]);
-	int len = read(notify_fds[0], &c, 1);
-	close(notify_fds[0]);
-	if (len < 1) {
-		return -1;
-	}
-
 	return pid;
 }
 
@@ -163,7 +144,7 @@ int main(int argc, char * const *argv)
 	/* The loop is run at workers. We create it here because some
 	 * initialization need to create timer or defer at the loop.
 	 * It will be duplicated to the workers during fork(). */
-	h2d_loop = loop_new();
+	h2d_loop = loop_new_noev();
 
 	h2d_log_global(opt_error_file);
 	h2d_ssl_init();
@@ -173,17 +154,18 @@ int main(int argc, char * const *argv)
 	h2d_dynamic_init();
 	h2d_log_init();
 	h2d_request_init();
+	h2d_connection_init();
 
 	h2d_module_master_init();
 
-	struct h2d_conf_listen **listens = h2d_conf_parse(conf_file);
+	h2d_conf_parse(conf_file);
 
 	h2d_module_master_post();
 
 	h2d_lua_api_init();
 
 	if (opt_worker_num < 0) {
-		h2d_worker_entry(listens, -1);
+		h2d_worker_entry();
 		return 0;
 	}
 
@@ -192,7 +174,7 @@ int main(int argc, char * const *argv)
 		opt_worker_num = sysconf(_SC_NPROCESSORS_ONLN);
 	}
 	for (int i = 0; i < opt_worker_num; i++) {
-		if (h2d_worker_new(listens) < 0) {
+		if (h2d_worker_new() < 0) {
 			return H2D_EXIT_FORK_WORKER;
 		}
 	}
@@ -213,7 +195,7 @@ int main(int argc, char * const *argv)
 
 		} else if (WIFSIGNALED(status)) {
 			printf("worker %d is terminated by signal %d\n", pid, WTERMSIG(status));
-			h2d_worker_new(listens);
+			h2d_worker_new();
 
 		} else {
 			printf("worker %d quit!\n", pid);

@@ -8,6 +8,8 @@
  * This is persistent because of the functions defined in config file. */
 lua_State *h2d_L;
 
+struct h2d_conf_listen **h2d_conf_listens;
+
 /* say nothing */
 static int h2d_conf_name(void *data, char *buf, int size)
 {
@@ -49,7 +51,6 @@ struct h2d_conf_listen **h2d_conf_parse(const char *conf_file)
 		.name = h2d_conf_name,
 	};
 
-	static struct h2d_conf_listen **h2d_conf_listens;
 	const char *err = wuy_cflua_parse(h2d_L, &global, &h2d_conf_listens);
 	if (err != WUY_CFLUA_OK) {
 		fprintf(stderr, "parse conf_file fail: %s\n", err);

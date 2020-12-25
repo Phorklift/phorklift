@@ -24,6 +24,12 @@ static const char *h2d_conf_listen_post(void *data)
 		conf_listen->name = conf_listen->addresses[0];
 	}
 
+	const char *err_addr = h2d_connection_listen_conf(conf_listen);
+	if (err_addr != NULL) {
+		wuy_cflua_post_arg = err_addr;
+		return "listen address";
+	}
+
 	conf_listen->stats = wuy_shmpool_alloc(sizeof(struct h2d_conf_listen_stats));
 
 	/* if no Host() is set in Listen(), use default_host */
@@ -70,33 +76,6 @@ static const char *h2d_conf_listen_post(void *data)
 
 	return WUY_CFLUA_OK;
 }
-
-static struct wuy_cflua_command h2d_conf_listen_network_commands[] = {
-	{	.name = "connections",
-		.type = WUY_CFLUA_TYPE_INTEGER,
-		.offset = offsetof(struct h2d_conf_listen, network.connections),
-		.limits.n = WUY_CFLUA_LIMITS_NON_NEGATIVE,
-	},
-	{	.name = "recv_timeout",
-		.type = WUY_CFLUA_TYPE_INTEGER,
-		.offset = offsetof(struct h2d_conf_listen, network.recv_timeout),
-		.default_value.n = 10,
-		.limits.n = WUY_CFLUA_LIMITS_POSITIVE,
-	},
-	{	.name = "send_timeout",
-		.type = WUY_CFLUA_TYPE_INTEGER,
-		.offset = offsetof(struct h2d_conf_listen, network.send_timeout),
-		.default_value.n = 10,
-		.limits.n = WUY_CFLUA_LIMITS_POSITIVE,
-	},
-	{	.name = "send_buffer_size",
-		.type = WUY_CFLUA_TYPE_INTEGER,
-		.offset = offsetof(struct h2d_conf_listen, network.send_buffer_size),
-		.default_value.n = 16 * 1024,
-		.limits.n = WUY_CFLUA_LIMITS_LOWER(4 * 1024),
-	},
-	{ NULL }
-};
 
 static struct wuy_cflua_command h2d_conf_listen_commands[] = {
 	{	.name = "_addresses",
