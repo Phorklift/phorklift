@@ -106,7 +106,7 @@ struct h2d_conf_listen {
 
 		struct http2_settings	settings;
 
-		loop_group_timer_t	*idle_timer_group;
+		loop_group_timer_head_t	*idle_timer_group;
 	} http2;
 
 	struct {
@@ -115,7 +115,7 @@ struct h2d_conf_listen {
 
 		struct h2d_log	*log;
 
-		loop_group_timer_t	*keepalive_timer_group;
+		loop_group_timer_head_t	*keepalive_timer_group;
 	} http1;
 
 	struct {
@@ -127,8 +127,8 @@ struct h2d_conf_listen {
 		int		backlog;
 		bool		reuse_port;
 
-		loop_group_timer_t	*send_timer_group;
-		loop_group_timer_t	*recv_timer_group;
+		loop_group_timer_head_t	*send_timer_group;
+		loop_group_timer_head_t	*recv_timer_group;
 	} network;
 
 	void			*module_confs[H2D_MODULE_MAX];
@@ -151,6 +151,8 @@ struct h2d_conf_path *h2d_conf_path_locate(struct h2d_conf_host *conf_host,
 void h2d_conf_path_stats(struct h2d_conf_path *conf_path, wuy_json_ctx_t *json);
 void h2d_conf_host_stats(struct h2d_conf_host *conf_host, wuy_json_ctx_t *json);
 void h2d_conf_listen_stats(struct h2d_conf_listen *conf_listen, wuy_json_ctx_t *json);
+
+void h2d_conf_dump(void);
 
 /* internal */
 extern struct wuy_cflua_table h2d_conf_listen_table;

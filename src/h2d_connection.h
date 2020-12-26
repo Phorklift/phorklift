@@ -20,8 +20,8 @@ struct h2d_connection {
 		struct h2d_request	*request;
 	} u;
 
-	loop_group_timer_node_t	*recv_timer;
-	loop_group_timer_node_t	*send_timer;
+	loop_group_timer_t	*recv_timer;
+	loop_group_timer_t	*send_timer;
 
 	uint8_t			*send_buffer;
 	uint8_t			*send_buf_pos;
@@ -36,7 +36,7 @@ static inline bool h2d_connection_write_blocked(struct h2d_connection *c)
 
 static inline void h2d_connection_set_recv_timer(struct h2d_connection *c)
 {
-	loop_group_timer_node_set(c->conf_listen->network.recv_timer_group, c->recv_timer);
+	loop_group_timer_set(c->conf_listen->network.recv_timer_group, c->recv_timer);
 }
 
 int h2d_connection_make_space(struct h2d_connection *c, int size);

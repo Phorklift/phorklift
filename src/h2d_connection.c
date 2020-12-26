@@ -44,8 +44,8 @@ void h2d_connection_close(struct h2d_connection *c)
 	}
 	loop_stream_close(c->loop_stream);
 
-	loop_group_timer_node_delete(c->recv_timer);
-	loop_group_timer_node_delete(c->send_timer);
+	loop_group_timer_delete(c->recv_timer);
+	loop_group_timer_delete(c->send_timer);
 
 skip_subr:
 	h2d_connection_put_defer(c);
@@ -58,7 +58,7 @@ void h2d_connection_set_idle(struct h2d_connection *c)
 	}
 
 	_log(H2D_LOG_DEBUG, "set idle");
-	loop_group_timer_node_set(c->is_http2 ? c->conf_listen->http2.idle_timer_group
+	loop_group_timer_set(c->is_http2 ? c->conf_listen->http2.idle_timer_group
 			: c->conf_listen->http1.keepalive_timer_group, c->recv_timer);
 }
 
@@ -94,11 +94,11 @@ static int h2d_connection_flush(struct h2d_connection *c)
 			c->send_buf_pos -= write_len;
 		}
 
-		loop_group_timer_node_set(c->conf_listen->network.send_timer_group, c->send_timer);
+		loop_group_timer_set(c->conf_listen->network.send_timer_group, c->send_timer);
 		return H2D_AGAIN;
 	}
 
-	loop_group_timer_node_suspend(c->send_timer);
+	loop_group_timer_suspend(c->send_timer);
 	c->send_buf_pos = c->send_buffer;
 	return H2D_OK;
 }
@@ -164,7 +164,7 @@ static int h2d_connection_on_read(loop_stream_t *s, void *data, int len)
 
 	_log(H2D_LOG_DEBUG, "on_read %d", len);
 
-	loop_group_timer_node_suspend(c->recv_timer);
+	loop_group_timer_suspend(c->recv_timer);
 
 	if (c->is_http2) {
 		return h2d_http2_on_read(c, data, len);
@@ -241,8 +241,8 @@ static bool h2d_connection_on_accept(loop_tcp_listen_t *loop_listen,
 	c->client_addr = *addr;
 	c->conf_listen = conf_listen;
 	c->loop_stream = s;
-	c->recv_timer = loop_group_timer_node_new(c);
-	c->send_timer = loop_group_timer_node_new(c);
+	c->recv_timer = loop_group_timer_new(c);
+	c->send_timer = loop_group_timer_new(c);
 	loop_stream_set_app_data(s, c);
 
 	/* set ssl */
@@ -327,16 +327,16 @@ const char *h2d_connection_listen_conf(struct h2d_conf_listen *conf_listen)
 	}
 
 	/* group timers */
-	conf_listen->http1.keepalive_timer_group = loop_group_timer_new(h2d_loop,
+	conf_listen->http1.keepalive_timer_group = loop_group_timer_head_new(h2d_loop,
 			h2d_connection_recv_timedout,
 			conf_listen->http1.keepalive_timeout * 1000);
-	conf_listen->http2.idle_timer_group = loop_group_timer_new(h2d_loop,
+	conf_listen->http2.idle_timer_group = loop_group_timer_head_new(h2d_loop,
 			h2d_connection_recv_timedout,
 			conf_listen->http2.idle_timeout * 1000);
-	conf_listen->network.recv_timer_group = loop_group_timer_new(h2d_loop,
+	conf_listen->network.recv_timer_group = loop_group_timer_head_new(h2d_loop,
 			h2d_connection_recv_timedout,
 			conf_listen->network.recv_timeout * 1000);
-	conf_listen->network.send_timer_group = loop_group_timer_new(h2d_loop,
+	conf_listen->network.send_timer_group = loop_group_timer_head_new(h2d_loop,
 			h2d_connection_send_timedout,
 			conf_listen->network.send_timeout * 1000);
 
@@ -376,7 +376,6 @@ struct wuy_cflua_command h2d_conf_listen_network_commands[] = {
 	{	.name = "reuse_port",
 		.type = WUY_CFLUA_TYPE_BOOLEAN,
 		.offset = offsetof(struct h2d_conf_listen, network.reuse_port),
-		.default_value.b = true,
 	},
 	{	.name = "defer_accept",
 		.type = WUY_CFLUA_TYPE_INTEGER,
