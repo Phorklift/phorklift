@@ -54,6 +54,30 @@ struct h2d_conf_path *h2d_conf_path_locate(struct h2d_conf_host *conf_host,
 	return NULL;
 }
 
+bool h2d_conf_path_check_overwrite(struct h2d_conf_host *conf_host,
+		int stop, const char *pathname)
+{
+	char first = pathname[0];
+	if (first == '~') {
+		return false;
+	}
+	if (first == '=') {
+		pathname++;
+	}
+	for (int i = 0; i < stop; i++) {
+		const char *pattern;
+		for (int j = 0; (pattern = conf_host->paths[i]->pathnames[j]) != NULL; j++) {
+			if (pattern[0] == '=' && first == '/') {
+				continue;
+			}
+			if (h2d_conf_path_name_match(pattern, pathname)) {
+				return true;
+			}
+		}
+	}
+	return false;
+}
+
 static int h2d_conf_path_name(void *data, char *buf, int size)
 {
 	struct h2d_conf_path *conf_path = data;
@@ -218,6 +242,7 @@ static struct wuy_cflua_command h2d_conf_path_commands[] = {
 
 struct wuy_cflua_table h2d_conf_path_table = {
 	.commands = h2d_conf_path_commands,
+	.refer_name = "Path",
 	.size = sizeof(struct h2d_conf_path),
 	.post = h2d_conf_path_post,
 	.name = h2d_conf_path_name,

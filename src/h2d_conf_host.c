@@ -150,6 +150,26 @@ static int h2d_conf_host_name(void *data, char *buf, int size)
 	return snprintf(buf, size, "Host(%s)>", conf_host->hostnames[0]);
 }
 
+bool h2d_conf_path_check_overwrite(struct h2d_conf_host *conf_host,
+		int stop, const char *pathname);
+static const char *h2d_conf_host_check_path_overwrite(struct h2d_conf_host *conf_host)
+{
+	if (conf_host->paths == NULL) {
+		return NULL;
+	}
+
+	struct h2d_conf_path *conf_path;
+	for (int i = 0; (conf_path = conf_host->paths[i]) != NULL; i++) {
+		char *pathname;
+		for (int j = 0; (pathname = conf_path->pathnames[j]) != NULL; j++) {
+			if (h2d_conf_path_check_overwrite(conf_host, i, pathname)) {
+				return pathname;
+			}
+		}
+	}
+	return NULL;
+}
+
 static const char *h2d_conf_host_post(void *data)
 {
 	struct h2d_conf_host *conf_host = data;
@@ -165,6 +185,12 @@ static const char *h2d_conf_host_post(void *data)
 		conf_host->name = conf_host->hostnames ? conf_host->hostnames[0] : "_default";
 	}
 
+	const char *pathname = h2d_conf_host_check_path_overwrite(conf_host);
+	if (pathname != NULL) {
+		wuy_cflua_post_arg = pathname;
+		return "Path overwrite";
+	}
+
 	conf_host->stats = wuy_shmpool_alloc(sizeof(struct h2d_conf_host_stats));
 
 	return WUY_CFLUA_OK;
@@ -177,6 +203,7 @@ static struct wuy_cflua_command h2d_conf_host_commands[] = {
 		.u.table = WUY_CFLUA_ARRAY_STRING_TABLE,
 	},
 	{	.type = WUY_CFLUA_TYPE_TABLE,
+		.description = "Path scope.",
 		.offset = offsetof(struct h2d_conf_host, paths),
 		.u.table = &h2d_conf_path_table,
 		.is_extra_commands = true,
@@ -202,6 +229,7 @@ static struct wuy_cflua_command h2d_conf_host_commands[] = {
 
 struct wuy_cflua_table h2d_conf_host_table = {
 	.commands = h2d_conf_host_commands,
+	.refer_name = "Host",
 	.size = sizeof(struct h2d_conf_host),
 	.post = h2d_conf_host_post,
 	.name = h2d_conf_host_name,
