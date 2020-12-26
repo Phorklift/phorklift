@@ -223,6 +223,7 @@ struct h2d_module h2d_proxy_module = {
 	.name = "proxy",
 	.command_path = {
 		.name = "proxy",
+		.description = "Proxy content module.",
 		.type = WUY_CFLUA_TYPE_TABLE,
 		.offset = 0, /* reset later */
 		.u.table = &(struct wuy_cflua_table) {

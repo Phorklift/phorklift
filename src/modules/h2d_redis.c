@@ -63,6 +63,7 @@ struct h2d_module h2d_redis_module = {
 	.name = "redis",
 	.command_path = {
 		.name = "redis",
+		.description = "Redis module.",
 		.type = WUY_CFLUA_TYPE_TABLE,
 		.offset = 0, /* reset later */
 		.u.table = &(struct wuy_cflua_table) {

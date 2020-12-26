@@ -45,6 +45,7 @@ static const char *h2d_rewrite_conf_post(void *data)
 
 static struct wuy_cflua_command h2d_rewrite_conf_commands[] = {
 	{	.type = WUY_CFLUA_TYPE_STRING,
+		.description = "Rewrite rules list.",
 		.offset = offsetof(struct h2d_rewrite_conf, strs),
 		.array_number_offset = offsetof(struct h2d_rewrite_conf, num),
 	},
@@ -55,6 +56,7 @@ struct h2d_module h2d_rewrite_module = {
 	.name = "rewrite",
 	.command_path = {
 		.name = "rewrite",
+		.description = "URL rewrite filter module.",
 		.type = WUY_CFLUA_TYPE_TABLE,
 		.u.table = &(struct wuy_cflua_table) {
 			.commands = h2d_rewrite_conf_commands,

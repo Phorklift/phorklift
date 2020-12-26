@@ -121,7 +121,7 @@ static int h2d_static_generate_response_headers(struct h2d_request *r)
 	r->module_ctxs[h2d_static_module.index] = ctx;
 
 	const char *filename = r->req.uri.path + 1;
-	if (filename[0] == '\0') {
+	if (filename[0] == '\0') { // TODO not only the root dir, but sub dirs
 		if (conf->index != NULL) {
 			filename = conf->index;
 		} else if (conf->list_dir) {
@@ -258,6 +258,7 @@ static const char *h2d_static_conf_post(void *data)
 
 static struct wuy_cflua_command h2d_static_conf_commands[] = {
 	{	.type = WUY_CFLUA_TYPE_STRING,
+		.description = "The directory.",
 		.is_single_array = true,
 		.offset = offsetof(struct h2d_static_conf, dir_name),
 	},
@@ -267,6 +268,7 @@ static struct wuy_cflua_command h2d_static_conf_commands[] = {
 		.default_value.s = "index.html",
 	},
 	{	.name = "list_dir",
+		.description = "TODO, priority agaist 'index'",
 		.type = WUY_CFLUA_TYPE_BOOLEAN,
 		.offset = offsetof(struct h2d_static_conf, list_dir),
 	},
@@ -282,6 +284,7 @@ struct h2d_module h2d_static_module = {
 	.name = "static",
 	.command_path = {
 		.name = "static",
+		.description = "Static file content module.",
 		.type = WUY_CFLUA_TYPE_TABLE,
 		.offset = 0, /* reset later */
 		.u.table = &(struct wuy_cflua_table) {

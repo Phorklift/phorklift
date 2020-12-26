@@ -326,15 +326,20 @@ static int h2d_file_cache_filter_response_headers(struct h2d_request *r)
 	}
 
 	time_t expire_after = -1;
+	ctx->item.header_num = 0;
+	ctx->item.header_total_length = 0;
 
 	/* count response headers first */
 	struct h2d_header *store_headers[100], *h;
 	h2d_header_iter(&r->resp.headers, h) {
 		const char *value = h2d_header_value(h);
 		if (strcasecmp(h->str, "Cache-Control") == 0) {
-			if (memcmp(value, "max-age=", 8) == 0) {
-				expire_after = atoi(value+8);
+			if (memcmp(value, "max-age=", 8) != 0) {
+				atomic_fetch_add(&conf->stats->ignore_expire, 1);
+				h2d_file_cache_abort(r);
+				return H2D_OK;
 			}
+			expire_after = atoi(value+8);
 		} else if (strcasecmp(h->str, "Expires") == 0) {
 			expire_after = wuy_http_date_parse(h2d_header_value(h)) - time(NULL);
 		}
@@ -575,10 +580,12 @@ static bool h2d_file_cache_content_is_enabled(void *data)
 
 static struct wuy_cflua_command h2d_file_cache_conf_commands[] = {
 	{	.type = WUY_CFLUA_TYPE_STRING,
+		.description = "Directory to store the cache content.",
 		.is_single_array = true,
 		.offset = offsetof(struct h2d_file_cache_conf, dir_name),
 	},
 	{	.name = "key",
+		.description = "Return a string as cache key. The raw URL is used if not set.",
 		.type = WUY_CFLUA_TYPE_FUNCTION,
 		.offset = offsetof(struct h2d_file_cache_conf, key),
 	},
@@ -592,15 +599,18 @@ static struct wuy_cflua_command h2d_file_cache_conf_commands[] = {
 		.limits.n = WUY_CFLUA_LIMITS_NON_NEGATIVE,
 	},
 	{	.name = "inactive",
+		.description = "Cache items will be deleted if inactive such long time.",
 		.type = WUY_CFLUA_TYPE_INTEGER,
 		.offset = offsetof(struct h2d_file_cache_conf, inactive),
 		.limits.n = WUY_CFLUA_LIMITS_NON_NEGATIVE,
 		.default_value.n = 3 * 3600,
 	},
 	{	.name = "dir_level",
+		.description = "This should be set as `floor(log[256]N) - 1` where N is the estimated number of cache items.",
 		.type = WUY_CFLUA_TYPE_INTEGER,
 		.offset = offsetof(struct h2d_file_cache_conf, dir_level),
 		.limits.n = WUY_CFLUA_LIMITS(0, 3),
+		.default_value.n = 1,
 	},
 	{	.name = "max_length",
 		.type = WUY_CFLUA_TYPE_INTEGER,
@@ -634,6 +644,9 @@ struct h2d_module h2d_file_cache_module = {
 	.name = "file_cache",
 	.command_path = {
 		.name = "file_cache",
+		.description = "File cache filter module. " \
+				"There is no total size limit of occupation. " \
+				"We just clear items that inactive for a long time.",
 		.type = WUY_CFLUA_TYPE_TABLE,
 		.u.table = &(struct wuy_cflua_table) {
 			.commands = h2d_file_cache_conf_commands,

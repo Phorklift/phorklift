@@ -59,3 +59,23 @@ struct h2d_conf_listen **h2d_conf_parse(const char *conf_file)
 
 	return h2d_conf_listens;
 }
+
+void h2d_conf_dump(void)
+{
+	printf("\n# Common component tables\n\n");
+	printf("+ LOG _(table)_\n\n");
+	wuy_cflua_dump_table_markdown(&h2d_log_conf_table, 1);
+	printf("+ UPSTREAM _(table)_\n\n");
+	wuy_cflua_dump_table_markdown(&h2d_upstream_conf_table, 1);
+	printf("+ DYNAMIC _(table)_\n\n");
+	wuy_cflua_dump_table_markdown(&h2d_dynamic_conf_table, 1);
+
+	printf("\n# Listen scope\n\n");
+	wuy_cflua_dump_table_markdown(&h2d_conf_listen_table, 0);
+
+	printf("\n# Host scope\n\n");
+	wuy_cflua_dump_table_markdown(&h2d_conf_host_table, 0);
+
+	printf("\n# Path scope\n\n");
+	wuy_cflua_dump_table_markdown(&h2d_conf_path_table, 0);
+}

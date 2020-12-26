@@ -106,6 +106,7 @@ struct h2d_module h2d_stats_module = {
 	.name = "stats",
 	.command_path = {
 		.name = "stats",
+		.description = "Statistics content module.",
 		.type = WUY_CFLUA_TYPE_BOOLEAN,
 		.offset = 0, /* reset later */
 	},

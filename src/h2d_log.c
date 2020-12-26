@@ -177,6 +177,7 @@ static struct wuy_cflua_command h2d_log_conf_commands[] = {
 };
 struct wuy_cflua_table h2d_log_conf_table = {
 	.commands = h2d_log_conf_commands,
+	.refer_name = "LOG",
 	.size = sizeof(struct h2d_log),
 	.post = h2d_log_conf_post,
 };

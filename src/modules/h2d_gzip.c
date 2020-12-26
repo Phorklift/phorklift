@@ -90,6 +90,7 @@ static void h2d_gzip_ctx_free(struct h2d_request *r)
 
 static struct wuy_cflua_command h2d_gzip_conf_commands[] = {
 	{	.type = WUY_CFLUA_TYPE_INTEGER,
+		.description = "Compress level. 0 is disable, 1 is fastest, and 9 is best compression.",
 		.is_single_array = true,
 		.offset = offsetof(struct h2d_gzip_conf, level),
 		.limits.n = WUY_CFLUA_LIMITS(0, 9),
@@ -113,6 +114,7 @@ static struct wuy_cflua_command h2d_gzip_conf_commands[] = {
 		.default_value.n = 100,
 	},
 	{	.name = "filter",
+		.description = "Return a boolean to indicate whether to compress.",
 		.type = WUY_CFLUA_TYPE_FUNCTION,
 		.offset = offsetof(struct h2d_gzip_conf, filter),
 	},
@@ -123,6 +125,7 @@ struct h2d_module h2d_gzip_module = {
 	.name = "gzip",
 	.command_path = {
 		.name = "gzip",
+		.description = "Gzip filter module.",
 		.type = WUY_CFLUA_TYPE_TABLE,
 		.u.table = &(struct wuy_cflua_table) {
 			.commands = h2d_gzip_conf_commands,

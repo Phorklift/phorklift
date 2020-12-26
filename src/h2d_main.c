@@ -24,12 +24,13 @@ static const char *h2d_getopt(int argc, char *const *argv)
 		"    -e FILE     set error log file [error.log]\n"
 		"    -m MODULE   add dynamic module\n"
 		"    -m @FILE    add dynamic module list file\n"
+		"    -r          show configration reference and quit\n"
 		"    -v          show version and quit\n"
 		"    -h          show this help and quit\n";
 
 	int opt;
 	char *endptr;
-	while ((opt = getopt(argc, argv, "w:p:i:m:e:vh")) != -1) {
+	while ((opt = getopt(argc, argv, "w:p:i:m:e:rvh")) != -1) {
 		switch (opt) {
 		case 'w':
 			opt_worker_num = strtol(optarg, &endptr, 0);
@@ -53,6 +54,11 @@ static const char *h2d_getopt(int argc, char *const *argv)
 		case 'm':
 			h2d_module_dynamic_add(optarg);
 			break;
+		case 'r':
+			h2d_module_master_init();
+			h2d_upstream_init();
+			h2d_conf_dump();
+			exit(0);
 		case 'v':
 			printf("version: %s\n", H2D_VERSION);
 			exit(0);

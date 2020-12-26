@@ -103,6 +103,9 @@ static const char *h2d_acl_conf_post(void *data)
 
 static struct wuy_cflua_command h2d_acl_conf_commands[] = {
 	{	.type = WUY_CFLUA_TYPE_STRING,
+		.description = "Rule list. " \
+				"Deny-rules begin with '!', e.g \"!123.234.0.0/24\". " \
+				"The default policy is the negative of the last rule.",
 		.offset = offsetof(struct h2d_acl_conf, strs),
 		.array_number_offset = offsetof(struct h2d_acl_conf, num),
 	},
@@ -113,6 +116,7 @@ struct h2d_module h2d_acl_module = {
 	.name = "acl",
 	.command_path = {
 		.name = "acl",
+		.description = "Access control list (ACL) filter module.",
 		.type = WUY_CFLUA_TYPE_TABLE,
 		.u.table = &(struct wuy_cflua_table) {
 			.commands = h2d_acl_conf_commands,

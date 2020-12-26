@@ -72,6 +72,7 @@ static const char *h2d_auth_basic_conf_post(void *data)
 
 static struct wuy_cflua_command h2d_auth_basic_conf_commands[] = {
 	{	.type = WUY_CFLUA_TYPE_STRING,
+		.description = "Entries in user:password format.",
 		.offset = offsetof(struct h2d_auth_basic_conf, users),
 	},
 	{	.name = "realm",
@@ -86,6 +87,7 @@ struct h2d_module h2d_auth_basic_module = {
 	.name = "auth_basic",
 	.command_path = {
 		.name = "auth_basic",
+		.description = "Basic access authentication filter module.",
 		.type = WUY_CFLUA_TYPE_TABLE,
 		.u.table = &(struct wuy_cflua_table) {
 			.commands = h2d_auth_basic_conf_commands,

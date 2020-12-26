@@ -198,6 +198,7 @@ static const char *h2d_limit_req_conf_post(void *data)
 
 static struct wuy_cflua_command h2d_limit_req_conf_commands[] = {
 	{	.type = WUY_CFLUA_TYPE_INTEGER,
+		.description = "Limit rate per second.",
 		.is_single_array = true,
 		.offset = offsetof(struct h2d_limit_req_conf, meter.rate),
 		.limits.n = WUY_CFLUA_LIMITS_NON_NEGATIVE,
@@ -208,11 +209,13 @@ static struct wuy_cflua_command h2d_limit_req_conf_commands[] = {
 		.limits.n = WUY_CFLUA_LIMITS_NON_NEGATIVE,
 	},
 	{	.name = "punish",
+		.description = "Deny for such long time if limited.",
 		.type = WUY_CFLUA_TYPE_INTEGER,
 		.offset = offsetof(struct h2d_limit_req_conf, meter.punish_sec),
 		.limits.n = WUY_CFLUA_LIMITS_NON_NEGATIVE,
 	},
 	{	.name = "key",
+		.description = "Return a string key. Client IP address is used if not set.",
 		.type = WUY_CFLUA_TYPE_FUNCTION,
 		.offset = offsetof(struct h2d_limit_req_conf, key),
 	},
@@ -223,6 +226,7 @@ static struct wuy_cflua_command h2d_limit_req_conf_commands[] = {
 		.limits.n = WUY_CFLUA_LIMITS(8, 255),
 	},
 	{	.name = "size",
+		.description = "Size of shared-memory.",
 		.type = WUY_CFLUA_TYPE_INTEGER,
 		.offset = offsetof(struct h2d_limit_req_conf, size),
 		.default_value.n = 1024*1024, /* 1 MiB*/
@@ -246,6 +250,7 @@ struct h2d_module h2d_limit_req_module = {
 	.name = "limit_req",
 	.command_path = {
 		.name = "limit_req",
+		.description = "Request rate limit filter module.",
 		.type = WUY_CFLUA_TYPE_TABLE,
 		.u.table = &(struct wuy_cflua_table) {
 			.commands = h2d_limit_req_conf_commands,

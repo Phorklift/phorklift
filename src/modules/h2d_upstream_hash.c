@@ -118,6 +118,7 @@ static void h2d_upstream_hash_free(struct h2d_upstream_conf *upstream)
 
 static struct wuy_cflua_command h2d_upstream_hash_commands[] = {
 	{	.type = WUY_CFLUA_TYPE_FUNCTION,
+		.description = "Return string as hash key.",
 		.is_single_array = true,
 		.offset = offsetof(struct h2d_upstream_hash_conf, key),
 	},
@@ -134,6 +135,8 @@ struct h2d_upstream_loadbalance h2d_upstream_hash = {
 	.name = "hash",
 	.command = {
 		.name = "hash",
+		.description = "Hash upstream loadbalance module. " \
+				"Consistent hash is used. Weight is supported.",
 		.type = WUY_CFLUA_TYPE_TABLE,
 		.offset = 0, /* reset later */
 		.u.table = &(struct wuy_cflua_table) {

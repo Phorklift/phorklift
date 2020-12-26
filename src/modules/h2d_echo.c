@@ -59,6 +59,7 @@ struct h2d_module h2d_echo_module = {
 	.name = "echo",
 	.command_path = {
 		.name = "echo",
+		.description = "Echo content module. Response a static string.",
 		.type = WUY_CFLUA_TYPE_TABLE,
 		.offset = 0, /* reset later */
 		.u.table = &(struct wuy_cflua_table) {
