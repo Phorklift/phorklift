@@ -57,7 +57,7 @@ static const char *h2d_getopt(int argc, char *const *argv)
 		case 'r':
 			h2d_module_master_init();
 			h2d_upstream_init();
-			h2d_conf_dump();
+			h2d_conf_doc();
 			exit(0);
 		case 'v':
 			printf("version: %s\n", H2D_VERSION);
