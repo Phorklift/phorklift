@@ -573,11 +573,6 @@ static const char *h2d_file_cache_conf_post(void *data)
 	return WUY_CFLUA_OK;
 }
 
-static bool h2d_file_cache_content_is_enabled(void *data)
-{
-	return false;
-}
-
 static struct wuy_cflua_command h2d_file_cache_conf_commands[] = {
 	{	.type = WUY_CFLUA_TYPE_STRING,
 		.description = "Directory to store the cache content.",
@@ -659,12 +654,9 @@ struct h2d_module h2d_file_cache_module = {
 		.process_headers = h2d_file_cache_filter_process_headers,
 		.response_headers = h2d_file_cache_filter_response_headers,
 		.response_body = h2d_file_cache_filter_response_body,
-	},
 
-	.content = {
-		.is_enabled = h2d_file_cache_content_is_enabled,
-		.response_headers = h2d_file_cache_generate_response_headers,
-		.response_body = h2d_file_cache_generate_response_body,
+		.content_headers = h2d_file_cache_generate_response_headers,
+		.content_body = h2d_file_cache_generate_response_body,
 	},
 
 	.ctx_free = h2d_file_cache_ctx_free,

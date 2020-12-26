@@ -47,6 +47,9 @@ struct h2d_module {
 		int	(*response_body)(struct h2d_request *, uint8_t *data,
 				int data_len, int buf_len, bool *p_is_last);
 
+		int	(*content_headers)(struct h2d_request *);
+		int	(*content_body)(struct h2d_request *, uint8_t *buf, int len);
+
 		double	ranks[4];
 	} filters;
 
