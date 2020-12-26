@@ -25,7 +25,7 @@ h2tpd: h2d_main.o h2d_conf.o h2d_conf_listen.o h2d_conf_host.o h2d_conf_path.o \
 		h2d_request.o h2d_resolver.o h2d_log.o h2d_dynamic.o \
 		h2d_upstream.o h2d_upstream_resolve.o h2d_upstream_healthcheck.o \
 		h2d_upstream_content.o \
-		h2d_lua_api.o h2d_conf_dump.o
+		h2d_lua_api.o h2d_conf_doc.o
 	make -C modules
 	$(CC) -o $@ $^ $(MODULES) $(LDFLAGS) $(LDLIBS)
 

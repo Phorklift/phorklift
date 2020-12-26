@@ -69,7 +69,7 @@ struct h2d_upstream_address {
 	wuy_list_t		active_head;
 	wuy_list_node_t		upstream_node;
 	wuy_list_node_t		hostname_node;
-	wuy_list_node_t		down_node;
+	loop_timer_t		*active_hc_timer;
 	double			weight;
 
 	struct h2d_upstream_conf	*upstream;
@@ -150,13 +150,11 @@ struct h2d_upstream_conf {
 	pthread_mutex_t				*address_stats_lock;
 	struct h2d_upstream_address_stats	*address_stats_start;
 
-	wuy_list_t			down_head;
 	wuy_list_t			deleted_address_defer;
 
 	SSL_CTX				*ssl_ctx;
 
 	/* resolve */
-	time_t				resolve_last;
 	int				resolve_index;
 	bool				resolve_updated;
 	loop_stream_t			*resolve_stream;

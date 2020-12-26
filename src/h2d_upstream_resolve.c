@@ -9,7 +9,7 @@ static void h2d_upstream_address_defer_free(struct h2d_upstream_conf *upstream)
 	struct h2d_upstream_address *address, *safe;
 	wuy_list_iter_safe_type(&upstream->deleted_address_defer, address, safe, hostname_node) {
 		if (!wuy_list_empty(&address->active_head) || !wuy_list_empty(&address->idle_head)
-				|| wuy_list_node_linked(&address->down_node)) {
+				|| address->active_hc_timer != NULL) {
 			continue;
 		}
 		atomic_fetch_sub(&address->stats->refs, 1);
@@ -147,7 +147,6 @@ static void h2d_upstream_resolve_hostname(struct h2d_upstream_conf *upstream)
 	}
 
 	/* no picked. finish resolve all hostnames */
-	upstream->resolve_last = time(NULL);
 	upstream->resolve_index = 0;
 	if (!upstream->resolve_updated) {
 		return;
@@ -241,12 +240,9 @@ static loop_stream_ops_t h2d_upstream_resolve_ops = {
 	.on_read = h2d_upstream_resolve_on_read,
 };
 
-void h2d_upstream_resolve(struct h2d_upstream_conf *upstream)
+static int64_t h2d_upstream_resolve_timer_handler(int64_t at, void *data)
 {
-	if (upstream->resolve_last == 0) {
-		/* all static addresses, no need resolve */
-		return;
-	}
+	struct h2d_upstream_conf *upstream = data;
 
 	if (upstream->resolve_stream == NULL) {
 		/* initialize the loop_stream.
@@ -257,17 +253,15 @@ void h2d_upstream_resolve(struct h2d_upstream_conf *upstream)
 		loop_stream_set_app_data(upstream->resolve_stream, upstream);
 	}
 
-	if (time(NULL) - upstream->resolve_last < upstream->resolve_interval) {
-		return;
-	}
 	if (upstream->resolve_index != 0) { /* in processing already */
-		return;
+		return upstream->resolve_interval * 1000;
 	}
 
 	h2d_upstream_address_defer_free(upstream);
 
-	/* begin the resolve */
 	h2d_upstream_resolve_hostname(upstream);
+
+	return upstream->resolve_interval * 1000;
 }
 
 const char *h2d_upstream_conf_resolve_init(struct h2d_upstream_conf *conf)
@@ -369,7 +363,8 @@ const char *h2d_upstream_conf_resolve_init(struct h2d_upstream_conf *conf)
 
 	/* resolve stream */
 	if (need_resolved && conf->resolve_interval > 0) {
-		conf->resolve_last = time(NULL);
+		loop_timer_t *timer = loop_timer_new(h2d_loop, h2d_upstream_resolve_timer_handler, conf);
+		loop_timer_set_after(timer, conf->resolve_interval * 1000);
 	}
 
 	return WUY_CFLUA_OK;
@@ -379,8 +374,8 @@ sub_check:
 		if (conf->resolve_interval == 0) {
 			return "resolve_interval can not be 0 for dynamic upstream with hostnames";
 		}
-		conf->resolve_last = 1;
-		h2d_upstream_resolve(conf);
+		loop_timer_t *timer = loop_timer_new(h2d_loop, h2d_upstream_resolve_timer_handler, conf);
+		loop_timer_set_after(timer, 0);
 	} else {
 		if (conf->address_num == 0) {
 			return "no address for dynamic upstream";

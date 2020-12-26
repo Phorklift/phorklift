@@ -46,6 +46,8 @@ static bool h2d_upstream_is_active_healthcheck(struct h2d_upstream_conf *upstrea
 	return upstream->healthcheck.req_len != 0;
 }
 
+void h2d_upstream_healthcheck_defer(struct h2d_upstream_address *address);
+
 void h2d_upstream_connection_fail(struct h2d_upstream_connection *upc)
 {
 	struct h2d_request *r = upc->request;
@@ -76,13 +78,11 @@ void h2d_upstream_connection_fail(struct h2d_upstream_connection *upc)
 	_log(H2D_LOG_ERROR, "go down");
 	address->down_time = time(NULL);
 	address->healthchecks = 0;
+	if (h2d_upstream_is_active_healthcheck(upstream)) {
+		h2d_upstream_healthcheck_defer(address);
+	}
 
 	atomic_fetch_add(&address->stats->down, 1);
-
-	if (h2d_upstream_is_active_healthcheck(upstream)) {
-		wuy_list_del_if(&address->down_node);
-		wuy_list_append(&upstream->down_head, &address->down_node);
-	}
 }
 
 static void h2d_upstream_on_active(loop_stream_t *s)
@@ -117,12 +117,10 @@ static loop_stream_ops_t h2d_upstream_ops = {
 	H2D_SSL_LOOP_STREAM_UNDERLYINGS,
 };
 
-void h2d_upstream_resolve(struct h2d_upstream_conf *upstream);
-void h2d_upstream_healthcheck(struct h2d_upstream_conf *upstream);
-
 struct h2d_upstream_connection *
 h2d_upstream_get_connection(struct h2d_upstream_conf *upstream, struct h2d_request *r)
 {
+	/* check if dynamic */
 	while (h2d_dynamic_is_enabled(&upstream->dynamic)) {
 		upstream = h2d_dynamic_get(&upstream->dynamic, r);
 		if (upstream == NULL) {
@@ -140,10 +138,7 @@ h2d_upstream_get_connection(struct h2d_upstream_conf *upstream, struct h2d_reque
 		return NULL;
 	}
 
-	/* resolve and healthcheck routines */
-	h2d_upstream_resolve(upstream);
-	h2d_upstream_healthcheck(upstream);
-
+	/* pick an address */
 	struct h2d_upstream_address *address = upstream->loadbalance->pick(upstream, r);
 	if (address == NULL) {
 		_log(H2D_LOG_ERROR, "pick fail");
@@ -493,7 +488,6 @@ static const char *h2d_upstream_conf_post(void *data)
 	wuy_list_init(&conf->wait_head);
 	wuy_list_init(&conf->address_head);
 	wuy_list_init(&conf->deleted_address_defer);
-	wuy_list_init(&conf->down_head);
 
 	if (conf->name == NULL) {
 		conf->name = conf->hostnames[0].name;
@@ -562,7 +556,7 @@ static struct wuy_cflua_command h2d_upstream_healthcheck_commands[] = {
 	{	.name = "interval",
 		.type = WUY_CFLUA_TYPE_INTEGER,
 		.offset = offsetof(struct h2d_upstream_conf, healthcheck.interval),
-		.default_value.n = 60,
+		.default_value.n = 10,
 		.limits.n = WUY_CFLUA_LIMITS_POSITIVE,
 	},
 	{	.name = "filter",
@@ -589,6 +583,7 @@ static struct wuy_cflua_command h2d_upstream_healthcheck_commands[] = {
 };
 static struct wuy_cflua_command h2d_upstream_conf_commands[] = {
 	{	.type = WUY_CFLUA_TYPE_STRING,
+		.description = "Hostnames list.",
 		.offset = offsetof(struct h2d_upstream_conf, hostnames),
 		.array_member_size = sizeof(struct h2d_upstream_hostname),
 	},
@@ -676,6 +671,7 @@ static struct wuy_cflua_command h2d_upstream_conf_commands[] = {
 
 struct wuy_cflua_table h2d_upstream_conf_table = {
 	.commands = h2d_upstream_conf_commands,
+	.refer_name = "UPSTREAM",
 	.size = sizeof(struct h2d_upstream_conf),
 	.post = h2d_upstream_conf_post,
 };
