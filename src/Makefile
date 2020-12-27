@@ -15,16 +15,17 @@ h2d_conf_parse_lua.h: h2d_conf_parse.lua
 	@echo '";' >> $@
 
 MODULES = modules/h2d_static.o modules/h2d_proxy.o modules/h2d_lua.o modules/h2d_acl.o \
-	  modules/h2d_test_subreq.o modules/h2d_stats.o modules/h2d_file_cache.o \
+	  modules/h2d_stats.o modules/h2d_file_cache.o \
 	  modules/h2d_auth_basic.o modules/h2d_redis.o modules/h2d_rewrite.o \
 	  modules/h2d_echo.o modules/h2d_limit_req.o modules/h2d_gzip.o \
+	  modules/h2d_auth_request.o \
 	  modules/h2d_upstream_roundrobin.o modules/h2d_upstream_hash.o
 
 h2tpd: h2d_main.o h2d_conf.o h2d_conf_listen.o h2d_conf_host.o h2d_conf_path.o \
 		h2d_ssl.o h2d_module.o h2d_http2.o h2d_http1.o h2d_connection.o \
 		h2d_request.o h2d_resolver.o h2d_log.o h2d_dynamic.o \
 		h2d_upstream.o h2d_upstream_resolve.o h2d_upstream_healthcheck.o \
-		h2d_upstream_content.o \
+		h2d_upstream_content.o\
 		h2d_lua_api.o
 	make -C modules
 	$(CC) -o $@ $^ $(MODULES) $(LDFLAGS) $(LDLIBS)

@@ -112,7 +112,7 @@ void h2d_request_active_list(wuy_list_t *list, const char *from);
 
 void h2d_request_init(void);
 
-struct h2d_request *h2d_request_subrequest(struct h2d_request *father);
+struct h2d_request *h2d_request_subrequest(struct h2d_request *father, const char *url);
 
 /* used only for h2d_request_log and h2d_request_log_at */
 static inline struct h2d_log *h2d_request_get_log(struct h2d_request *r)

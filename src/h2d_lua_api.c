@@ -240,11 +240,9 @@ static int h2d_lua_api_subrequest(lua_State *L)
 {
 	h2d_lua_api_check_blocking(L, "subrequest");
 
-	size_t len;
-	const char *uri = lua_tolstring(L, -1, &len);
+	const char *uri = lua_tostring(L, -1);
 
-	struct h2d_request *subr = h2d_request_subrequest(h2d_lua_api_current->r);
-	h2d_request_set_uri(subr, uri, len);
+	struct h2d_request *subr = h2d_request_subrequest(h2d_lua_api_current->r, uri);
 	subr->req.method = WUY_HTTP_GET;
 
 	h2d_lua_api_current->resume.handler = h2d_lua_api_subrequest_resume;

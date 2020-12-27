@@ -515,13 +515,13 @@ void h2d_request_active_list(wuy_list_t *list, const char *from)
 	}
 }
 
-struct h2d_request *h2d_request_subrequest(struct h2d_request *father)
+struct h2d_request *h2d_request_subrequest(struct h2d_request *father, const char *url)
 {
 	/* fake connection */
 	struct h2d_connection *c = calloc(1, sizeof(struct h2d_connection));
 	c->conf_listen = father->c->conf_listen;
 
-	/* subruest */
+	/* init subrequest */
 	struct h2d_request *subr = h2d_request_new(c);
 	subr->conf_host = father->conf_host;
 	subr->state = H2D_REQUEST_STATE_PROCESS_HEADERS;
@@ -530,7 +530,11 @@ struct h2d_request *h2d_request_subrequest(struct h2d_request *father)
 
 	c->u.request = subr;
 
-	h2d_request_log(father, H2D_LOG_DEBUG, "h2d_request_subr_new %p -> %p", father, subr);
+	/* set subrequest */
+	subr->req.method = WUY_HTTP_GET;
+	h2d_request_set_uri(subr, url, strlen(url));
+
+	h2d_request_log(father, H2D_LOG_DEBUG, "h2d_request_subrequest %p -> %p", father, subr);
 
 	h2d_request_active(subr, "new subrequest");
 	return subr;
