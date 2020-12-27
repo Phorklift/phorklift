@@ -523,6 +523,7 @@ struct h2d_request *h2d_request_subrequest(struct h2d_request *father, const cha
 
 	/* init subrequest */
 	struct h2d_request *subr = h2d_request_new(c);
+	subr->req.host = strdup(father->req.host);
 	subr->conf_host = father->conf_host;
 	subr->state = H2D_REQUEST_STATE_PROCESS_HEADERS;
 	subr->father = father;

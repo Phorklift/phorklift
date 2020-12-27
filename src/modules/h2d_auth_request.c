@@ -14,18 +14,35 @@ static int h2d_auth_request_process_headers(struct h2d_request *r)
 	}
 
 	struct h2d_request *subr = r->module_ctxs[h2d_auth_request_module.index];
-	if (subr == NULL) {
-		/* first time get in */
-		r->module_ctxs[h2d_auth_request_module.index] = h2d_request_subrequest(r, conf->pathname);
+	if (subr == NULL) { /* first time get in */
+		subr = h2d_request_subrequest(r, conf->pathname);
+		h2d_header_dup_list(&subr->req.headers, &r->req.headers);
+		// TODO req-body
+		// subr->req.method = r->req.method;
+
+		r->module_ctxs[h2d_auth_request_module.index] = subr;
 		return H2D_AGAIN;
-	} else {
-		if (subr->resp.status_code == 0) {
-			return H2D_AGAIN;
-		}
-		if (subr->resp.status_code == WUY_HTTP_200) {
-			return H2D_OK;
+	}
+
+	struct h2d_header *h;
+	switch (subr->resp.status_code) {
+	case 0:
+		return H2D_AGAIN;
+	case WUY_HTTP_200:
+		return H2D_OK;
+	case WUY_HTTP_401:
+		h2d_header_iter(&subr->resp.headers, h) {
+			if (strcasecmp(h->str, "WWW-Authenticate") == 0) {
+				h2d_header_add(&r->resp.headers, "WWW-Authenticate", 16,
+						h2d_header_value(h), h->value_len);
+				break;
+			}
 		}
 		return WUY_HTTP_401;
+	case WUY_HTTP_403:
+		return WUY_HTTP_403;
+	default:
+		return H2D_ERROR;
 	}
 }
 
