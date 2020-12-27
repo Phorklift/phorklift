@@ -140,7 +140,7 @@ extern lua_State *h2d_L;
 
 extern struct h2d_conf_listen **h2d_conf_listens;
 
-struct h2d_conf_listen **h2d_conf_parse(const char *conf_file);
+void h2d_conf_parse(const char *conf_file);
 
 struct h2d_conf_host *h2d_conf_host_locate(struct h2d_conf_listen *conf_listen,
 		const char *name);
