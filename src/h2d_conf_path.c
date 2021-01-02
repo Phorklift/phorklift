@@ -24,6 +24,10 @@ void h2d_conf_path_stats(struct h2d_conf_path *conf_path, wuy_json_ctx_t *json)
 
 static bool h2d_conf_path_name_match(const char *def, const char *req)
 {
+	if (req[0] == '@') {
+		return strcmp(def, req) == 0;
+	}
+
 	switch (def[0]) {
 	case '=':
 		return strcmp(def + 1, req) == 0;
@@ -31,6 +35,8 @@ static bool h2d_conf_path_name_match(const char *def, const char *req)
 		return memcmp(def, req, strlen(def)) == 0;
 	case '~':
 		return h2d_lua_api_str_find(req, def + 1);
+	case '@':
+		return false;
 	default:
 		abort();
 	}
@@ -98,9 +104,9 @@ static const char *h2d_conf_path_post(void *data)
 	if (conf_path->pathnames != NULL) {
 		for (int i = 0; conf_path->pathnames[i] != NULL; i++) {
 			char first = conf_path->pathnames[i][0];
-			if (first != '=' && first != '~' && first != '/') {
+			if (first != '=' && first != '~' && first != '/' && first != '@') {
 				wuy_cflua_post_arg = conf_path->pathnames[i];
-				return "pathname must start with `/`, `=` or `~`";
+				return "pathname must start with '/', '=', '~' or '@'";
 			}
 		}
 	}

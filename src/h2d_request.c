@@ -468,7 +468,9 @@ void h2d_request_run(struct h2d_request *r, int window)
 		return;
 	}
 	if (ret == H2D_ERROR) {
-		if (r->state <= H2D_REQUEST_STATE_RESPONSE_HEADERS_1) {
+		if (r->state == H2D_REQUEST_STATE_PARSE_HEADERS) { // XXX reset the request??
+			ret = H2D_OK;
+		} else if (r->state <= H2D_REQUEST_STATE_RESPONSE_HEADERS_1) {
 			h2d_request_log(r, H2D_LOG_ERROR, "should not be here");
 			ret = WUY_HTTP_500;
 		} else {

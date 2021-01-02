@@ -12,6 +12,8 @@
 	X(h2d_auth_request_module) \
 	X(h2d_limit_req_module) \
 	X(h2d_gzip_module) \
+	X(h2d_save_to_module) \
+	X(h2d_jump_if_module) \
 
 #define H2D_UPSTREAM_LOADBALANCE_X_LIST \
 	X(h2d_upstream_roundrobin) \
