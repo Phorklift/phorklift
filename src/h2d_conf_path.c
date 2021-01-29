@@ -93,10 +93,6 @@ static int h2d_conf_path_name(void *data, char *buf, int size)
 	return snprintf(buf, size, "Path(%s)>", conf_path->pathnames[0]);
 }
 
-static void h2d_conf_path_delete(void *data)
-{
-}
-
 static const char *h2d_conf_path_post(void *data)
 {
 	struct h2d_conf_path *conf_path = data;
@@ -147,8 +143,7 @@ static const char *h2d_conf_path_post(void *data)
 	}
 
 	if (h2d_dynamic_is_enabled(&conf_path->dynamic)) {
-		h2d_dynamic_set_container(&conf_path->dynamic, &h2d_conf_path_table,
-				h2d_conf_path_delete);
+		h2d_dynamic_set_container(&conf_path->dynamic, &h2d_conf_path_table);
 
 	} else if (conf_path->content == NULL && conf_path->pathnames != NULL) {
 		return "no content set";
@@ -174,6 +169,11 @@ static const char *h2d_conf_path_post(void *data)
 	conf_path->stats = wuy_shmpool_alloc(sizeof(struct h2d_conf_path_stats));
 
 	return WUY_CFLUA_OK;
+}
+
+static void h2d_conf_path_free(void *data)
+{
+	// TODO
 }
 
 static struct wuy_cflua_command h2d_conf_path_access_log_commands[] = {
@@ -251,5 +251,6 @@ struct wuy_cflua_table h2d_conf_path_table = {
 	.refer_name = "Path",
 	.size = sizeof(struct h2d_conf_path),
 	.post = h2d_conf_path_post,
+	.free = h2d_conf_path_free,
 	.name = h2d_conf_path_name,
 };

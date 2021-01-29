@@ -51,12 +51,12 @@ static int h2d_dynamic_get_name(struct h2d_dynamic_conf *dynamic,
 static void *h2d_dynamic_to_container(struct h2d_dynamic_conf *sub_dyn)
 {
 	struct h2d_dynamic_conf *dynamic = sub_dyn->father ? sub_dyn->father : sub_dyn;
-	return ((char *)sub_dyn) - dynamic->container.offset;
+	return ((char *)sub_dyn) - dynamic->container_offset;
 }
 static struct h2d_dynamic_conf *h2d_dynamic_from_container(void *container,
 		struct h2d_dynamic_conf *dynamic)
 {
-	return (void *)(((char *)container) + dynamic->container.offset);
+	return (void *)(((char *)container) + dynamic->container_offset);
 }
 
 static void h2d_dynamic_delete(struct h2d_dynamic_conf *sub_dyn)
@@ -79,7 +79,7 @@ static void h2d_dynamic_delete(struct h2d_dynamic_conf *sub_dyn)
 		wuy_shmpool_release(sub_dyn->shmpool);
 	}
 	if (!sub_dyn->is_just_holder) {
-		dynamic->container.del(h2d_dynamic_to_container(sub_dyn));
+		wuy_cflua_free(h2d_L, dynamic->sub_table, h2d_dynamic_to_container(sub_dyn));
 	}
 }
 
@@ -379,11 +379,11 @@ static struct wuy_cflua_command *h2d_dynamic_get_cmd(struct wuy_cflua_table *tab
 	return NULL;
 }
 void h2d_dynamic_set_container(struct h2d_dynamic_conf *dynamic,
-		struct wuy_cflua_table *conf_table, void (*del)(void *))
+		struct wuy_cflua_table *conf_table)
 {
 	/* get the offset */
 	struct wuy_cflua_command *cmd = h2d_dynamic_get_cmd(conf_table);
-	dynamic->container.offset = cmd->offset;
+	dynamic->container_offset = cmd->offset;
 
 	/* duplicate a wuy_cflua_table from @conf_table, and copy default
 	 * values from the container */
@@ -393,9 +393,6 @@ void h2d_dynamic_set_container(struct h2d_dynamic_conf *dynamic,
 	/* find and clear dynamic->get_name */
 	cmd = h2d_dynamic_get_cmd(dynamic->sub_table);
 	cmd->u.table->commands[0].default_value.f = 0;
-
-	/* others */
-	dynamic->container.del = del;
 }
 
 static const char *h2d_dynamic_conf_post(void *data)
@@ -418,6 +415,17 @@ static const char *h2d_dynamic_conf_post(void *data)
 	atomic_compare_exchange_strong(dynamic->shared_id, &expected, desired);
 
 	return WUY_CFLUA_OK;
+}
+
+static void h2d_dynamic_conf_free(void *data)
+{
+	struct h2d_dynamic_conf *dynamic = data;
+
+	// TODO any sub-sub-dyn?
+
+	if (dynamic->sub_dict != NULL) {
+		wuy_dict_destroy(dynamic->sub_dict);
+	}
 }
 
 static struct wuy_cflua_command h2d_dynamic_conf_commands[] = {
@@ -477,4 +485,5 @@ struct wuy_cflua_table h2d_dynamic_conf_table = {
 	.commands = h2d_dynamic_conf_commands,
 	.refer_name = "DYNAMIC",
 	.post = h2d_dynamic_conf_post,
+	.free = h2d_dynamic_conf_free,
 };

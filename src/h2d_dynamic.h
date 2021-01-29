@@ -18,10 +18,7 @@ struct h2d_dynamic_conf {
 	atomic_int		*shared_id;
 	wuy_dict_t		*sub_dict;
 	struct wuy_cflua_table	*sub_table;
-	struct {
-		off_t			offset;
-		void			(*del)(void *);
-	} container;
+	off_t			container_offset;
 
 	/* runtime: sub only */
 	struct h2d_dynamic_conf	*father;
@@ -47,7 +44,7 @@ void *h2d_dynamic_get(struct h2d_dynamic_conf *dynamic, struct h2d_request *r);
 void h2d_dynamic_ctx_free(struct h2d_request *r);
 
 void h2d_dynamic_set_container(struct h2d_dynamic_conf *dynamic,
-		struct wuy_cflua_table *conf_table, void (*del)(void *));
+		struct wuy_cflua_table *conf_table);
 
 static inline bool h2d_dynamic_is_enabled(struct h2d_dynamic_conf *dynamic)
 {

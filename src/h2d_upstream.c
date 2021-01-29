@@ -437,12 +437,6 @@ static struct wuy_cflua_command *h2d_upstream_next_command(struct wuy_cflua_comm
 	return NULL;
 }
 
-static void h2d_upstream_delete(void *data)
-{
-	struct h2d_upstream_conf *conf = data;
-	wuy_list_delete(&conf->list_node);
-}
-
 const char *h2d_upstream_conf_resolve_init(struct h2d_upstream_conf *conf);
 static const char *h2d_upstream_conf_post(void *data)
 {
@@ -465,13 +459,12 @@ static const char *h2d_upstream_conf_post(void *data)
 
 	/* dynamic */
 	if (h2d_dynamic_is_enabled(&conf->dynamic)) {
-		if (conf->hostnames != NULL) {
+		if (conf->hostnames_str != NULL) {
 			return "hostname is not allowed for dynamic upstream";
 		}
-		conf->hostnames = (void *)1; /* used by h2d_module_command_is_set() */
+		conf->hostnames_str = (void *)1; /* used by h2d_module_command_is_set() */
 
-		h2d_dynamic_set_container(&conf->dynamic, &h2d_upstream_conf_table,
-				h2d_upstream_delete);
+		h2d_dynamic_set_container(&conf->dynamic, &h2d_upstream_conf_table);
 
 		if (conf->name == NULL) {
 			conf->name = "dynamic";
@@ -481,7 +474,7 @@ static const char *h2d_upstream_conf_post(void *data)
 	}
 
 	/* non-dynamic: static configured or created dynamic-sub */
-	if (conf->hostnames == NULL) {
+	if (conf->hostnames_str == NULL) {
 		return WUY_CFLUA_OK;
 	}
 
@@ -490,7 +483,7 @@ static const char *h2d_upstream_conf_post(void *data)
 	wuy_list_init(&conf->deleted_address_defer);
 
 	if (conf->name == NULL) {
-		conf->name = conf->hostnames[0].name;
+		conf->name = conf->hostnames_str[0];
 	}
 
 	if (conf->ssl_enable) {
@@ -509,6 +502,12 @@ static const char *h2d_upstream_conf_post(void *data)
 	}
 
 	return WUY_CFLUA_OK;
+}
+
+static void h2d_upstream_conf_free(void *data)
+{
+	struct h2d_upstream_conf *conf = data;
+	wuy_list_delete(&conf->list_node);
 }
 
 static void h2d_upstream_conf_stats(struct h2d_upstream_conf *conf, wuy_json_ctx_t *json)
@@ -584,8 +583,8 @@ static struct wuy_cflua_command h2d_upstream_healthcheck_commands[] = {
 static struct wuy_cflua_command h2d_upstream_conf_commands[] = {
 	{	.type = WUY_CFLUA_TYPE_STRING,
 		.description = "Hostnames list.",
-		.offset = offsetof(struct h2d_upstream_conf, hostnames),
-		.array_member_size = sizeof(struct h2d_upstream_hostname),
+		.offset = offsetof(struct h2d_upstream_conf, hostnames_str),
+		.array_number_offset = offsetof(struct h2d_upstream_conf, hostname_num),
 	},
 	{	.name = "dynamic",
 		.type = WUY_CFLUA_TYPE_TABLE,
@@ -674,4 +673,5 @@ struct wuy_cflua_table h2d_upstream_conf_table = {
 	.refer_name = "UPSTREAM",
 	.size = sizeof(struct h2d_upstream_conf),
 	.post = h2d_upstream_conf_post,
+	.free = h2d_upstream_conf_free,
 };

@@ -277,10 +277,14 @@ const char *h2d_upstream_conf_resolve_init(struct h2d_upstream_conf *conf)
 	conf->address_stats_start = wuy_shmpool_alloc(sizeof(struct h2d_upstream_address_stats)
 			* conf->resolved_addresses_max * 2);
 
+	conf->hostnames = calloc(conf->hostname_num, sizeof(struct h2d_upstream_hostname));
+
 	/* resolve */
 	bool need_resolved = false;
-	for (int i = 0; conf->hostnames[i].name != NULL; i++) {
+	for (int i = 0; i < conf->hostname_num; i++) {
 		struct h2d_upstream_hostname *hostname = &conf->hostnames[i];
+
+		hostname->name = conf->hostnames_str[i];
 
 		wuy_list_init(&hostname->address_head);
 

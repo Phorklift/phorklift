@@ -115,7 +115,7 @@ struct h2d_upstream_ops {
 /* make sure the `h2d_upstream_conf *` at top of your module's conf */
 struct h2d_upstream_conf {
 	/* configrations */
-	struct h2d_upstream_hostname	*hostnames;
+	const char			**hostnames_str;
 	const char			*name;
 	int				idle_max;
 	int				idle_timeout;
@@ -143,6 +143,9 @@ struct h2d_upstream_conf {
 
 	struct h2d_dynamic_conf		dynamic;
 	wuy_list_t			wait_head;
+
+	struct h2d_upstream_hostname	*hostnames;
+	int				hostname_num;
 
 	wuy_list_t			address_head;
 	int				address_num;
