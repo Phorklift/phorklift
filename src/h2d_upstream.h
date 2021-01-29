@@ -78,7 +78,7 @@ struct h2d_upstream_address {
 };
 
 struct h2d_upstream_hostname {
-	const char		*name; /* must at top! FORMAT: host:port#weight */
+	const char		*name;
 	bool			need_resolved;
 	int			host_len;
 	unsigned short		port;
@@ -90,8 +90,9 @@ struct h2d_upstream_loadbalance {
 	const char			*name;
 	int				index;
 	struct wuy_cflua_command	command;
+	void *				(*ctx_new)(void);
+	void				(*ctx_free)(void *);
 	void 				(*update)(struct h2d_upstream_conf *);
-	void				(*free)(struct h2d_upstream_conf *);
 	struct h2d_upstream_address *	(*pick)(struct h2d_upstream_conf *, struct h2d_request *);
 };
 
@@ -115,7 +116,7 @@ struct h2d_upstream_ops {
 /* make sure the `h2d_upstream_conf *` at top of your module's conf */
 struct h2d_upstream_conf {
 	/* configrations */
-	const char			**hostnames_str;
+	const char			**hostnames_str; /* FORMAT: host:port#weight */
 	const char			*name;
 	int				idle_max;
 	int				idle_timeout;
@@ -161,6 +162,7 @@ struct h2d_upstream_conf {
 	int				resolve_index;
 	bool				resolve_updated;
 	loop_stream_t			*resolve_stream;
+	loop_timer_t			*resolve_timer;
 
 	/* stats */
 	struct h2d_upstream_stats	*stats;
@@ -168,6 +170,7 @@ struct h2d_upstream_conf {
 	/* loadbalances */
 	struct h2d_upstream_loadbalance	*loadbalance;
 	void				*lb_confs[H2D_UPSTREAM_LOADBALANCE_MAX];
+	void				*lb_ctx;
 
 	struct h2d_upstream_ops		*ops;
 

@@ -416,6 +416,8 @@ static const char *h2d_upstream_conf_loadbalance_select(struct h2d_upstream_conf
 		conf->loadbalance = h2d_upstream_loadbalances[0];
 	}
 
+	conf->lb_ctx = conf->loadbalance->ctx_new();
+
 	return WUY_CFLUA_OK;
 }
 
@@ -508,6 +510,17 @@ static void h2d_upstream_conf_free(void *data)
 {
 	struct h2d_upstream_conf *conf = data;
 	wuy_list_delete(&conf->list_node);
+
+	if (conf->resolve_timer != NULL) {
+		loop_timer_delete(conf->resolve_timer);
+	}
+	if (conf->resolve_stream != NULL) {
+		loop_stream_close(conf->resolve_stream);
+	}
+
+	free(conf->hostnames);
+
+	conf->loadbalance->ctx_free(conf->lb_ctx);
 }
 
 static void h2d_upstream_conf_stats(struct h2d_upstream_conf *conf, wuy_json_ctx_t *json)

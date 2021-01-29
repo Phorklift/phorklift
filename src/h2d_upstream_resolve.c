@@ -264,6 +264,12 @@ static int64_t h2d_upstream_resolve_timer_handler(int64_t at, void *data)
 	return upstream->resolve_interval * 1000;
 }
 
+static void h2d_upstream_resolve_start_after(struct h2d_upstream_conf *conf, int64_t after)
+{
+	conf->resolve_timer = loop_timer_new(h2d_loop, h2d_upstream_resolve_timer_handler, conf);
+	loop_timer_set_after(conf->resolve_timer, after * 1000);
+}
+
 const char *h2d_upstream_conf_resolve_init(struct h2d_upstream_conf *conf)
 {
 	/* pre-alloc lock and shared-memory for resolved address stats */
@@ -367,8 +373,7 @@ const char *h2d_upstream_conf_resolve_init(struct h2d_upstream_conf *conf)
 
 	/* resolve stream */
 	if (need_resolved && conf->resolve_interval > 0) {
-		loop_timer_t *timer = loop_timer_new(h2d_loop, h2d_upstream_resolve_timer_handler, conf);
-		loop_timer_set_after(timer, conf->resolve_interval * 1000);
+		h2d_upstream_resolve_start_after(conf, conf->resolve_interval);
 	}
 
 	return WUY_CFLUA_OK;
@@ -378,8 +383,7 @@ sub_check:
 		if (conf->resolve_interval == 0) {
 			return "resolve_interval can not be 0 for dynamic upstream with hostnames";
 		}
-		loop_timer_t *timer = loop_timer_new(h2d_loop, h2d_upstream_resolve_timer_handler, conf);
-		loop_timer_set_after(timer, 0);
+		h2d_upstream_resolve_start_after(conf, 0);
 	} else {
 		if (conf->address_num == 0) {
 			return "no address for dynamic upstream";

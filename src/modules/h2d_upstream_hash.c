@@ -3,11 +3,11 @@
 #include "libwuya/wuy_murmurhash.h"
 
 struct h2d_upstream_hash_conf {
-	/* configrations */
 	wuy_cflua_function_t	key;
 	int			address_vnodes;
+};
 
-	/* run time */
+struct h2d_upstream_hash_ctx {
 	int				vnode_num;
 	struct h2d_upstream_hash_vnode	*vnodes;
 };
@@ -29,6 +29,18 @@ static int h2d_upstream_hash_vnode_cmp(const void *a, const void *b)
 	return (va->hash > vb->hash) ? 1 : -1;
 }
 
+static void *h2d_upstream_hash_ctx_new(void)
+{
+	return calloc(1, sizeof(struct h2d_upstream_hash_ctx));
+}
+
+static void h2d_upstream_hash_ctx_free(void *data)
+{
+	struct h2d_upstream_hash_ctx *ctx = data;
+	free(ctx->vnodes);
+	free(ctx);
+}
+
 static int h2d_upstream_hash_address_vnode_num(struct h2d_upstream_address *address)
 {
 	struct h2d_upstream_hash_conf *conf = address->upstream->lb_confs[h2d_upstream_hash.index];
@@ -39,18 +51,17 @@ static int h2d_upstream_hash_address_vnode_num(struct h2d_upstream_address *addr
 }
 static void h2d_upstream_hash_update(struct h2d_upstream_conf *upstream)
 {
-	struct h2d_upstream_hash_conf *conf = upstream->lb_confs[h2d_upstream_hash.index];
+	struct h2d_upstream_hash_ctx *ctx = upstream->lb_ctx;
 
-	conf->vnode_num = 0;
+	ctx->vnode_num = 0;
 	struct h2d_upstream_address *address;
 	wuy_list_iter_type(&upstream->address_head, address, upstream_node) {
-		conf->vnode_num += h2d_upstream_hash_address_vnode_num(address);
+		ctx->vnode_num += h2d_upstream_hash_address_vnode_num(address);
 	}
 
-	free(conf->vnodes);
-	conf->vnodes = malloc(sizeof(struct h2d_upstream_hash_vnode) * conf->vnode_num);
+	ctx->vnodes = realloc(ctx->vnodes, sizeof(struct h2d_upstream_hash_vnode) * ctx->vnode_num);
 
-	struct h2d_upstream_hash_vnode *vnode = conf->vnodes;
+	struct h2d_upstream_hash_vnode *vnode = ctx->vnodes;
 	wuy_list_iter_type(&upstream->address_head, address, upstream_node) {
 		uint64_t hash = wuy_murmurhash_id(&address->sockaddr.s,
 				wuy_sockaddr_size(&address->sockaddr.s));
@@ -62,7 +73,7 @@ static void h2d_upstream_hash_update(struct h2d_upstream_conf *upstream)
 		}
 	}
 
-	qsort(conf->vnodes, conf->vnode_num, sizeof(struct h2d_upstream_hash_vnode),
+	qsort(ctx->vnodes, ctx->vnode_num, sizeof(struct h2d_upstream_hash_vnode),
 			h2d_upstream_hash_vnode_cmp);
 }
 
@@ -70,6 +81,7 @@ static struct h2d_upstream_address *h2d_upstream_hash_pick(
 		struct h2d_upstream_conf *upstream, struct h2d_request *r)
 {
 	struct h2d_upstream_hash_conf *conf = upstream->lb_confs[h2d_upstream_hash.index];
+	struct h2d_upstream_hash_ctx *ctx = upstream->lb_ctx;
 
 	int key_len;
 	const char *key_str = h2d_lua_api_call_lstring(r, conf->key, &key_len);
@@ -80,10 +92,10 @@ static struct h2d_upstream_address *h2d_upstream_hash_pick(
 
 	/* pick one address */
 	struct h2d_upstream_hash_vnode *vnode = NULL;
-	int low = 0, high = conf->vnode_num - 1;
+	int low = 0, high = ctx->vnode_num - 1;
 	while (low <= high) {
 		int mid = (low + high) / 2;
-		vnode = &conf->vnodes[mid];
+		vnode = &ctx->vnodes[mid];
 		if (vnode->hash == hash) {
 			break;
 		}
@@ -95,25 +107,18 @@ static struct h2d_upstream_address *h2d_upstream_hash_pick(
 	}
 
 	/* check if down */
-	for (struct h2d_upstream_hash_vnode *i = vnode; i < conf->vnodes + conf->vnode_num; i++) {
+	for (struct h2d_upstream_hash_vnode *i = vnode; i < ctx->vnodes + ctx->vnode_num; i++) {
 		if (h2d_upstream_address_is_pickable(i->address, r)) {
 			return i->address;
 		}
 	}
-	for (struct h2d_upstream_hash_vnode *i = conf->vnodes; i < vnode; i++) {
+	for (struct h2d_upstream_hash_vnode *i = ctx->vnodes; i < vnode; i++) {
 		if (h2d_upstream_address_is_pickable(i->address, r)) {
 			return i->address;
 		}
 	}
 
 	return vnode->address;
-}
-
-static void h2d_upstream_hash_free(struct h2d_upstream_conf *upstream)
-{
-	struct h2d_upstream_hash_conf *conf = upstream->lb_confs[h2d_upstream_hash.index];
-	free(conf->vnodes);
-	free(conf);
 }
 
 static struct wuy_cflua_command h2d_upstream_hash_commands[] = {
@@ -144,7 +149,8 @@ struct h2d_upstream_loadbalance h2d_upstream_hash = {
 			.size = sizeof(struct h2d_upstream_hash_conf),
 		}
 	},
+	.ctx_new = h2d_upstream_hash_ctx_new,
+	.ctx_free = h2d_upstream_hash_ctx_free,
 	.update = h2d_upstream_hash_update,
 	.pick = h2d_upstream_hash_pick,
-	.free = h2d_upstream_hash_free,
 };
