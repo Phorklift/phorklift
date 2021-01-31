@@ -4,14 +4,17 @@
 #define _log(level, fmt, ...) h2d_log_level(upstream->log, level, "upstream: %s " fmt, \
 		upstream->name, ##__VA_ARGS__)
 
+void h2d_upstream_healthcheck_start(struct h2d_upstream_address *address);
+void h2d_upstream_healthcheck_stop(struct h2d_upstream_address *address);
+
 static void h2d_upstream_address_defer_free(struct h2d_upstream_conf *upstream)
 {
 	struct h2d_upstream_address *address, *safe;
 	wuy_list_iter_safe_type(&upstream->deleted_address_defer, address, safe, hostname_node) {
-		if (!wuy_list_empty(&address->active_head) || !wuy_list_empty(&address->idle_head)
-				|| address->active_hc_timer != NULL) {
+		if (!wuy_list_empty(&address->active_head) || !wuy_list_empty(&address->idle_head)) {
 			continue;
 		}
+		h2d_upstream_healthcheck_stop(address);
 		atomic_fetch_sub(&address->stats->refs, 1);
 		wuy_list_delete(&address->hostname_node);
 		free((void *)address->name);
@@ -116,6 +119,10 @@ static void h2d_upstream_address_add(struct h2d_upstream_conf *upstream,
 		address->stats->create_time = time(NULL);
 	}
 
+	if (upstream->healthcheck.req_str != NULL) {
+		h2d_upstream_healthcheck_start(address);
+	}
+
 	if (before != NULL) {
 		wuy_list_add_before(&before->upstream_node, &address->upstream_node);
 		wuy_list_add_before(&before->hostname_node, &address->hostname_node);
@@ -156,7 +163,7 @@ static void h2d_upstream_resolve_hostname(struct h2d_upstream_conf *upstream)
 	upstream->address_num = 0;
 	struct h2d_upstream_address *address, *safe;
 	wuy_list_iter_safe_type(&upstream->address_head, address, safe, upstream_node) {
-		if (address->deleted) {
+		if (address->resolve_deleted) {
 			h2d_upstream_address_delete(address);
 		} else {
 			upstream->address_num++;
@@ -211,7 +218,7 @@ static int h2d_upstream_resolve_on_read(loop_stream_t *s, void *data, int len)
 			 * We can not free the address now because it is used
 			 * by loadbalance. We just mark it here and free it
 			 * just before loadbalance->update(). */
-			address->deleted = true;
+			address->resolve_deleted = true;
 			node = wuy_list_next(&hostname->address_head, node);
 		}
 
@@ -221,7 +228,7 @@ static int h2d_upstream_resolve_on_read(loop_stream_t *s, void *data, int len)
 		struct h2d_upstream_address *address = wuy_containerof(node,
 				struct h2d_upstream_address, hostname_node);
 		node = wuy_list_next(&hostname->address_head, node);
-		address->deleted = true;
+		address->resolve_deleted = true;
 		upstream->resolve_updated = true;
 	}
 	while (p < end) {

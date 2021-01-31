@@ -34,57 +34,6 @@ static void h2d_upstream_connection_close(struct h2d_upstream_connection *upc)
 	free(upc);
 }
 
-static bool h2d_upstream_is_active_healthcheck(struct h2d_upstream_conf *upstream)
-{
-	/* If upstream->healthcheck.request/response are set, we do the
-	 * healthcheck by sending the request and checking the response
-	 * periodly, in upstream->healthcheck.interval. We call it active.
-	 *
-	 * Otherwise, we have to do the healthcheck by real requests. The
-	 * address can be picked if it's down for upstream->healthcheck.interval.
-	 * We call it passive. */
-	return upstream->healthcheck.req_len != 0;
-}
-
-void h2d_upstream_healthcheck_defer(struct h2d_upstream_address *address);
-
-void h2d_upstream_connection_fail(struct h2d_upstream_connection *upc)
-{
-	struct h2d_request *r = upc->request;
-	struct h2d_upstream_address *address = upc->address;
-	struct h2d_upstream_conf *upstream = address->upstream;
-
-	_log(H2D_LOG_INFO, "connection fail %s", address->name);
-
-	if (upstream->fails == 0) { /* configure never down */
-		return;
-	}
-
-	if (address->down_time != 0) { /* down already */
-		if (address->healthchecks > 0) { /* fail in passive healthcheck */
-			_log(H2D_LOG_DEBUG, "passive healthcheck fail");
-			address->healthchecks = 0;
-			address->down_time = time(NULL);
-		}
-		return;
-	}
-
-	address->fails++;
-	if (address->fails < upstream->fails) {
-		return;
-	}
-
-	/* go down */
-	_log(H2D_LOG_ERROR, "go down");
-	address->down_time = time(NULL);
-	address->healthchecks = 0;
-	if (h2d_upstream_is_active_healthcheck(upstream)) {
-		h2d_upstream_healthcheck_defer(address);
-	}
-
-	atomic_fetch_add(&address->stats->down, 1);
-}
-
 static void h2d_upstream_on_active(loop_stream_t *s)
 {
 	/* Explicit handshake is not required here because the following
@@ -151,11 +100,8 @@ h2d_upstream_get_connection(struct h2d_upstream_conf *upstream, struct h2d_reque
 
 		struct h2d_upstream_address *iaddr;
 		wuy_list_iter_type(&upstream->address_head, iaddr, upstream_node) {
-			iaddr->down_time = 0;
+			// XXX iaddr->down_time = 0;
 		}
-	} else if (address->down_time != 0) {
-		_log(H2D_LOG_DEBUG, "passive healthcheck");
-		address->healthchecks++;
 	}
 
 	atomic_fetch_add(&address->stats->pick, 1);
@@ -208,21 +154,19 @@ h2d_upstream_retry_connection(struct h2d_upstream_connection *old)
 
 	atomic_fetch_add(&upstream->stats->retry, 1);
 
-	h2d_upstream_connection_close(old);
+	h2d_upstream_release_connection(old);
 
 	/* mark this down temporarily to avoid picked again */
-	time_t down_time;
-	if (address->down_time == 0) {
-		down_time = address->down_time;
-		address->down_time = 1;
+	if (address->healthcheck.down_time == 0) {
+		address->healthcheck.down_time = 1;
 	}
 
 	/* pick a new connection */
 	struct h2d_upstream_connection *newc = h2d_upstream_get_connection(upstream, r);
 
-	/* recover if it was not cleared */
-	if (address->down_time == 1) {
-		address->down_time = down_time;
+	/* recover */
+	if (address->healthcheck.down_time == 1) {
+		address->healthcheck.down_time = 0;
 	}
 
 	return newc;
@@ -237,16 +181,27 @@ void h2d_upstream_release_connection(struct h2d_upstream_connection *upc)
 	struct h2d_upstream_address *address = upc->address;
 	struct h2d_upstream_conf *upstream = address->upstream;
 
-	_log(H2D_LOG_DEBUG, "release %s", address->name);
+	_log(H2D_LOG_DEBUG, "release %s%s", address->name, upc->error ? " in error" : "");
 
-	/* the connection maybe in passive healthcheck */
-	if (address->down_time > 0 && address->healthchecks >= upstream->healthcheck.repeats) {
-		_log(H2D_LOG_INFO, "recover from passive healthcheck");
-		address->down_time = 0;
+	if (!upc->error) {
+		address->failure.fails = 0;
+		address->failure.passes++;
+		if (address->failure.down_time != 0 && address->failure.passes == upstream->failure.passes) {
+			_log(H2D_LOG_ERROR, "go up");
+			address->failure.down_time = 0;
+		}
+	} else {
+		address->failure.passes = 0;
+		address->failure.fails++;
+		if (address->failure.down_time == 0 && address->failure.fails == upstream->failure.fails) {
+			_log(H2D_LOG_ERROR, "go down");
+			atomic_fetch_add(&address->stats->failure_down, 1);
+			address->failure.down_time = time(NULL);
+		}
 	}
 
 	/* close the connection */
-	if (loop_stream_is_closed(upc->loop_stream) || r->state != H2D_REQUEST_STATE_DONE) {
+	if (upc->error || loop_stream_is_closed(upc->loop_stream) || r->state != H2D_REQUEST_STATE_DONE) {
 		_log(H2D_LOG_DEBUG, "just close, state=%d", r->state);
 		h2d_upstream_connection_close(upc);
 		return;
@@ -378,21 +333,21 @@ bool h2d_upstream_address_is_pickable(struct h2d_upstream_address *address,
 		struct h2d_request *r)
 {
 	struct h2d_upstream_conf *upstream = address->upstream;
-	if (address->down_time == 0) {
-		return true;
-	}
-	if (h2d_upstream_is_active_healthcheck(upstream)) {
+	if (address->healthcheck.down_time != 0) {
 		return false;
 	}
-	if (time(NULL) < address->down_time + upstream->healthcheck.interval) {
+	if (address->failure.down_time == 0) {
+		return true;
+	}
+	if (time(NULL) < address->failure.down_time + upstream->failure.timeout) {
 		return false;
 	}
 	if (!wuy_list_empty(&address->active_head)) {
-		/* at most one connection is allowed in healthcheck */
+		/* one connection at most in recovering */
 		return false;
 	}
-	if (wuy_cflua_is_function_set(upstream->healthcheck.filter)) {
-		return h2d_lua_api_call_boolean(r, upstream->healthcheck.filter);
+	if (wuy_cflua_is_function_set(upstream->failure.filter)) {
+		return h2d_lua_api_call_boolean(r, upstream->failure.filter);
 	}
 	return true;
 }
@@ -447,9 +402,6 @@ static const char *h2d_upstream_conf_post(void *data)
 	/* some check for both cases, dynamic or not */
 	if ((conf->healthcheck.req_len == 0) != (conf->healthcheck.resp_len == 0)) {
 		return "healthcheck request/response must be set both or neigther";
-	}
-	if (h2d_upstream_is_active_healthcheck(conf) && wuy_cflua_is_function_set(conf->healthcheck.filter)) {
-		return "request is for active healthcheck while filter is for passive";
 	}
 
 	const char *lb_err = h2d_upstream_conf_loadbalance_select(conf);
@@ -538,11 +490,25 @@ static void h2d_upstream_conf_stats(struct h2d_upstream_conf *conf, wuy_json_ctx
 	wuy_list_iter_type(&conf->address_head, address, upstream_node) {
 		wuy_json_array_object(json);
 		wuy_json_object_string(json, "name", address->name);
-		wuy_json_object_int(json, "down_time", address->down_time);
+
+		wuy_json_object_object(json, "failure");
+		wuy_json_object_int(json, "down_time", address->failure.down_time);
+		wuy_json_object_int(json, "fails", address->failure.fails);
+		wuy_json_object_int(json, "passes", address->failure.passes);
+		wuy_json_object_close(json);
+
+		if (conf->healthcheck.req_str != 0) {
+			wuy_json_object_object(json, "healthcheck");
+			wuy_json_object_int(json, "down_time", address->healthcheck.down_time);
+			wuy_json_object_int(json, "fails", address->healthcheck.fails);
+			wuy_json_object_int(json, "passes", address->healthcheck.passes);
+			wuy_json_object_close(json);
+		}
 
 		struct h2d_upstream_address_stats *stats = address->stats;
 		wuy_json_object_int(json, "create_time", atomic_load(&stats->create_time));
-		wuy_json_object_int(json, "down", atomic_load(&stats->down));
+		wuy_json_object_int(json, "failure_down", atomic_load(&stats->failure_down));
+		wuy_json_object_int(json, "healthcheck_down", atomic_load(&stats->healthcheck_down));
 		wuy_json_object_int(json, "pick", atomic_load(&stats->pick));
 		wuy_json_object_int(json, "reuse", atomic_load(&stats->reuse));
 		wuy_json_object_int(json, "connected", atomic_load(&stats->connected));
@@ -564,6 +530,32 @@ void h2d_upstream_stats(wuy_json_ctx_t *json)
 	wuy_json_array_close(json);
 }
 
+static struct wuy_cflua_command h2d_upstream_failure_commands[] = {
+	{	.name = "fails",
+		.type = WUY_CFLUA_TYPE_INTEGER,
+		.offset = offsetof(struct h2d_upstream_conf, failure.fails),
+		.default_value.n = 1,
+		.limits.n = WUY_CFLUA_LIMITS_NON_NEGATIVE,
+	},
+	{	.name = "passes",
+		.type = WUY_CFLUA_TYPE_INTEGER,
+		.offset = offsetof(struct h2d_upstream_conf, failure.passes),
+		.default_value.n = 3,
+		.limits.n = WUY_CFLUA_LIMITS_POSITIVE,
+	},
+	{	.name = "timeout",
+		.type = WUY_CFLUA_TYPE_INTEGER,
+		.offset = offsetof(struct h2d_upstream_conf, failure.timeout),
+		.default_value.n = 60,
+		.limits.n = WUY_CFLUA_LIMITS_POSITIVE,
+	},
+	{	.name = "filter",
+		.type = WUY_CFLUA_TYPE_FUNCTION,
+		.offset = offsetof(struct h2d_upstream_conf, failure.filter),
+	},
+	{ NULL },
+};
+
 static struct wuy_cflua_command h2d_upstream_healthcheck_commands[] = {
 	{	.name = "interval",
 		.type = WUY_CFLUA_TYPE_INTEGER,
@@ -571,13 +563,15 @@ static struct wuy_cflua_command h2d_upstream_healthcheck_commands[] = {
 		.default_value.n = 10,
 		.limits.n = WUY_CFLUA_LIMITS_POSITIVE,
 	},
-	{	.name = "filter",
-		.type = WUY_CFLUA_TYPE_FUNCTION,
-		.offset = offsetof(struct h2d_upstream_conf, healthcheck.filter),
-	},
-	{	.name = "repeats",
+	{	.name = "fails",
 		.type = WUY_CFLUA_TYPE_INTEGER,
-		.offset = offsetof(struct h2d_upstream_conf, healthcheck.repeats),
+		.offset = offsetof(struct h2d_upstream_conf, healthcheck.fails),
+		.default_value.n = 1,
+		.limits.n = WUY_CFLUA_LIMITS_POSITIVE,
+	},
+	{	.name = "passes",
+		.type = WUY_CFLUA_TYPE_INTEGER,
+		.offset = offsetof(struct h2d_upstream_conf, healthcheck.passes),
 		.default_value.n = 3,
 		.limits.n = WUY_CFLUA_LIMITS_POSITIVE,
 	},
@@ -593,6 +587,7 @@ static struct wuy_cflua_command h2d_upstream_healthcheck_commands[] = {
 	},
 	{ NULL }
 };
+
 static struct wuy_cflua_command h2d_upstream_conf_commands[] = {
 	{	.type = WUY_CFLUA_TYPE_STRING,
 		.description = "Hostnames list.",
@@ -608,12 +603,6 @@ static struct wuy_cflua_command h2d_upstream_conf_commands[] = {
 		.type = WUY_CFLUA_TYPE_INTEGER,
 		.offset = offsetof(struct h2d_upstream_conf, idle_max),
 		.default_value.n = 100,
-		.limits.n = WUY_CFLUA_LIMITS_NON_NEGATIVE,
-	},
-	{	.name = "fails",
-		.type = WUY_CFLUA_TYPE_INTEGER,
-		.offset = offsetof(struct h2d_upstream_conf, fails),
-		.default_value.n = 1,
 		.limits.n = WUY_CFLUA_LIMITS_NON_NEGATIVE,
 	},
 	{	.name = "max_retries",
@@ -666,6 +655,10 @@ static struct wuy_cflua_command h2d_upstream_conf_commands[] = {
 	{	.name = "ssl_enable",
 		.type = WUY_CFLUA_TYPE_BOOLEAN,
 		.offset = offsetof(struct h2d_upstream_conf, ssl_enable),
+	},
+	{	.name = "failure",
+		.type = WUY_CFLUA_TYPE_TABLE,
+		.u.table = &(struct wuy_cflua_table) { h2d_upstream_failure_commands },
 	},
 	{	.name = "healthcheck",
 		.type = WUY_CFLUA_TYPE_TABLE,

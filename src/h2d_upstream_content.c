@@ -110,8 +110,7 @@ static int h2d_upstream_content_fail(struct h2d_request *r)
 	struct h2d_upstream_conf *upstream = h2d_upstream_content_conf(r);
 	struct h2d_upstream_content_ctx *ctx = h2d_upstream_content_ctx(r);
 
-	/* increase connection's address fails */
-	h2d_upstream_connection_fail(ctx->upc);
+	ctx->upc->error = true;
 
 	/* retry */
 	if (ctx->retries < 0 || ctx->retries++ >= upstream->max_retries) {

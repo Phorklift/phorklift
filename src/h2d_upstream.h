@@ -30,7 +30,8 @@ struct h2d_upstream_address_stats {
 	time_t			create_time;
 	atomic_long		pick;
 	atomic_long		reuse;
-	atomic_long		down;
+	atomic_long		failure_down;
+	atomic_long		healthcheck_down;
 	atomic_long		connected;
 	atomic_long		connect_acc_ms;
 };
@@ -43,6 +44,8 @@ struct h2d_upstream_connection {
 	uint8_t			*preread_buf;
 	int			preread_len;
 
+	bool			error;
+
 	struct h2d_request	*request; /* NULL if in idle state */
 
 	long			create_time;
@@ -51,6 +54,8 @@ struct h2d_upstream_connection {
 };
 
 struct h2d_upstream_address {
+	const char		*name;
+	double			weight;
 	union {
 		struct sockaddr		s;
 		struct sockaddr_in	sin;
@@ -58,24 +63,36 @@ struct h2d_upstream_address {
 		struct sockaddr_un	sun;
 	} sockaddr;
 
-	const char		*name;
+	bool			resolve_deleted;
 
-	bool			deleted;
-	time_t			down_time;
-	int			healthchecks;
-	int			fails;
+	struct {
+		time_t		down_time;
+		int		fails;
+		int		passes;
+	} failure; // TODO move to shmem
+
+	struct {
+		time_t		down_time;
+		int		fails;
+		int		passes;
+		loop_timer_t	*timer;
+		loop_stream_t	*stream;
+	} healthcheck; // TODO move to shmem
+
+	/* lists of connections */
 	int			idle_num;
 	wuy_list_t		idle_head;
+	int			active_num;
 	wuy_list_t		active_head;
+
 	wuy_list_node_t		upstream_node;
 	wuy_list_node_t		hostname_node;
-	loop_timer_t		*active_hc_timer;
-	double			weight;
 
 	struct h2d_upstream_conf	*upstream;
 
 	struct h2d_upstream_address_stats	*stats;
 };
+
 
 struct h2d_upstream_hostname {
 	const char		*name;
@@ -122,7 +139,6 @@ struct h2d_upstream_conf {
 	int				idle_timeout;
 	int				recv_timeout;
 	int				send_timeout;
-	int				fails;
 	int				max_retries;
 	int				*retry_status_codes;
 	int				default_port;
@@ -131,9 +147,16 @@ struct h2d_upstream_conf {
 	bool				ssl_enable;
 
 	struct {
-		int			repeats;
-		int			interval;
+		int			fails;
+		int			passes;
+		int			timeout;
 		wuy_cflua_function_t	filter;
+	} failure;
+
+	struct {
+		int			interval;
+		int			fails;
+		int			passes;
 		const char		*req_str;
 		int			req_len;
 		const char		*resp_str;

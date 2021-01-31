@@ -1,7 +1,36 @@
 #include "h2d_main.h"
 
 #define _log(level, fmt, ...) h2d_log_level(upstream->log, level, \
-		"upstream active healthcheck: %s " fmt, address->name, ##__VA_ARGS__)
+		"upstream healthcheck: %s " fmt, address->name, ##__VA_ARGS__)
+
+static void h2d_upstream_healthcheck_done(struct h2d_upstream_address *address,
+		bool pass, const char *reason)
+{
+	struct h2d_upstream_conf *upstream = address->upstream;
+
+	loop_stream_close(address->healthcheck.stream);
+	address->healthcheck.stream = NULL;
+
+	if (pass) {
+		address->healthcheck.fails = 0;
+		address->healthcheck.passes++;
+		if (address->healthcheck.down_time != 0 && address->healthcheck.passes == upstream->healthcheck.passes) {
+			_log(H2D_LOG_ERROR, "go up");
+			address->healthcheck.down_time = 0;
+		}
+	} else {
+		address->healthcheck.passes = 0;
+		address->healthcheck.fails++;
+		if (address->healthcheck.down_time == 0 && address->healthcheck.fails == upstream->healthcheck.fails) {
+			_log(H2D_LOG_ERROR, "go down for %s", reason);
+			atomic_fetch_add(&address->stats->healthcheck_down, 1);
+			address->healthcheck.down_time = time(NULL);
+		}
+	}
+
+	_log(H2D_LOG_DEBUG, "done, %s, %s. fails=%d, passes=%d", pass ? "pass" : "fail",
+			reason, address->healthcheck.fails, address->healthcheck.passes);
+}
 
 static int h2d_upstream_healthcheck_on_read(loop_stream_t *s, void *data, int data_len)
 {
@@ -11,10 +40,10 @@ static int h2d_upstream_healthcheck_on_read(loop_stream_t *s, void *data, int da
 	int resp_len = upstream->healthcheck.resp_len;
 	const char *resp_str = upstream->healthcheck.resp_str;
 
-	bool ok;
+	bool pass;
 	switch (resp_str[0]) {
 	case '*':
-		ok = true;
+		pass = true;
 		break;
 	case '=':
 		resp_len--;
@@ -23,30 +52,24 @@ static int h2d_upstream_healthcheck_on_read(loop_stream_t *s, void *data, int da
 			return 0;
 		}
 		if (data_len > resp_len) {
-			ok = false;
+			pass = false;
 			break;
 		}
-		ok = memcmp(data, resp_str, resp_len) == 0;
+		pass = memcmp(data, resp_str, resp_len) == 0;
 		break;
 	case '~':
-		ok = h2d_lua_api_str_find(data, resp_str+1);
+		pass = h2d_lua_api_str_find(data, resp_str+1);
 		break;
 	default:
 		if (data_len < resp_len) {
 			return 0;
 		}
-		ok = memcmp(data, resp_str, resp_len) == 0;
+		pass = memcmp(data, resp_str, resp_len) == 0;
 	}
 
-	_log(H2D_LOG_DEBUG, "done ok=%d %d\n", ok, address->healthchecks);
+	h2d_upstream_healthcheck_done(address, pass, "compare response");
 
-	if (ok) {
-		address->healthchecks++;
-	} else {
-		address->healthchecks = 0;
-	}
-
-	return -1; /* to close the stream */
+	return -1;
 }
 
 static void h2d_upstream_healthcheck_on_writable(loop_stream_t *s)
@@ -61,40 +84,19 @@ static void h2d_upstream_healthcheck_on_writable(loop_stream_t *s)
 		loop_stream_set_timeout(s, upstream->send_timeout * 1000);
 		return;
 	}
-	if (write_len == upstream->healthcheck.req_len) { /* write done, wait for response */
-		loop_stream_set_timeout(s, upstream->recv_timeout * 1000);
+	if (write_len != upstream->healthcheck.req_len) {
+		h2d_upstream_healthcheck_done(address, false, "send request");
 		return;
 	}
 
-	/* neighter blocked nor finished */
-	_log(H2D_LOG_ERROR, "loop_stream_write() fail %d %d\n", write_len, upstream->healthcheck.req_len);
-	loop_stream_close(s);
-}
-
-static void h2d_upstream_healthcheck_set_timer(struct h2d_upstream_address *address)
-{
-	struct h2d_upstream_conf *upstream = address->upstream;
-
-	_log(H2D_LOG_DEBUG, "set timer");
-	loop_timer_set_after(address->active_hc_timer, upstream->healthcheck.interval * 1000);
+	/* write done, wait for response */
+	loop_stream_set_timeout(s, upstream->recv_timeout * 1000);
 }
 
 static void h2d_upstream_healthcheck_on_close(loop_stream_t *s, enum loop_stream_close_reason reason)
 {
 	struct h2d_upstream_address *address = loop_stream_get_app_data(s);
-	struct h2d_upstream_conf *upstream = address->upstream;
-
-	if (address->healthchecks < upstream->healthcheck.repeats) {
-		h2d_upstream_healthcheck_set_timer(address);
-		return;
-	}
-
-	_log(H2D_LOG_INFO, "recover!");
-
-	loop_timer_delete(address->active_hc_timer);
-	address->active_hc_timer = NULL;
-	address->down_time = 0;
-	return;
+	h2d_upstream_healthcheck_done(address, false, loop_stream_close_string(reason));
 }
 
 static loop_stream_ops_t h2d_upstream_healthcheck_ops = {
@@ -109,37 +111,47 @@ static int64_t h2d_upstream_healthcheck_address_handler(int64_t at, void *data)
 	struct h2d_upstream_address *address = data;
 	struct h2d_upstream_conf *upstream = address->upstream;
 
+	if (address->healthcheck.stream != NULL) {
+		_log(H2D_LOG_INFO, "last not finish");
+		goto out;
+	}
+
 	_log(H2D_LOG_DEBUG, "begin");
 
-	loop_stream_t *s = loop_tcp_connect_sockaddr(h2d_loop, &address->sockaddr.s,
-			&h2d_upstream_healthcheck_ops);
+	loop_stream_t *s = loop_tcp_connect_sockaddr(h2d_loop,
+			&address->sockaddr.s, &h2d_upstream_healthcheck_ops);
 	if (s == NULL) {
-		address->healthchecks = 0;
-		return address->upstream->healthcheck.interval * 1000;
+		h2d_upstream_healthcheck_done(address, false, "connect");
+		goto out;
 	}
 
 	if (address->upstream->ssl_enable) {
 		h2d_ssl_stream_set(s, upstream->ssl_ctx, false);
 	}
 
+	address->healthcheck.stream = s;
+
 	loop_stream_set_app_data(s, address);
 
 	h2d_upstream_healthcheck_on_writable(s);
-
-	return 0;
+out:
+	return address->upstream->healthcheck.interval * 1000;
 }
 
-void h2d_upstream_healthcheck_defer(struct h2d_upstream_address *address)
+void h2d_upstream_healthcheck_start(struct h2d_upstream_address *address)
 {
-	if (address->active_hc_timer != NULL) {
-		return;
-	}
-
-	address->active_hc_timer = loop_timer_new(h2d_loop,
+	address->healthcheck.timer = loop_timer_new(h2d_loop,
 			h2d_upstream_healthcheck_address_handler, address);
-	if (address->active_hc_timer == NULL) {
-		return;
-	}
 
-	h2d_upstream_healthcheck_set_timer(address);
+	loop_timer_set_after(address->healthcheck.timer, random() % 1000);
+}
+
+void h2d_upstream_healthcheck_stop(struct h2d_upstream_address *address)
+{
+	if (address->healthcheck.timer != NULL) {
+		loop_timer_delete(address->healthcheck.timer);
+	}
+	if (address->healthcheck.stream != NULL) {
+		loop_stream_close(address->healthcheck.stream);
+	}
 }

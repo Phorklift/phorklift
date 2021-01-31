@@ -123,7 +123,7 @@ static struct h2d_upstream_address *h2d_upstream_roundrobin_pick(
 
 	/* this one is not-available by now */
 	if (picked >= ctx->available_num) {
-		if (address->down_time == 0) {
+		if (address->failure.down_time == 0 && address->healthcheck.down_time == 0) {
 			h2d_request_log_at(r, upstream->log, H2D_LOG_INFO, "roundrobin recover %d %s",
 					picked, address->name);
 			h2d_upstream_roundrobin_recover(ctx, picked);
