@@ -399,11 +399,6 @@ static const char *h2d_upstream_conf_post(void *data)
 {
 	struct h2d_upstream_conf *conf = data;
 
-	/* some check for both cases, dynamic or not */
-	if ((conf->healthcheck.req_len == 0) != (conf->healthcheck.resp_len == 0)) {
-		return "healthcheck request/response must be set both or neigther";
-	}
-
 	const char *lb_err = h2d_upstream_conf_loadbalance_select(conf);
 	if (lb_err != WUY_CFLUA_OK) {
 		return lb_err;
@@ -497,7 +492,7 @@ static void h2d_upstream_conf_stats(struct h2d_upstream_conf *conf, wuy_json_ctx
 		wuy_json_object_int(json, "passes", address->failure.passes);
 		wuy_json_object_close(json);
 
-		if (conf->healthcheck.req_str != 0) {
+		if (conf->healthcheck.interval != 0) {
 			wuy_json_object_object(json, "healthcheck");
 			wuy_json_object_int(json, "down_time", address->healthcheck.down_time);
 			wuy_json_object_int(json, "fails", address->healthcheck.fails);
@@ -554,38 +549,6 @@ static struct wuy_cflua_command h2d_upstream_failure_commands[] = {
 		.offset = offsetof(struct h2d_upstream_conf, failure.filter),
 	},
 	{ NULL },
-};
-
-static struct wuy_cflua_command h2d_upstream_healthcheck_commands[] = {
-	{	.name = "interval",
-		.type = WUY_CFLUA_TYPE_INTEGER,
-		.offset = offsetof(struct h2d_upstream_conf, healthcheck.interval),
-		.default_value.n = 10,
-		.limits.n = WUY_CFLUA_LIMITS_POSITIVE,
-	},
-	{	.name = "fails",
-		.type = WUY_CFLUA_TYPE_INTEGER,
-		.offset = offsetof(struct h2d_upstream_conf, healthcheck.fails),
-		.default_value.n = 1,
-		.limits.n = WUY_CFLUA_LIMITS_POSITIVE,
-	},
-	{	.name = "passes",
-		.type = WUY_CFLUA_TYPE_INTEGER,
-		.offset = offsetof(struct h2d_upstream_conf, healthcheck.passes),
-		.default_value.n = 3,
-		.limits.n = WUY_CFLUA_LIMITS_POSITIVE,
-	},
-	{	.name = "request",
-		.type = WUY_CFLUA_TYPE_STRING,
-		.offset = offsetof(struct h2d_upstream_conf, healthcheck.req_str),
-		.u.length_offset = offsetof(struct h2d_upstream_conf, healthcheck.req_len),
-	},
-	{	.name = "response",
-		.type = WUY_CFLUA_TYPE_STRING,
-		.offset = offsetof(struct h2d_upstream_conf, healthcheck.resp_str),
-		.u.length_offset = offsetof(struct h2d_upstream_conf, healthcheck.resp_len),
-	},
-	{ NULL }
 };
 
 static struct wuy_cflua_command h2d_upstream_conf_commands[] = {

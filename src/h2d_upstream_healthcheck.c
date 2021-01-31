@@ -77,6 +77,11 @@ static void h2d_upstream_healthcheck_on_writable(loop_stream_t *s)
 	struct h2d_upstream_address *address = loop_stream_get_app_data(s);
 	struct h2d_upstream_conf *upstream = address->upstream;
 
+	if (upstream->healthcheck.req_str == NULL) {
+		h2d_upstream_healthcheck_done(address, true, NULL);
+		return;
+	}
+
 	int write_len = loop_stream_write(s, upstream->healthcheck.req_str,
 			upstream->healthcheck.req_len);
 
@@ -155,3 +160,35 @@ void h2d_upstream_healthcheck_stop(struct h2d_upstream_address *address)
 		loop_stream_close(address->healthcheck.stream);
 	}
 }
+
+struct wuy_cflua_command h2d_upstream_healthcheck_commands[] = {
+	{	.name = "interval",
+		.type = WUY_CFLUA_TYPE_INTEGER,
+		.offset = offsetof(struct h2d_upstream_conf, healthcheck.interval),
+		.default_value.n = 0,
+		.limits.n = WUY_CFLUA_LIMITS_NON_NEGATIVE,
+	},
+	{	.name = "fails",
+		.type = WUY_CFLUA_TYPE_INTEGER,
+		.offset = offsetof(struct h2d_upstream_conf, healthcheck.fails),
+		.default_value.n = 1,
+		.limits.n = WUY_CFLUA_LIMITS_POSITIVE,
+	},
+	{	.name = "passes",
+		.type = WUY_CFLUA_TYPE_INTEGER,
+		.offset = offsetof(struct h2d_upstream_conf, healthcheck.passes),
+		.default_value.n = 3,
+		.limits.n = WUY_CFLUA_LIMITS_POSITIVE,
+	},
+	{	.name = "request",
+		.type = WUY_CFLUA_TYPE_STRING,
+		.offset = offsetof(struct h2d_upstream_conf, healthcheck.req_str),
+		.u.length_offset = offsetof(struct h2d_upstream_conf, healthcheck.req_len),
+	},
+	{	.name = "response",
+		.type = WUY_CFLUA_TYPE_STRING,
+		.offset = offsetof(struct h2d_upstream_conf, healthcheck.resp_str),
+		.u.length_offset = offsetof(struct h2d_upstream_conf, healthcheck.resp_len),
+	},
+	{ NULL }
+};

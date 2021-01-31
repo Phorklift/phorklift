@@ -4,8 +4,6 @@
 #define _log(level, fmt, ...) h2d_log_level(upstream->log, level, "upstream: %s " fmt, \
 		upstream->name, ##__VA_ARGS__)
 
-void h2d_upstream_healthcheck_start(struct h2d_upstream_address *address);
-void h2d_upstream_healthcheck_stop(struct h2d_upstream_address *address);
 
 static void h2d_upstream_address_defer_free(struct h2d_upstream_conf *upstream)
 {
@@ -119,7 +117,7 @@ static void h2d_upstream_address_add(struct h2d_upstream_conf *upstream,
 		address->stats->create_time = time(NULL);
 	}
 
-	if (upstream->healthcheck.req_str != NULL) {
+	if (upstream->healthcheck.interval != 0) {
 		h2d_upstream_healthcheck_start(address);
 	}
 

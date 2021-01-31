@@ -250,6 +250,15 @@ static inline bool h2d_upstream_connection_write_blocked(struct h2d_upstream_con
 }
 /* }}} */
 
+
+/* {{{ defined in h2d_upstream_healthcheck.c and used by h2d_upstream_resolve.c */
+void h2d_upstream_healthcheck_start(struct h2d_upstream_address *address);
+void h2d_upstream_healthcheck_stop(struct h2d_upstream_address *address);
+
+extern struct wuy_cflua_command h2d_upstream_healthcheck_commands[];
+/* }}} */
+
+
 bool h2d_upstream_address_is_pickable(struct h2d_upstream_address *address,
 		struct h2d_request *r);
 
