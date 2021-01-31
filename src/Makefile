@@ -19,7 +19,7 @@ MODULES = modules/h2d_static.o modules/h2d_proxy.o modules/h2d_lua.o modules/h2d
 	  modules/h2d_auth_basic.o modules/h2d_redis.o modules/h2d_rewrite.o \
 	  modules/h2d_echo.o modules/h2d_limit_req.o modules/h2d_gzip.o \
 	  modules/h2d_auth_request.o modules/h2d_save_to.o modules/h2d_jump_if.o \
-	  modules/h2d_upstream_roundrobin.o modules/h2d_upstream_hash.o
+	  modules/h2d_upstream_random.o modules/h2d_upstream_hash.o
 
 h2tpd: h2d_main.o h2d_conf.o h2d_conf_listen.o h2d_conf_host.o h2d_conf_path.o \
 		h2d_ssl.o h2d_module.o h2d_http2.o h2d_http1.o h2d_connection.o \

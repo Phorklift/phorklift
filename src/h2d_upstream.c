@@ -366,7 +366,7 @@ static const char *h2d_upstream_conf_loadbalance_select(struct h2d_upstream_conf
 		}
 	}
 
-	/* default is roundrobing which is the first lb */
+	/* default is LB:random with index=0 */
 	if (conf->loadbalance == NULL) {
 		conf->loadbalance = h2d_upstream_loadbalances[0];
 	}

@@ -16,6 +16,6 @@
 	X(h2d_jump_if_module) \
 
 #define H2D_UPSTREAM_LOADBALANCE_X_LIST \
-	X(h2d_upstream_roundrobin) \
+	X(h2d_upstream_random) \
 	X(h2d_upstream_hash) \
 
