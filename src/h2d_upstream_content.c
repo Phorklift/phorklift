@@ -49,10 +49,10 @@ int h2d_upstream_content_generate_response_headers(struct h2d_request *r)
 		}
 	}
 
-	if (ctx->upc == NULL) {
+	if (ctx->upc == NULL || ctx->upc == H2D_PTR_AGAIN) {
 		ctx->upc = h2d_upstream_get_connection(upstream, r);
-		if (ctx->upc == NULL) {
-			return r->resp.status_code ? r->resp.status_code : H2D_AGAIN;
+		if (!H2D_PTR_IS_OK(ctx->upc)) {
+			return H2D_PTR2RET(ctx->upc);
 		}
 	}
 
@@ -121,7 +121,7 @@ static int h2d_upstream_content_fail(struct h2d_request *r)
 	h2d_request_reset_response(r);
 
 	ctx->upc = h2d_upstream_retry_connection(ctx->upc);
-	if (ctx->upc == NULL) {
+	if (ctx->upc == H2D_PTR_ERROR) {
 		return WUY_HTTP_500;
 	}
 	ctx->has_sent_request = false;
@@ -155,7 +155,7 @@ int h2d_upstream_content_generate_response_body(struct h2d_request *r,
 void h2d_upstream_content_ctx_free(struct h2d_request *r)
 {
 	struct h2d_upstream_content_ctx *ctx = h2d_upstream_content_ctx(r);
-	if (ctx->upc != NULL) {
+	if (H2D_PTR_IS_OK(ctx->upc)) {
 		h2d_upstream_release_connection(ctx->upc);
 	}
 }

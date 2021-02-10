@@ -7,47 +7,6 @@
 
 static atomic_int *h2d_dynamic_id;
 
-/* Call dynamic->get_name() which returns a name.
- * Return H2D_AGAIN, H2D_ERROR or H2D_OK. */
-static int h2d_dynamic_get_name(struct h2d_dynamic_conf *dynamic,
-		struct h2d_request *r, const char **p_name)
-{
-	struct h2d_dynamic_ctx *ctx = r->dynamic_ctx;
-
-	_log(H2D_LOG_DEBUG, "get_name");
-
-	const char *name;
-	if (dynamic->is_name_blocking) {
-		name = h2d_lua_api_call_lstring(r, dynamic->get_name, NULL);
-
-	} else {
-		if (ctx->lth == NULL) {
-			ctx->lth = h2d_lua_api_thread_new(dynamic->get_name, r);
-		}
-
-		int ret = h2d_lua_api_thread_resume(ctx->lth);
-		if (ret != H2D_OK) {
-			_log(H2D_LOG_DEBUG, "get_name lua_api %d", ret);
-			return ret;
-		}
-
-		name = lua_tostring(ctx->lth->L, -1);
-
-		h2d_lua_api_thread_free(ctx->lth);
-		ctx->lth = NULL;
-	}
-
-	if (name == NULL) {
-		_log(H2D_LOG_ERROR, "get_name fail");
-		return H2D_ERROR;
-	}
-
-	_log(H2D_LOG_DEBUG, "get_name: %s", name);
-
-	*p_name = name;
-	return H2D_OK;
-}
-
 static void *h2d_dynamic_to_container(struct h2d_dynamic_conf *sub_dyn)
 {
 	struct h2d_dynamic_conf *dynamic = sub_dyn->father ? sub_dyn->father : sub_dyn;
@@ -88,125 +47,12 @@ static int64_t h2d_dynamic_timeout_handler(int64_t at, void *data)
 	h2d_dynamic_delete(data);
 	return 0;
 }
-static void h2d_dynamic_timer_new(struct h2d_dynamic_conf *sub_dyn)
-{
-	sub_dyn->timer = loop_timer_new(h2d_loop, h2d_dynamic_timeout_handler, sub_dyn);
-}
-static void h2d_dynamic_timer_update(struct h2d_dynamic_conf *sub_dyn)
-{
-	if (sub_dyn->timer != NULL) {
-		loop_timer_set_after(sub_dyn->timer, sub_dyn->idle_timeout * 1000);
-	}
-}
 
-/* Call dynamic->get_conf(), which accepts 2 arguments (name, last_modify_time),
- * and returns WUY_HTTP_200 (with conf-table), WUY_HTTP_304, WUY_HTTP_404,
- * or WUY_HTTP_500. */
-static int h2d_dynamic_get_conf(struct h2d_dynamic_conf *dynamic,
-		struct h2d_request *r)
-{
-	struct h2d_dynamic_ctx *ctx = r->dynamic_ctx;
-	struct h2d_dynamic_conf *sub_dyn = ctx->sub_dyn;
-	const char *name = sub_dyn->name;
-
-	_log(H2D_LOG_DEBUG, "get_conf of %s", name);
-
-	if (ctx->lth == NULL) {
-		ctx->lth = h2d_lua_api_thread_new(dynamic->get_conf, r);
-		lua_pushstring(ctx->lth->L, name);
-		lua_pushinteger(ctx->lth->L, sub_dyn->modify_time);
-		h2d_lua_api_thread_set_argn(ctx->lth, 2);
-	}
-
-	int ret = h2d_lua_api_thread_resume(ctx->lth);
-	if (ret != H2D_OK) {
-		_log(H2D_LOG_DEBUG, "get_conf %s lua_api %d", name, ret);
-		return ret;
-	}
-
-	/* not conf-table, but WUY_HTTP_200/304/404/500 */
-	if (lua_isnumber(ctx->lth->L, -1)) {
-		switch (lua_tointeger(ctx->lth->L, -1)) {
-		case WUY_HTTP_200:
-			lua_pop(ctx->lth->L, 1);
-			break;
-		case WUY_HTTP_304:
-			if (sub_dyn->is_just_holder) {
-				_log(H2D_LOG_ERROR, "holder %s get 304", name);
-				return H2D_ERROR;
-			}
-			return H2D_OK;
-		case WUY_HTTP_404:
-			h2d_dynamic_delete(sub_dyn);
-			ctx->sub_dyn = NULL;
-			return WUY_HTTP_404;
-		default:
-			_log(H2D_LOG_ERROR, "sub %s return %d", name,
-					lua_tointeger(ctx->lth->L, -1));
-			return WUY_HTTP_500;
-		}
-	}
-
-	/* conf-table */
-	if (!lua_istable(ctx->lth->L, -1)) {
-		_log(H2D_LOG_ERROR, "%s invalid table", name);
-		return H2D_ERROR;
-	}
-
-	lua_xmove(ctx->lth->L, h2d_L, 1);
-	h2d_lua_api_thread_free(ctx->lth);
-	ctx->lth = NULL;
-
-	/* prepare shared-memory pool */
-	char pool_name[1000];
-	snprintf(pool_name, sizeof(pool_name), "/h2tpd.pid.%d.%s",
-			atomic_load(dynamic->shared_id), name);
-	wuy_shmpool_t *shmpool = wuy_shmpool_new(pool_name, 40*1024, 40*1024, 10);
-	if (shmpool == NULL) {
-		_log(H2D_LOG_ERROR, "fail in wuy_shmpool_new");
-		return H2D_ERROR;
-	}
-
-	/* parse */
-	wuy_pool_t *pool = wuy_pool_new(1024);
-	void *container = NULL;
-	const char *err = wuy_cflua_parse(h2d_L, dynamic->sub_table, &container, pool);
-	if (err != WUY_CFLUA_OK) {
-		_log(H2D_LOG_ERROR, "parse sub %s error: %s", name, err);
-		return H2D_ERROR;
-	}
-
-	wuy_shmpool_finish(shmpool);
-
-	/* replace */
-	_log(H2D_LOG_INFO, "%s sub %s", sub_dyn->is_just_holder ? "new" : "update", name);
-
-	struct h2d_dynamic_conf *new_sub = h2d_dynamic_from_container(container, dynamic);
-	new_sub->name = wuy_pool_strdup(pool, name);
-	new_sub->create_time = sub_dyn->create_time;
-
-	new_sub->father = dynamic;
-	new_sub->modify_time = time(NULL);
-	new_sub->check_time = new_sub->modify_time;
-	new_sub->shmpool = shmpool;
-	new_sub->pool = pool;
-	wuy_dict_add(dynamic->sub_dict, new_sub);
-	if (new_sub->idle_timeout > 0) {
-		h2d_dynamic_timer_new(new_sub);
-		h2d_dynamic_timer_update(new_sub);
-	}
-
-	h2d_dynamic_delete(sub_dyn);
-	ctx->sub_dyn = new_sub;
-
-	return H2D_OK;
-}
-
-static bool h2d_dynamic_need_check_conf(struct h2d_dynamic_conf *sub_dyn,
+static bool h2d_dynamic_need_get_conf(struct h2d_dynamic_conf *sub_dyn,
 		struct h2d_request *r)
 {
 	if (sub_dyn->is_just_holder) {
-		return false;
+		return true;
 	}
 	if (sub_dyn->check_interval == 0) {
 		return false;
@@ -224,144 +70,168 @@ static bool h2d_dynamic_need_check_conf(struct h2d_dynamic_conf *sub_dyn,
 	return true;
 }
 
-void *h2d_dynamic_get(struct h2d_dynamic_conf *dynamic, struct h2d_request *r)
+static struct h2d_dynamic_conf *h2d_dynamic_get_sub_dyn(struct h2d_dynamic_conf *dynamic,
+		const char *name, struct h2d_request *r)
 {
-	_log(H2D_LOG_DEBUG, "h2d_dynamic_get()");
+	struct h2d_dynamic_conf *sub_dyn = wuy_dict_get(dynamic->sub_dict, name);
 
-	const char *name = NULL;
-
-	struct h2d_dynamic_ctx *ctx = r->dynamic_ctx;
-	if (ctx == NULL) {
-		ctx = wuy_pool_alloc(r->pool, sizeof(struct h2d_dynamic_ctx));
-		r->dynamic_ctx = ctx;
-	}
-
-	if (ctx->sub_dyn != NULL) { /* in processing already*/
-		_log(H2D_LOG_DEBUG, "continue");
-		goto state_get_conf;
-	}
-
-	/* get name to ctx->name */
-	int ret = h2d_dynamic_get_name(dynamic, r, &name);
-	if (ret != H2D_OK) {
-		goto not_ok;
-	}
-	if (strlen(name) > 100) {
-		_log(H2D_LOG_ERROR, "too long name");
-		ret = H2D_ERROR;
-		goto not_ok;
-	}
-
-	/* search cache by name */
-	ctx->sub_dyn = wuy_dict_get(dynamic->sub_dict, name);
-
-	if (ctx->sub_dyn == NULL) {
+	if (sub_dyn == NULL) {
 		if (wuy_dict_count(dynamic->sub_dict) >= dynamic->sub_max) {
 			_log(H2D_LOG_ERROR, "fail to create new because of limited");
-			ret = H2D_ERROR;
-			goto not_ok;
+			return H2D_PTR_ERROR;
 		}
 
-		_log(H2D_LOG_DEBUG, "new holder %s", name);
-
-		/* No container, just hold this name. So the following requests
-		 * will be pending here on its holder_wait_head, before get_conf()
-		 * returning. */
-		wuy_pool_t *pool = wuy_pool_new(256);
-		struct h2d_dynamic_conf *new_sub = wuy_pool_alloc(pool, sizeof(struct h2d_dynamic_conf));
-		new_sub->pool = pool;
-		new_sub->father = dynamic;
-		new_sub->name = wuy_pool_strdup(pool, name);
-		new_sub->create_time = time(NULL);
-		new_sub->is_just_holder = true;
-		wuy_list_init(&new_sub->holder_wait_head);
-		wuy_dict_add(dynamic->sub_dict, new_sub);
-
-		ctx->sub_dyn = new_sub;
-
-	} else if (ctx->sub_dyn->is_just_holder) {
-		_log(H2D_LOG_DEBUG, "just_holder hit %s %d", name, ctx->sub_dyn->error_ret);
-
-		/* this name was error in get_conf() */
-		ret = ctx->sub_dyn->error_ret;
-		if (ret != H2D_OK) {
-			goto not_ok;
-		}
-
-		/* this name is in get_conf() processing */
-		wuy_list_append(&ctx->sub_dyn->holder_wait_head, &r->list_node);
-		ctx->sub_dyn = NULL;
-		return NULL;
-
-	} else {
-		_log(H2D_LOG_DEBUG, "sub hit %s", name);
-
-		h2d_dynamic_timer_update(ctx->sub_dyn);
-
-		if (!h2d_dynamic_need_check_conf(ctx->sub_dyn, r)) {
-			/* here is the most passed way to end this function! */
-			goto done;
-		}
-
-		/* also get_conf() to check */
-		_log(H2D_LOG_DEBUG, "check %s", name);
+		/* create a bare sub_dyn without container, to hold the following requests */
+		wuy_pool_t *pool = wuy_pool_new(1024);
+		sub_dyn = wuy_pool_alloc(pool, sizeof(struct h2d_dynamic_conf));
+		sub_dyn->pool = pool;
+		sub_dyn->father = dynamic;
+		sub_dyn->name = wuy_pool_strdup(pool, name);
+		wuy_list_init(&sub_dyn->holder_wait_head);
+		wuy_dict_add(dynamic->sub_dict, sub_dyn);
+		sub_dyn->is_just_holder = true;
+		sub_dyn->timer = loop_timer_new(h2d_loop, h2d_dynamic_timeout_handler, sub_dyn);
+		loop_timer_set_after(sub_dyn->timer, 60 * 1000);
+		return sub_dyn;
 	}
 
-state_get_conf:
-
-	ret = h2d_dynamic_get_conf(dynamic, r);
-	if (ret != H2D_OK) {
-		goto not_ok;
+	if (sub_dyn->error_ret != H2D_OK) {
+		r->resp.status_code = sub_dyn->error_ret;
+		return H2D_PTR_ERROR;
 	}
 
-done:;
-	void *container = h2d_dynamic_to_container(ctx->sub_dyn);
-	h2d_dynamic_ctx_free(r);
-	return container;
-
-not_ok:
-	if (ret == H2D_AGAIN) {
-		return NULL;
+	if (h2d_lua_api_thread_in_running(r)) {
+		return sub_dyn;
 	}
 
-	_log(H2D_LOG_ERROR, "get fail %s %d", name, ret);
-
-	if (ctx->sub_dyn == NULL) {
-		goto out;
+	if (sub_dyn->is_just_holder) {
+		wuy_list_append(&sub_dyn->holder_wait_head, &r->list_node);
+		return H2D_PTR_AGAIN;
 	}
-	if (ctx->sub_dyn->is_just_holder) {
-		/* cache error */
-		ctx->sub_dyn->error_ret = ret;
 
-		h2d_dynamic_timer_new(ctx->sub_dyn);
-		loop_timer_set_after(ctx->sub_dyn->timer,
-				ctx->sub_dyn->father->error_expire * 1000);
-
-		h2d_request_active_list(&ctx->sub_dyn->holder_wait_head, "dynamic holder");
-	} else {
-		/* ignore error */
-		return h2d_dynamic_to_container(ctx->sub_dyn);
-	}
-out:
-	r->resp.status_code = (ret == H2D_ERROR) ? WUY_HTTP_500 : ret;
-	return NULL;
+	loop_timer_set_after(sub_dyn->timer, sub_dyn->idle_timeout * 1000);
+	return sub_dyn;
 }
 
-void h2d_dynamic_ctx_free(struct h2d_request *r)
+static struct h2d_dynamic_conf *h2d_dynamic_parse_sub_dyn(lua_State *L,
+		struct h2d_dynamic_conf *dynamic,
+		const char *name, struct h2d_request *r)
 {
-	struct h2d_dynamic_ctx *ctx = r->dynamic_ctx;
-	if (ctx == NULL) {
-		return;
+	if (!lua_istable(L, -1)) {
+		_log(H2D_LOG_ERROR, "%s invalid table", name);
+		return H2D_PTR_ERROR;
 	}
 
-	if (ctx->lth != NULL) {
-		h2d_lua_api_thread_free(ctx->lth);
+	lua_xmove(L, h2d_L, 1);
+
+	/* prepare shared-memory pool */
+	char pool_name[1000];
+	snprintf(pool_name, sizeof(pool_name), "/h2tpd.pid.%d.%s",
+			atomic_load(dynamic->shared_id), name);
+	wuy_shmpool_t *shmpool = wuy_shmpool_new(pool_name, 40*1024, 40*1024, 10);
+	if (shmpool == NULL) {
+		_log(H2D_LOG_ERROR, "fail in wuy_shmpool_new");
+		return H2D_PTR_ERROR;
 	}
-	if (ctx->sub_dyn != NULL && ctx->sub_dyn->is_just_holder
-			&& ctx->sub_dyn->timer == NULL) {
-		h2d_dynamic_delete(ctx->sub_dyn);
+
+	/* parse */
+	wuy_pool_t *pool = wuy_pool_new(1024);
+	void *container = NULL;
+	const char *err = wuy_cflua_parse(h2d_L, dynamic->sub_table, &container, pool);
+	if (err != WUY_CFLUA_OK) {
+		_log(H2D_LOG_ERROR, "parse sub %s error: %s", name, err);
+		return H2D_PTR_ERROR;
 	}
-	r->dynamic_ctx = NULL;
+
+	wuy_shmpool_finish(shmpool);
+
+	_log(H2D_LOG_INFO, "sub %s get_conf() done", name);
+
+	/* init the sub-dyn */
+	struct h2d_dynamic_conf *sub_dyn = h2d_dynamic_from_container(container, dynamic);
+	sub_dyn->name = wuy_pool_strdup(pool, name);
+	sub_dyn->father = dynamic;
+	sub_dyn->modify_time = time(NULL);
+	sub_dyn->check_time = sub_dyn->modify_time;
+	sub_dyn->shmpool = shmpool;
+	sub_dyn->pool = pool;
+	wuy_dict_add(dynamic->sub_dict, sub_dyn);
+
+	sub_dyn->timer = loop_timer_new(h2d_loop, h2d_dynamic_timeout_handler, sub_dyn);
+	loop_timer_set_after(sub_dyn->timer, sub_dyn->idle_timeout * 1000);
+
+	return sub_dyn;
+}
+
+void *h2d_dynamic_get(struct h2d_dynamic_conf *dynamic, struct h2d_request *r)
+{
+	/* call get_name() */
+	int name_len;
+	const char *name = h2d_lua_api_call_lstring(r, dynamic->get_name, &name_len);
+	if (name_len > 100) {
+		_log(H2D_LOG_ERROR, "too long name");
+		return H2D_PTR_ERROR;
+	}
+	_log(H2D_LOG_DEBUG, "get_name: %s", name);
+
+	/* search cache by name */
+	struct h2d_dynamic_conf *sub_dyn = h2d_dynamic_get_sub_dyn(dynamic, name, r);
+	if (sub_dyn == H2D_PTR_ERROR || sub_dyn == H2D_PTR_AGAIN) {
+		return sub_dyn;
+	}
+
+	if (!h2d_dynamic_need_get_conf(sub_dyn, r)) { /* HIT! */
+		return h2d_dynamic_to_container(sub_dyn);
+	}
+
+	/* call get_conf() */
+	lua_State *L = h2d_lua_api_thread_run(r, dynamic->get_conf, "sl",
+			name, sub_dyn->modify_time);
+	if (L == H2D_PTR_ERROR || L == H2D_PTR_AGAIN) {
+		return L;
+	}
+
+	/* return value: optional status-code */
+	if (lua_isnumber(L, -1)) {
+		switch (lua_tointeger(L, -1)) {
+		case WUY_HTTP_200:
+			lua_pop(L, 1);
+			break;
+
+		case WUY_HTTP_304:
+			if (sub_dyn->is_just_holder) {
+				_log(H2D_LOG_ERROR, "holder %s get 304", name);
+				return H2D_PTR_ERROR;
+			}
+			return h2d_dynamic_to_container(sub_dyn);
+
+		case WUY_HTTP_404:
+			_log(H2D_LOG_ERROR, "sub %s removed", name);
+			sub_dyn->error_ret = WUY_HTTP_404;
+			r->resp.status_code = WUY_HTTP_404;
+			return H2D_PTR_ERROR;
+
+		default:
+			_log(H2D_LOG_ERROR, "sub %s returns %d", name, lua_tointeger(L, -1));
+			goto fail;
+		}
+	}
+
+	/* return value: conf-table is at L:stack[-1] now */
+	struct h2d_dynamic_conf *new_sub = h2d_dynamic_parse_sub_dyn(L, dynamic, name, r);
+	if (new_sub == H2D_PTR_ERROR) {
+		goto fail;
+	}
+
+	h2d_dynamic_delete(sub_dyn);
+
+	return h2d_dynamic_to_container(new_sub);
+
+fail:
+	if (sub_dyn->is_just_holder) {
+		return H2D_PTR_ERROR;
+	}
+	return h2d_dynamic_to_container(sub_dyn); /* use stale */
 }
 
 void h2d_dynamic_init(void)
@@ -442,10 +312,6 @@ static struct wuy_cflua_command h2d_dynamic_conf_commands[] = {
 		.type = WUY_CFLUA_TYPE_FUNCTION,
 		.offset = offsetof(struct h2d_dynamic_conf, get_conf),
 	},
-	{	.name = "is_name_blocking",
-		.type = WUY_CFLUA_TYPE_BOOLEAN,
-		.offset = offsetof(struct h2d_dynamic_conf, is_name_blocking),
-	},
 	{	.name = "sub_max",
 		.type = WUY_CFLUA_TYPE_INTEGER,
 		.offset = offsetof(struct h2d_dynamic_conf, sub_max),
@@ -479,7 +345,7 @@ static struct wuy_cflua_command h2d_dynamic_conf_commands[] = {
 		.type = WUY_CFLUA_TYPE_INTEGER,
 		.offset = offsetof(struct h2d_dynamic_conf, idle_timeout),
 		.default_value.n = 3600,
-		.limits.n = WUY_CFLUA_LIMITS_NON_NEGATIVE,
+		.limits.n = WUY_CFLUA_LIMITS_POSITIVE,
 	},
 	{ NULL },
 };

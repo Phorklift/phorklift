@@ -28,17 +28,16 @@ static int h2d_lua_generate_response_headers(struct h2d_request *r)
 
 	if (ctx == NULL) {
 		ctx = wuy_pool_alloc(r->pool, sizeof(struct h2d_lua_ctx));
-		ctx->lth = h2d_lua_api_thread_new(conf->content, r);
 		ctx->resp_body_buf = wuy_pool_alloc(r->pool, 4096); // TODO
 		r->module_ctxs[h2d_lua_module.index] = ctx;
 	}
 
-	int ret = h2d_lua_api_thread_resume(ctx->lth);
-	if (ret != H2D_OK) {
-		return ret;
+	lua_State *L = h2d_lua_api_thread_run(r, conf->content, NULL);
+	if (!H2D_PTR_IS_OK(L)) {
+		return H2D_PTR2RET(L);
 	}
 
-	const char *data = lua_tolstring(ctx->lth->L, -1, &ctx->resp_body_len);
+	const char *data = lua_tolstring(L, -1, &ctx->resp_body_len);
 	if (data == NULL) {
 		return WUY_HTTP_500;
 	}
@@ -53,12 +52,6 @@ static int h2d_lua_generate_response_body(struct h2d_request *r, uint8_t *buf, i
 	struct h2d_lua_ctx *ctx = r->module_ctxs[h2d_lua_module.index];
 	memcpy(buf, ctx->resp_body_buf, ctx->resp_body_len);
 	return ctx->resp_body_len;
-}
-
-static void h2d_lua_ctx_free(struct h2d_request *r)
-{
-	struct h2d_lua_ctx *ctx = r->module_ctxs[h2d_lua_module.index];
-	h2d_lua_api_thread_free(ctx->lth);
 }
 
 /* configuration */
@@ -105,6 +98,4 @@ struct h2d_module h2d_lua_module = {
 		.response_headers = h2d_lua_generate_response_headers,
 		.response_body = h2d_lua_generate_response_body,
 	},
-
-	.ctx_free = h2d_lua_ctx_free,
 };

@@ -12,6 +12,12 @@ struct h2d_conf_path_stats {
 	atomic_long	total;
 	atomic_long	done;
 
+	atomic_long	lua_new;
+	atomic_long	lua_again;
+	atomic_long	lua_error;
+	atomic_long	lua_done;
+	atomic_long	lua_free;
+
 	atomic_long	req_acc_ms;
 	atomic_long	react_acc_ms;
 	atomic_long	resp_acc_ms;

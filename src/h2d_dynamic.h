@@ -3,7 +3,6 @@
 
 struct h2d_dynamic_conf {
 	/* conf */
-	bool			is_name_blocking;
 	wuy_cflua_function_t	get_name;
 	wuy_cflua_function_t	get_conf;
 	wuy_cflua_function_t	check_filter;
@@ -22,7 +21,6 @@ struct h2d_dynamic_conf {
 
 	/* runtime: sub only */
 	struct h2d_dynamic_conf	*father;
-	time_t			create_time;
 	time_t			modify_time;
 	time_t			check_time;
 	loop_timer_t		*timer;

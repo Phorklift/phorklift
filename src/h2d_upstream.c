@@ -71,12 +71,11 @@ h2d_upstream_get_connection(struct h2d_upstream_conf *upstream, struct h2d_reque
 {
 	/* check if dynamic */
 	while (h2d_dynamic_is_enabled(&upstream->dynamic)) {
+		h2d_request_log(r, H2D_LOG_DEBUG, "dynamic get");
 		upstream = h2d_dynamic_get(&upstream->dynamic, r);
-		if (upstream == NULL) {
-			h2d_request_log(r, H2D_LOG_DEBUG, "dynamic get %d", r->resp.status_code);
-			return NULL;
+		if (!H2D_PTR_IS_OK(upstream)) {
+			return (void *)upstream;
 		}
-		_log(H2D_LOG_DEBUG, "dynamic get done");
 	}
 
 	if (upstream->address_num == 0) { /* only for dynamic upstream */
@@ -84,7 +83,7 @@ h2d_upstream_get_connection(struct h2d_upstream_conf *upstream, struct h2d_reque
 			_log(H2D_LOG_DEBUG, "dynamic wait for resolving");
 			wuy_list_append(&upstream->wait_head, &r->list_node);
 		}
-		return NULL;
+		return H2D_PTR_AGAIN;
 	}
 
 	/* pick an address */
@@ -92,7 +91,7 @@ h2d_upstream_get_connection(struct h2d_upstream_conf *upstream, struct h2d_reque
 	if (address == NULL) {
 		_log(H2D_LOG_ERROR, "pick fail");
 		atomic_fetch_add(&upstream->stats->pick_fail, 1);
-		return NULL;
+		return H2D_PTR_ERROR;
 	}
 
 	if (!h2d_upstream_address_is_pickable(address, r)) {
@@ -123,7 +122,7 @@ h2d_upstream_get_connection(struct h2d_upstream_conf *upstream, struct h2d_reque
 	loop_stream_t *s = loop_tcp_connect_sockaddr(h2d_loop, &address->sockaddr.s,
 			&h2d_upstream_ops);
 	if (s == NULL) {
-		return NULL;
+		return H2D_PTR_ERROR;
 	}
 	loop_stream_set_timeout(s, upstream->send_timeout * 1000);
 

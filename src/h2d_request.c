@@ -158,8 +158,6 @@ void h2d_request_close(struct h2d_request *r)
 
 	h2d_module_request_ctx_free(r);
 
-	h2d_dynamic_ctx_free(r);
-
 	wuy_pool_release(r->pool);
 }
 
@@ -242,12 +240,11 @@ static int h2d_request_process_headers(struct h2d_request *r)
 			return WUY_HTTP_404;
 		}
 		while (h2d_dynamic_is_enabled(&r->conf_path->dynamic)) {
+			h2d_request_log(r, H2D_LOG_DEBUG, "get dynamic sub_path");
 			struct h2d_conf_path *sub_path = h2d_dynamic_get(&r->conf_path->dynamic, r);
-			if (sub_path == NULL) {
-				h2d_request_log(r, H2D_LOG_DEBUG, "get dynamic sub_path %d", r->resp.status_code);
-				return r->resp.status_code != 0 ? r->resp.status_code : H2D_AGAIN;
+			if (!H2D_PTR_IS_OK(sub_path)) {
+				return H2D_PTR2RET(sub_path);
 			}
-			h2d_request_log(r, H2D_LOG_DEBUG, "get dynamic sub_path OK: %s", sub_path->dynamic.name);
 			r->conf_path = sub_path;
 		}
 	}
@@ -464,7 +461,9 @@ void h2d_request_run(struct h2d_request *r, int window)
 		return;
 	}
 	if (ret == H2D_ERROR) {
-		if (r->state == H2D_REQUEST_STATE_PARSE_HEADERS) { // XXX reset the request??
+		if (r->resp.status_code != 0) {
+			ret = r->resp.status_code;
+		} else if (r->state == H2D_REQUEST_STATE_PARSE_HEADERS) { // XXX reset the request??
 			ret = H2D_OK;
 		} else if (r->state <= H2D_REQUEST_STATE_RESPONSE_HEADERS_1) {
 			h2d_request_log(r, H2D_LOG_ERROR, "should not be here");

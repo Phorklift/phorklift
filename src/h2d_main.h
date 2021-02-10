@@ -49,6 +49,12 @@
 #define H2D_ERROR		-1
 #define H2D_AGAIN		-2
 
+#define H2D_PTR_ERROR		(void *)-1
+#define H2D_PTR_AGAIN		(void *)-2
+
+#define H2D_PTR2RET(pr)		((intptr_t)pr)
+#define H2D_PTR_IS_OK(pr)	(H2D_PTR2RET(pr) > 0)
+
 /* exit status */
 #define H2D_EXIT_OK		0
 #define H2D_EXIT_GETOPT		1
