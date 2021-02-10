@@ -31,7 +31,7 @@ static const char *client_addr(struct h2d_request *r)
 
 static void *h2d_proxy_new_ctx(struct h2d_request *r)
 {
-	struct h2d_proxy_ctx *ctx = calloc(1, sizeof(struct h2d_proxy_ctx));
+	struct h2d_proxy_ctx *ctx = wuy_pool_alloc(r->pool, sizeof(struct h2d_proxy_ctx));
 
 	if (r->req.method != WUY_HTTP_GET && r->req.method != WUY_HTTP_HEAD) {
 		ctx->upstream.retries = -1;
@@ -88,7 +88,7 @@ static int h2d_proxy_build_request(struct h2d_request *r)
 {
 	struct h2d_upstream_content_ctx *ctx = r->module_ctxs[h2d_proxy_module.index];
 
-	ctx->req_buf = malloc(4096 + r->req.body_len); // TODO
+	ctx->req_buf = wuy_pool_alloc(r->pool, 4096 + r->req.body_len); // TODO
 	ctx->req_len = h2d_proxy_build_request_headers(r, ctx->req_buf);
 	memcpy(ctx->req_buf + ctx->req_len, r->req.body_buf, r->req.body_len);
 	ctx->req_len += r->req.body_len;
@@ -146,8 +146,8 @@ static int h2d_proxy_parse_response_headers(struct h2d_request *r,
 			continue;
 		}
 
-		h2d_header_add(&r->resp.headers, name_str,
-				name_len, value_str, value_len);
+		h2d_header_add(&r->resp.headers, name_str, name_len,
+				value_str, value_len, r->pool);
 	}
 
 	return p - buffer;

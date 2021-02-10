@@ -12,7 +12,7 @@ static int h2d_echo_generate_response_headers(struct h2d_request *r)
 {
 	struct h2d_echo_conf *conf = r->conf_path->module_confs[h2d_echo_module.index];
 
-	h2d_header_add_lite(&r->resp.headers, "Server", "h2tpd", 5);
+	h2d_header_add_lite(&r->resp.headers, "Server", "h2tpd", 5, r->pool);
 
 	r->resp.status_code = conf->status_code;
 	r->resp.content_length = conf->len;

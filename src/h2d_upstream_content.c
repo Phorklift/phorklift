@@ -158,8 +158,6 @@ void h2d_upstream_content_ctx_free(struct h2d_request *r)
 	if (ctx->upc != NULL) {
 		h2d_upstream_release_connection(ctx->upc);
 	}
-	free(ctx->req_buf);
-	free(ctx);
 }
 
 const char *h2d_upstream_content_set_ops(struct h2d_upstream_conf *conf,

@@ -31,7 +31,7 @@ static int h2d_redis_build_request(struct h2d_request *r)
 		query = q;
 	}
 
-	ctx->req_buf = malloc(ctx->req_len);
+	ctx->req_buf = wuy_pool_alloc(r->pool, ctx->req_len);
 	memcpy(ctx->req_buf, query, ctx->req_len);
 	return H2D_OK;
 }

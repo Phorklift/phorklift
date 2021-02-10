@@ -73,7 +73,7 @@ static int h2d_http1_request_headers(struct h2d_request *r, const char *buffer, 
 			continue;
 		}
 
-		h2d_header_add(&r->req.headers, name_str, name_len, value_str, value_len);
+		h2d_header_add(&r->req.headers, name_str, name_len, value_str, value_len, r->pool);
 	}
 
 	return buf_pos - buffer;

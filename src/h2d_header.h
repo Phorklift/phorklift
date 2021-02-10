@@ -17,9 +17,9 @@ static inline char *h2d_header_value(struct h2d_header *h)
 }
 
 static inline struct h2d_header *h2d_header_new(const char *name_str, int name_len,
-		const char *value_str, int value_len)
+		const char *value_str, int value_len, wuy_pool_t *pool)
 {
-	struct h2d_header *h = malloc(sizeof(struct h2d_header) + name_len + value_len + 2);
+	struct h2d_header *h = wuy_pool_alloc(pool, sizeof(struct h2d_header) + name_len + value_len + 2);
 	if (h == NULL) {
 		return NULL;
 	}
@@ -36,14 +36,15 @@ static inline struct h2d_header *h2d_header_new(const char *name_str, int name_l
 	return h;
 }
 
-#define h2d_header_add_lite(list, name, value, value_len) \
-	h2d_header_add(list, name, sizeof(name)-1, value, value_len)
+#define h2d_header_add_lite(list, name, value, value_len, pool) \
+	h2d_header_add(list, name, sizeof(name)-1, value, value_len, pool)
 
 static inline struct h2d_header *h2d_header_add(wuy_slist_t *list,
 		const char *name_str, int name_len,
-		const char *value_str, int value_len)
+		const char *value_str, int value_len,
+		wuy_pool_t *pool)
 {
-	struct h2d_header *h = h2d_header_new(name_str, name_len, value_str, value_len);
+	struct h2d_header *h = h2d_header_new(name_str, name_len, value_str, value_len, pool);
 	if (h == NULL) {
 		return NULL;
 	}
@@ -64,19 +65,11 @@ static inline struct h2d_header *h2d_header_get(wuy_slist_t *list, const char *n
 
 #define h2d_header_iter(list, h) wuy_slist_iter_type(list, h, list_node)
 
-static inline void h2d_header_free_list(wuy_slist_t *list)
-{
-	struct h2d_header *h;
-	while (wuy_slist_pop_type(list, h, list_node) != NULL) {
-		free(h);
-	}
-}
-
-static inline void h2d_header_dup_list(wuy_slist_t *to, wuy_slist_t *from)
+static inline void h2d_header_dup_list(wuy_slist_t *to, wuy_slist_t *from, wuy_pool_t *pool)
 {
 	struct h2d_header *h;
 	wuy_slist_iter_type(from, h, list_node) {
-		h2d_header_add(to, h->str, h->name_len, h2d_header_value(h), h->value_len);
+		h2d_header_add(to, h->str, h->name_len, h2d_header_value(h), h->value_len, pool);
 	}
 }
 

@@ -14,7 +14,7 @@ static int h2d_auth_basic_fail(struct h2d_request *r)
 	char resp_header[sizeof("Basic realm=\"\"") + strlen(conf->realm)];
 	int len = sprintf(resp_header, "Basic realm=\"%s\"", conf->realm);
 	h2d_header_add(&r->resp.headers, "WWW-Authenticate",
-			sizeof("WWW-Authenticate")-1, resp_header, len);
+			sizeof("WWW-Authenticate")-1, resp_header, len, r->pool);
 
 	return WUY_HTTP_401;
 }

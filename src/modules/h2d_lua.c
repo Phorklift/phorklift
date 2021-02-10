@@ -27,9 +27,9 @@ static int h2d_lua_generate_response_headers(struct h2d_request *r)
 	struct h2d_lua_ctx *ctx = r->module_ctxs[h2d_lua_module.index];
 
 	if (ctx == NULL) {
-		ctx = calloc(1, sizeof(struct h2d_lua_ctx));
+		ctx = wuy_pool_alloc(r->pool, sizeof(struct h2d_lua_ctx));
 		ctx->lth = h2d_lua_api_thread_new(conf->content, r);
-		ctx->resp_body_buf = malloc(4096); // TODO
+		ctx->resp_body_buf = wuy_pool_alloc(r->pool, 4096); // TODO
 		r->module_ctxs[h2d_lua_module.index] = ctx;
 	}
 
@@ -58,7 +58,6 @@ static int h2d_lua_generate_response_body(struct h2d_request *r, uint8_t *buf, i
 static void h2d_lua_ctx_free(struct h2d_request *r)
 {
 	struct h2d_lua_ctx *ctx = r->module_ctxs[h2d_lua_module.index];
-	free(ctx->resp_body_buf);
 	h2d_lua_api_thread_free(ctx->lth);
 }
 

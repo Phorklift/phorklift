@@ -40,9 +40,9 @@ static int h2d_gzip_filter_response_headers(struct h2d_request *r)
 	/* enable gzip */
 
 	r->resp.content_length = H2D_CONTENT_LENGTH_INIT,
-	h2d_header_add(&r->resp.headers, "Content-Encoding", 16, "gzip", 4);
+	h2d_header_add(&r->resp.headers, "Content-Encoding", 16, "gzip", 4, r->pool);
 
-	z_streamp zs = calloc(1, sizeof(*zs));
+	z_streamp zs = wuy_pool_alloc(r->pool, sizeof(*zs));
 	deflateInit2(zs, conf->level, Z_DEFLATED, conf->window_bits + 16,
 			conf->mem_level, Z_DEFAULT_STRATEGY);
 
@@ -83,7 +83,6 @@ static void h2d_gzip_ctx_free(struct h2d_request *r)
 {
 	z_streamp zs = r->module_ctxs[h2d_gzip_module.index];
 	deflateEnd(zs);
-	free(zs);
 }
 
 /* configuration */

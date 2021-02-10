@@ -30,10 +30,9 @@ static void h2d_save_to_ctx_free(struct h2d_request *r)
 {
 	struct h2d_save_to_ctx *ctx = r->module_ctxs[h2d_save_to_module.index];
 	if (ctx->subr != NULL) {
-		h2d_request_close(ctx->subr);
+		h2d_request_close(ctx->subr); // TODO not need close subr
 	}
 	free(ctx->buffer);
-	free(ctx);
 }
 
 static int h2d_save_to_filter_response_headers(struct h2d_request *r)
@@ -68,12 +67,12 @@ static int h2d_save_to_filter_response_headers(struct h2d_request *r)
 		return H2D_OK;
 	}
 
-	struct h2d_save_to_ctx *ctx = calloc(1, sizeof(struct h2d_save_to_ctx));
+	struct h2d_save_to_ctx *ctx = wuy_pool_alloc(r->pool, sizeof(struct h2d_save_to_ctx));
 	ctx->expire_after = expire_after;
 
 	if (r->resp.content_length != H2D_CONTENT_LENGTH_INIT) {
 		ctx->buf_size = r->resp.content_length;
-		ctx->buffer = malloc(ctx->buf_size);
+		ctx->buffer = malloc(ctx->buf_size); // TODO user pool
 	}
 
 	r->module_ctxs[h2d_save_to_module.index] = ctx;

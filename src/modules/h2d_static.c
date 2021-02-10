@@ -41,7 +41,7 @@ static int h2d_static_dir_headers(struct h2d_request *r, struct stat *st_buf)
 {
 	struct h2d_static_ctx *ctx = r->module_ctxs[h2d_static_module.index];
 
-	ctx->list_dir_buf = malloc(4096);
+	ctx->list_dir_buf = wuy_pool_alloc(r->pool, 4096);
 
 	char *p = ctx->list_dir_buf;
 	DIR *dir = fdopendir(ctx->fd);
@@ -56,7 +56,7 @@ static int h2d_static_dir_headers(struct h2d_request *r, struct stat *st_buf)
 	ctx->list_dir_len = p - ctx->list_dir_buf;
 
 	h2d_header_add_lite(&r->resp.headers, "Content-Type",
-			"application/text", 16);
+			"application/text", 16, r->pool);
 
 	r->resp.status_code = WUY_HTTP_200;
 	r->resp.content_length = ctx->list_dir_len;
@@ -105,7 +105,7 @@ static int h2d_static_range_headers(struct h2d_request *r, struct h2d_header *h,
 	char buf[100];
 	int len = sprintf(buf, "bytes %ld-%ld/%ld", range->first,
 			range->last, st_buf->st_size);
-	h2d_header_add_lite(&r->resp.headers, "Content-Range", buf, len);
+	h2d_header_add_lite(&r->resp.headers, "Content-Range", buf, len, r->pool);
 
 	return H2D_OK;
 }
@@ -114,10 +114,10 @@ static int h2d_static_generate_response_headers(struct h2d_request *r)
 {
 	struct h2d_static_conf *conf = r->conf_path->module_confs[h2d_static_module.index];
 
-	h2d_header_add_lite(&r->resp.headers, "Server", "h2tpd", 5);
+	h2d_header_add_lite(&r->resp.headers, "Server", "h2tpd", 5, r->pool);
 
 	/* ctx */
-	struct h2d_static_ctx *ctx = calloc(1, sizeof(struct h2d_static_ctx));
+	struct h2d_static_ctx *ctx = wuy_pool_alloc(r->pool, sizeof(struct h2d_static_ctx));
 	r->module_ctxs[h2d_static_module.index] = ctx;
 
 	const char *filename = r->req.uri.path + 1;
@@ -172,11 +172,11 @@ skip_open:;
 
 	h2d_header_add_lite(&r->resp.headers, "Last-Modified",
 			wuy_http_date_make(st_buf.st_mtime),
-			WUY_HTTP_DATE_LENGTH);
+			WUY_HTTP_DATE_LENGTH, r->pool);
 
 	const char *content_type = h2d_static_mime_type(filename);
 	h2d_header_add_lite(&r->resp.headers, "Content-Type",
-			content_type, strlen(content_type));
+			content_type, strlen(content_type), r->pool);
 
 	/* check Range */
 	if (r->req.method == WUY_HTTP_GET) {
@@ -232,8 +232,6 @@ static void h2d_static_ctx_free(struct h2d_request *r)
 	if (ctx->fd != conf->dirfd) {
 		close(ctx->fd);
 	}
-	free(ctx->list_dir_buf);
-	free(ctx);
 }
 
 

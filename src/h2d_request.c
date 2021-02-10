@@ -36,7 +36,7 @@ void h2d_request_reset_response(struct h2d_request *r)
 	r->resp.content_generated_length = 0;
 	r->resp.sent_length = 0;
 	r->resp.content_length = H2D_CONTENT_LENGTH_INIT;
-	h2d_header_free_list(&r->resp.headers);
+	wuy_slist_init(&r->resp.headers);
 }
 
 static void h2d_request_stats(struct h2d_request *r)
@@ -204,7 +204,7 @@ bool h2d_request_set_uri(struct h2d_request *r, const char *uri_str, int uri_len
 	}
 
 	/* decode path */
-	char *decode = wuy_pool_alloc(r->pool, path_len + 1);
+	char *decode = wuy_pool_alloc_align(r->pool, path_len + 1, 1);
 	path_len = wuy_http_decode_path(decode, r->req.uri.path_pos, path_len);
 	if (path_len < 0) {
 		h2d_request_log(r, H2D_LOG_INFO, "invalid request URI path");

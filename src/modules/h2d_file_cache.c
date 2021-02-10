@@ -208,9 +208,7 @@ static void h2d_file_cache_ctx_free(struct h2d_request *r)
 			atomic_fetch_add(&conf->stats->store_fail, 1);
 		}
 		unlinkat(conf->current_dirfd, ctx->new_filename, 0);
-		free((char *)ctx->new_filename);
 	}
-	free(ctx);
 }
 
 static void h2d_file_cache_abort(struct h2d_request *r)
@@ -258,7 +256,7 @@ static int h2d_file_cache_filter_process_headers(struct h2d_request *r)
 
 	_log(H2D_LOG_DEBUG, "key: %*s, filename: %s", len, key, filename);
 
-	struct h2d_file_cache_ctx *ctx = calloc(1, sizeof(struct h2d_file_cache_ctx));
+	struct h2d_file_cache_ctx *ctx = wuy_pool_alloc(r->pool, sizeof(struct h2d_file_cache_ctx));
 	r->module_ctxs[h2d_file_cache_module.index] = ctx;
 
 	/* try to open file */
@@ -280,7 +278,7 @@ cache_miss:
 		/* save the filename and store response into it in filters later */
 		_log(H2D_LOG_DEBUG, "miss");
 		atomic_fetch_add(&conf->stats->miss, 1);
-		ctx->new_filename = strdup(filename);
+		ctx->new_filename = wuy_pool_strdup(r->pool, filename);
 		return H2D_OK;
 	}
 
@@ -305,7 +303,7 @@ cache_miss:
 		close(ctx->fd);
 		unlinkat(conf->current_dirfd, filename, 0);
 		ctx->fd = -1;
-		ctx->new_filename = strdup(filename);
+		ctx->new_filename = wuy_pool_strdup(r->pool, filename);
 		return H2D_OK;
 	}
 
@@ -419,7 +417,6 @@ static int h2d_file_cache_filter_response_body(struct h2d_request *r,
 		}
 
 		/* mark finished */
-		free((char *)ctx->new_filename);
 		ctx->new_filename = NULL;
 	}
 
@@ -441,7 +438,7 @@ static int h2d_file_cache_generate_response_headers(struct h2d_request *r)
 	for (int i = 0; i < ctx->item.header_num; i++) {
 		struct h2d_header *h = h2d_header_load_from(buf_pos);
 		h2d_header_add(&r->resp.headers, h->str, h->name_len,
-				h2d_header_value(h), h->value_len);
+				h2d_header_value(h), h->value_len, r->pool);
 		buf_pos += h2d_header_dump_length(h);
 	}
 

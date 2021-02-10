@@ -51,7 +51,7 @@ static void h2d_stats_dump_listen(struct h2d_conf_listen *conf_listen, wuy_json_
 
 static int h2d_stats_generate_response_headers(struct h2d_request *r)
 {
-	struct h2d_stats_ctx *ctx = malloc(sizeof(struct h2d_stats_ctx));
+	struct h2d_stats_ctx *ctx = wuy_pool_alloc(r->pool, sizeof(struct h2d_stats_ctx));
 	r->module_ctxs[h2d_stats_module.index] = ctx;
 
 	WUY_JSON_CTX(json, ctx->body_buf, sizeof(ctx->body_buf));
@@ -94,12 +94,6 @@ static int h2d_stats_generate_response_body(struct h2d_request *r, uint8_t *buf,
 	return body_len;
 }
 
-static void h2d_stats_ctx_free(struct h2d_request *r)
-{
-	struct h2d_stats_ctx *ctx = r->module_ctxs[h2d_stats_module.index];
-	free(ctx);
-}
-
 /* configuration */
 
 struct h2d_module h2d_stats_module = {
@@ -115,6 +109,4 @@ struct h2d_module h2d_stats_module = {
 		.response_headers = h2d_stats_generate_response_headers,
 		.response_body = h2d_stats_generate_response_body,
 	},
-
-	.ctx_free = h2d_stats_ctx_free,
 };

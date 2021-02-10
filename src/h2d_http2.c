@@ -77,7 +77,7 @@ static bool h2d_http2_hook_stream_header(http2_stream_t *h2s, const char *name_s
 		}
 	}
 
-	h2d_header_add(&r->req.headers, name_str, name_len, value_str, value_len);
+	h2d_header_add(&r->req.headers, name_str, name_len, value_str, value_len, r->pool);
 
 	return true;
 }
