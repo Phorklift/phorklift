@@ -78,8 +78,8 @@ static void h2d_dynamic_delete(struct h2d_dynamic_conf *sub_dyn)
 	if (sub_dyn->shmpool != NULL) {
 		wuy_shmpool_release(sub_dyn->shmpool);
 	}
-	if (!sub_dyn->is_just_holder) {
-		wuy_cflua_free(h2d_L, dynamic->sub_table, h2d_dynamic_to_container(sub_dyn));
+	if (sub_dyn->pool != NULL) {
+		wuy_pool_release(sub_dyn->pool);
 	}
 }
 
@@ -168,8 +168,9 @@ static int h2d_dynamic_get_conf(struct h2d_dynamic_conf *dynamic,
 	}
 
 	/* parse */
+	wuy_pool_t *pool = wuy_pool_new(1024);
 	void *container = NULL;
-	const char *err = wuy_cflua_parse(h2d_L, dynamic->sub_table, &container);
+	const char *err = wuy_cflua_parse(h2d_L, dynamic->sub_table, &container, pool);
 	if (err != WUY_CFLUA_OK) {
 		_log(H2D_LOG_ERROR, "parse sub %s error: %s", name, err);
 		return H2D_ERROR;
@@ -181,21 +182,21 @@ static int h2d_dynamic_get_conf(struct h2d_dynamic_conf *dynamic,
 	_log(H2D_LOG_INFO, "%s sub %s", sub_dyn->is_just_holder ? "new" : "update", name);
 
 	struct h2d_dynamic_conf *new_sub = h2d_dynamic_from_container(container, dynamic);
-	new_sub->name = name;
-	sub_dyn->name = NULL;
+	new_sub->name = wuy_pool_strdup(pool, name);
 	new_sub->create_time = sub_dyn->create_time;
-	h2d_dynamic_delete(sub_dyn);
 
 	new_sub->father = dynamic;
 	new_sub->modify_time = time(NULL);
 	new_sub->check_time = new_sub->modify_time;
 	new_sub->shmpool = shmpool;
+	new_sub->pool = pool;
 	wuy_dict_add(dynamic->sub_dict, new_sub);
 	if (new_sub->idle_timeout > 0) {
 		h2d_dynamic_timer_new(new_sub);
 		h2d_dynamic_timer_update(new_sub);
 	}
 
+	h2d_dynamic_delete(sub_dyn);
 	ctx->sub_dyn = new_sub;
 
 	return H2D_OK;
@@ -231,7 +232,7 @@ void *h2d_dynamic_get(struct h2d_dynamic_conf *dynamic, struct h2d_request *r)
 
 	struct h2d_dynamic_ctx *ctx = r->dynamic_ctx;
 	if (ctx == NULL) {
-		ctx = calloc(1, sizeof(struct h2d_dynamic_ctx));
+		ctx = wuy_pool_alloc(r->pool, sizeof(struct h2d_dynamic_ctx));
 		r->dynamic_ctx = ctx;
 	}
 
@@ -266,13 +267,17 @@ void *h2d_dynamic_get(struct h2d_dynamic_conf *dynamic, struct h2d_request *r)
 		/* No container, just hold this name. So the following requests
 		 * will be pending here on its holder_wait_head, before get_conf()
 		 * returning. */
-		ctx->sub_dyn = calloc(1, sizeof(struct h2d_dynamic_conf));
-		ctx->sub_dyn->father = dynamic;
-		ctx->sub_dyn->name = strdup(name);
-		ctx->sub_dyn->create_time = time(NULL);
-		ctx->sub_dyn->is_just_holder = true;
-		wuy_list_init(&ctx->sub_dyn->holder_wait_head);
-		wuy_dict_add(dynamic->sub_dict, ctx->sub_dyn);
+		wuy_pool_t *pool = wuy_pool_new(256);
+		struct h2d_dynamic_conf *new_sub = wuy_pool_alloc(pool, sizeof(struct h2d_dynamic_conf));
+		new_sub->pool = pool;
+		new_sub->father = dynamic;
+		new_sub->name = wuy_pool_strdup(pool, name);
+		new_sub->create_time = time(NULL);
+		new_sub->is_just_holder = true;
+		wuy_list_init(&new_sub->holder_wait_head);
+		wuy_dict_add(dynamic->sub_dict, new_sub);
+
+		ctx->sub_dyn = new_sub;
 
 	} else if (ctx->sub_dyn->is_just_holder) {
 		_log(H2D_LOG_DEBUG, "just_holder hit %s %d", name, ctx->sub_dyn->error_ret);
@@ -310,10 +315,9 @@ state_get_conf:
 	}
 
 done:;
-	struct h2d_dynamic_conf *sub_dyn = ctx->sub_dyn;
+	void *container = h2d_dynamic_to_container(ctx->sub_dyn);
 	h2d_dynamic_ctx_free(r);
-
-	return h2d_dynamic_to_container(sub_dyn);
+	return container;
 
 not_ok:
 	if (ret == H2D_AGAIN) {
@@ -357,7 +361,6 @@ void h2d_dynamic_ctx_free(struct h2d_request *r)
 			&& ctx->sub_dyn->timer == NULL) {
 		h2d_dynamic_delete(ctx->sub_dyn);
 	}
-	free(ctx);
 	r->dynamic_ctx = NULL;
 }
 

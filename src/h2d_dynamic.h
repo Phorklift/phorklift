@@ -33,6 +33,7 @@ struct h2d_dynamic_conf {
 	wuy_list_t		holder_wait_head;
 	wuy_dict_node_t		dict_node;
 	wuy_shmpool_t		*shmpool;
+	wuy_pool_t		*pool;
 };
 
 struct h2d_dynamic_ctx {

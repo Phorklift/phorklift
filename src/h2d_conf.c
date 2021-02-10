@@ -51,7 +51,8 @@ void h2d_conf_parse(const char *conf_file)
 		.name = h2d_conf_name,
 	};
 
-	const char *err = wuy_cflua_parse(h2d_L, &global, &h2d_conf_listens);
+	wuy_pool_t *pool = wuy_pool_new(4096);
+	const char *err = wuy_cflua_parse(h2d_L, &global, &h2d_conf_listens, pool);
 	if (err != WUY_CFLUA_OK) {
 		fprintf(stderr, "parse conf_file fail: %s\n", err);
 		exit(H2D_EXIT_CONF);

@@ -4,7 +4,9 @@ static WUY_LIST(h2d_request_defer_run_list);
 
 struct h2d_request *h2d_request_new(struct h2d_connection *c)
 {
-	struct h2d_request *r = calloc(1, sizeof(struct h2d_request)
+	wuy_pool_t *pool = wuy_pool_new(4096);
+
+	struct h2d_request *r = wuy_pool_alloc(pool, sizeof(struct h2d_request)
 			+ sizeof(void *) * h2d_module_number);
 	if (r == NULL) {
 		return NULL;
@@ -18,6 +20,7 @@ struct h2d_request *h2d_request_new(struct h2d_connection *c)
 	r->resp.content_length = H2D_CONTENT_LENGTH_INIT;
 
 	r->c = c;
+	r->pool = pool;
 	return r;
 }
 
@@ -157,13 +160,7 @@ void h2d_request_close(struct h2d_request *r)
 
 	h2d_dynamic_ctx_free(r);
 
-	h2d_header_free_list(&r->req.headers);
-	h2d_header_free_list(&r->resp.headers);
-	free((void *)r->req.uri.raw);
-	free((void *)r->req.uri.path);
-	free((void *)r->req.host);
-	free(r->req.body_buf);
-	free(r);
+	wuy_pool_release(r->pool);
 }
 
 bool h2d_request_set_host(struct h2d_request *r, const char *host_str, int host_len)
@@ -175,14 +172,14 @@ bool h2d_request_set_host(struct h2d_request *r, const char *host_str, int host_
 		return true;
 	}
 
-	r->req.host = strndup(host_str, host_len);
+	r->req.host = wuy_pool_strndup(r->pool, host_str, host_len);
 	// TODO set lower case
 	return true;
 }
 
 bool h2d_request_set_uri(struct h2d_request *r, const char *uri_str, int uri_len)
 {
-	r->req.uri.raw = strndup(uri_str, uri_len);
+	r->req.uri.raw = wuy_pool_strndup(r->pool, uri_str, uri_len);
 
 	/* parse uri into host:path:query:fragment */
 	const char *host, *fragment;
@@ -207,11 +204,10 @@ bool h2d_request_set_uri(struct h2d_request *r, const char *uri_str, int uri_len
 	}
 
 	/* decode path */
-	char *decode = malloc(path_len + 1);
+	char *decode = wuy_pool_alloc(r->pool, path_len + 1);
 	path_len = wuy_http_decode_path(decode, r->req.uri.path_pos, path_len);
 	if (path_len < 0) {
 		h2d_request_log(r, H2D_LOG_INFO, "invalid request URI path");
-		free(decode);
 		return false;
 	}
 
@@ -525,7 +521,7 @@ struct h2d_request *h2d_request_subrequest(struct h2d_request *father, const cha
 
 	/* init subrequest */
 	struct h2d_request *subr = h2d_request_new(c);
-	subr->req.host = strdup(father->req.host);
+	subr->req.host = wuy_pool_strdup(subr->pool, father->req.host);
 	subr->conf_host = father->conf_host;
 	subr->state = H2D_REQUEST_STATE_PROCESS_HEADERS;
 	subr->father = father;

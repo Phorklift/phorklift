@@ -86,6 +86,8 @@ struct h2d_request {
 	struct h2d_conf_host	*conf_host;
 	struct h2d_conf_path	*conf_path;
 
+	wuy_pool_t		*pool;
+
 	/* #module_ctxs should be $h2d_module_number.
 	 * However it's not known in compiling because of dynamic
 	 * modules, so set 0 by now. */
