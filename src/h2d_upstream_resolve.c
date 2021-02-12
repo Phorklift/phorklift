@@ -133,11 +133,8 @@ static void h2d_upstream_address_add(struct h2d_upstream_conf *upstream,
 static void h2d_upstream_resolve_hostname(struct h2d_upstream_conf *upstream)
 {
 	/* try to pick next hostname */
-	while (1) {
+	while (upstream->resolve_index < upstream->hostname_num) {
 		struct h2d_upstream_hostname *hostname = &upstream->hostnames[upstream->resolve_index++];
-		if (hostname->name == NULL) {
-			break;
-		}
 		if (!hostname->need_resolved) {
 			continue;
 		}
@@ -288,7 +285,8 @@ const char *h2d_upstream_conf_resolve_init(struct h2d_upstream_conf *conf)
 	conf->address_stats_start = wuy_shmpool_alloc(sizeof(struct h2d_upstream_address_stats)
 			* conf->resolved_addresses_max * 2);
 
-	conf->hostnames = calloc(conf->hostname_num, sizeof(struct h2d_upstream_hostname));
+	conf->hostnames = wuy_pool_alloc(wuy_cflua_pool,
+			conf->hostname_num * sizeof(struct h2d_upstream_hostname));
 
 	/* resolve */
 	bool need_resolved = false;

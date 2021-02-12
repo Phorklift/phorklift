@@ -260,7 +260,7 @@ static const char *h2d_ssl_conf_post(void *data)
 
 	/* ticket secret */
 #define H2D_SECRET_SIZE sizeof(struct h2d_ssl_ticket_secret)
-	struct h2d_ssl_ticket_secret *secret = malloc(H2D_SECRET_SIZE + 1);
+	struct h2d_ssl_ticket_secret *secret = wuy_pool_alloc(wuy_cflua_pool, H2D_SECRET_SIZE + 1);
 	if (conf->ticket_secret != NULL) {
 		FILE *fp = fopen(conf->ticket_secret, "r");
 		if (fp == NULL) {

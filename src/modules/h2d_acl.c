@@ -53,7 +53,7 @@ static const char *h2d_acl_conf_post(void *data)
 		return WUY_CFLUA_OK;
 	}
 
-	conf->rules = malloc(sizeof(struct h2d_acl_rule) * conf->num);
+	conf->rules = wuy_pool_alloc(wuy_cflua_pool, conf->num * sizeof(struct h2d_acl_rule));
 
 	for (int i = 0; i < conf->num; i++) {
 		char *str = conf->strs[i];

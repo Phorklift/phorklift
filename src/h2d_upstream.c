@@ -464,8 +464,6 @@ static void h2d_upstream_conf_free(void *data)
 		loop_stream_close(conf->resolve_stream);
 	}
 
-	free(conf->hostnames);
-
 	conf->loadbalance->ctx_free(conf->lb_ctx);
 }
 

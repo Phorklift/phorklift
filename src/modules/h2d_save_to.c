@@ -32,7 +32,6 @@ static void h2d_save_to_ctx_free(struct h2d_request *r)
 	if (ctx->subr != NULL) {
 		h2d_request_close(ctx->subr); // TODO not need close subr
 	}
-	free(ctx->buffer);
 }
 
 static int h2d_save_to_filter_response_headers(struct h2d_request *r)
@@ -72,7 +71,7 @@ static int h2d_save_to_filter_response_headers(struct h2d_request *r)
 
 	if (r->resp.content_length != H2D_CONTENT_LENGTH_INIT) {
 		ctx->buf_size = r->resp.content_length;
-		ctx->buffer = malloc(ctx->buf_size); // TODO user pool
+		ctx->buffer = wuy_pool_realloc(r->pool, NULL, ctx->buf_size);
 	}
 
 	r->module_ctxs[h2d_save_to_module.index] = ctx;
@@ -91,7 +90,7 @@ static int h2d_save_to_filter_response_body(struct h2d_request *r,
 
 	if (ctx->length + data_len > ctx->buf_size) {
 		ctx->buf_size = ctx->length + data_len;
-		ctx->buffer = realloc(ctx->buffer, ctx->buf_size);
+		ctx->buffer = wuy_pool_realloc(r->pool, ctx->buffer, ctx->buf_size);
 	}
 
 	memcpy(ctx->buffer + ctx->length, data, data_len);

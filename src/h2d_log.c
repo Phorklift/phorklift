@@ -25,8 +25,13 @@ struct h2d_log_file *h2d_log_file_open(const char *filename, int buf_size)
 		}
 	}
 
+	if (wuy_cflua_pool != NULL) {
+		file = wuy_pool_alloc(wuy_cflua_pool, sizeof(struct h2d_log_file) + buf_size);
+	} else {
+		file = malloc(sizeof(struct h2d_log_file) + buf_size);
+	}
+
 	/* open new file */
-	file = malloc(sizeof(struct h2d_log_file) + buf_size);
 	file->fd = open(filename, O_WRONLY | O_APPEND | O_CREAT, 0644);
 	if (file->fd < 0) {
 		return NULL;

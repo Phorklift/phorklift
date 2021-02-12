@@ -31,7 +31,7 @@ static int h2d_upstream_hash_vnode_cmp(const void *a, const void *b)
 
 static void *h2d_upstream_hash_ctx_new(void)
 {
-	return calloc(1, sizeof(struct h2d_upstream_hash_ctx));
+	return calloc(1, sizeof(struct h2d_upstream_hash_ctx)); // TODO use pool
 }
 
 static void h2d_upstream_hash_ctx_free(void *data)

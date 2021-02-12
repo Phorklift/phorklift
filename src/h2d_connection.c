@@ -305,7 +305,7 @@ const char *h2d_connection_listen_conf(struct h2d_conf_listen *conf_listen)
 		conf_listen->address_num++;
 	}
 
-	conf_listen->fds = calloc(conf_listen->address_num, sizeof(int));
+	conf_listen->fds = wuy_pool_alloc(wuy_cflua_pool, conf_listen->address_num * sizeof(int));
 
 	for (int i = 0; i < conf_listen->address_num; i++) {
 		const char *address = conf_listen->addresses[i];

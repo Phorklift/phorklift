@@ -56,7 +56,8 @@ static const char *h2d_conf_host_add_name(struct h2d_conf_listen *conf_listen,
 		return "duplicate hostname";
 	}
 
-	struct h2d_conf_host_search_name *node = malloc(sizeof(struct h2d_conf_host_search_name));
+	struct h2d_conf_host_search_name *node = wuy_pool_alloc(wuy_cflua_pool,
+			sizeof(struct h2d_conf_host_search_name));
 	node->name = name;
 	node->conf_host = conf_host;
 	wuy_dict_add(conf_listen->host_dict, node);

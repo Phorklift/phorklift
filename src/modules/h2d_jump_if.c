@@ -63,7 +63,7 @@ static const char *h2d_jump_if_arbitrary(lua_State *L, void *data)
 	}
 
 	conf->status_codes[conf->index] = status_code;
-	conf->pathnames[conf->index] = strdup(pathname);
+	conf->pathnames[conf->index] = wuy_pool_strdup(wuy_cflua_pool, pathname);
 	conf->index++;
 
 	return WUY_CFLUA_OK;
