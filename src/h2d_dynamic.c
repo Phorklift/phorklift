@@ -31,15 +31,12 @@ static void h2d_dynamic_delete(struct h2d_dynamic_conf *sub_dyn)
 		h2d_request_active_list(&sub_dyn->holder_wait_head, "dynamic holder");
 	}
 
-	loop_timer_delete(sub_dyn->timer);
-	wuy_dict_delete(dynamic->sub_dict, sub_dyn);
-
 	if (sub_dyn->shmpool != NULL) {
 		wuy_shmpool_release(sub_dyn->shmpool);
 	}
-	if (sub_dyn->pool != NULL) {
-		wuy_pool_release(sub_dyn->pool);
-	}
+	loop_timer_delete(sub_dyn->timer);
+	wuy_dict_delete(dynamic->sub_dict, sub_dyn);
+	wuy_pool_release(sub_dyn->pool);
 }
 
 static int64_t h2d_dynamic_timeout_handler(int64_t at, void *data)
