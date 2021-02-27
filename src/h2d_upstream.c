@@ -421,7 +421,6 @@ static const char *h2d_upstream_conf_post(void *data)
 		return WUY_CFLUA_OK;
 	}
 
-	/* non-dynamic: static configured or created dynamic-sub */
 	if (conf->hostnames_str == NULL) {
 		return WUY_CFLUA_OK;
 	}
@@ -455,7 +454,7 @@ static const char *h2d_upstream_conf_post(void *data)
 static void h2d_upstream_conf_free(void *data)
 {
 	struct h2d_upstream_conf *conf = data;
-	wuy_list_delete(&conf->list_node);
+	wuy_list_del_if(&conf->list_node);
 
 	if (conf->resolve_timer != NULL) {
 		loop_timer_delete(conf->resolve_timer);

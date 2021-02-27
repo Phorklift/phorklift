@@ -10,6 +10,7 @@ struct h2d_log_file {
 	wuy_list_node_t		list_node;
 	const char		*name;
 	int			fd;
+	int			refs;
 	char			*pos;
 	int			buf_size;
 	char			buffer[0];
@@ -21,27 +22,34 @@ struct h2d_log_file *h2d_log_file_open(const char *filename, int buf_size)
 	struct h2d_log_file *file;
 	wuy_list_iter_type(&h2d_log_file_list, file, list_node) {
 		if (strcmp(file->name, filename) == 0) {
+			file->refs++;
 			return file;
 		}
 	}
 
-	if (wuy_cflua_pool != NULL) {
-		file = wuy_pool_alloc(wuy_cflua_pool, sizeof(struct h2d_log_file) + buf_size);
-	} else {
-		file = malloc(sizeof(struct h2d_log_file) + buf_size);
-	}
-
 	/* open new file */
+	file = malloc(sizeof(struct h2d_log_file) + buf_size);
 	file->fd = open(filename, O_WRONLY | O_APPEND | O_CREAT, 0644);
 	if (file->fd < 0) {
 		return NULL;
 	}
+	file->refs = 1;
 	file->name = filename;
 	file->pos = file->buffer;
 	file->buf_size = buf_size;
 	wuy_list_append(&h2d_log_file_list, &file->list_node);
 
 	return file;
+}
+
+static void h2d_log_file_close(struct h2d_log_file *file)
+{
+	if (--file->refs > 0) {
+		return;
+	}
+	close(file->fd);
+	wuy_list_delete(&file->list_node);
+	free(file);
 }
 
 static void h2d_log_file_flush(struct h2d_log_file *file)
@@ -143,6 +151,7 @@ static const char *h2d_log_conf_post(void *data)
 
 	if (log->filename == NULL) {
 		log->file = h2d_global_log.file;
+		log->file->refs++;
 		return WUY_CFLUA_OK;
 	}
 
@@ -153,6 +162,14 @@ static const char *h2d_log_conf_post(void *data)
 	}
 
 	return WUY_CFLUA_OK;
+}
+
+static void h2d_log_conf_free(void *data)
+{
+	struct h2d_log *log = data;
+	if (log->file != NULL) {
+		h2d_log_file_close(log->file);
+	}
 }
 
 static struct wuy_cflua_command h2d_log_conf_commands[] = {
@@ -185,4 +202,5 @@ struct wuy_cflua_table h2d_log_conf_table = {
 	.refer_name = "LOG",
 	.size = sizeof(struct h2d_log),
 	.post = h2d_log_conf_post,
+	.free = h2d_log_conf_free,
 };

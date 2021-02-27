@@ -284,50 +284,8 @@ static int64_t h2d_connection_send_timedout(int64_t at, void *data)
 	return 0;
 }
 
-void h2d_connection_add_listen_event(void)
+void h2d_connection_conf_timers_init(struct h2d_conf_listen *conf_listen)
 {
-	for (int i = 0; h2d_conf_listens[i] != NULL; i++) {
-		struct h2d_conf_listen *conf_listen = h2d_conf_listens[i];
-
-		for (int j = 0; j < conf_listen->address_num; j++) {
-			loop_tcp_listen_t *loop_listen = loop_tcp_listen_fd(h2d_loop,
-					conf_listen->fds[j], &h2d_connection_listen_ops,
-					&h2d_connection_stream_ops);
-			assert(loop_listen != NULL);
-
-			loop_tcp_listen_set_app_data(loop_listen, conf_listen);
-		}
-	}
-}
-
-const char *h2d_connection_listen_conf(struct h2d_conf_listen *conf_listen)
-{
-	for (int i = 0; conf_listen->addresses[i] != NULL; i++) {
-		conf_listen->address_num++;
-	}
-
-	conf_listen->fds = wuy_pool_alloc(wuy_cflua_pool, conf_listen->address_num * sizeof(int));
-
-	for (int i = 0; i < conf_listen->address_num; i++) {
-		const char *address = conf_listen->addresses[i];
-
-		struct sockaddr_storage ss;
-		if (!wuy_sockaddr_loads(address, &ss, 0)) {
-			errno = EINVAL;
-			return address;
-		}
-		int fd = wuy_tcp_listen((struct sockaddr *)&ss, conf_listen->network.backlog,
-				conf_listen->network.reuse_port);
-		if (fd < 0) {
-			return address;
-		}
-
-		wuy_tcp_set_defer_accept(fd, conf_listen->network.defer_accept);
-
-		conf_listen->fds[i] = fd;
-	}
-
-	/* group timers */
 	conf_listen->http1.keepalive_timer_group = loop_group_timer_head_new(h2d_loop,
 			h2d_connection_recv_timedout,
 			conf_listen->http1.keepalive_timeout * 1000);
@@ -340,8 +298,22 @@ const char *h2d_connection_listen_conf(struct h2d_conf_listen *conf_listen)
 	conf_listen->network.send_timer_group = loop_group_timer_head_new(h2d_loop,
 			h2d_connection_send_timedout,
 			conf_listen->network.send_timeout * 1000);
+}
 
-	return NULL;
+void h2d_connection_conf_timers_free(struct h2d_conf_listen *conf_listen)
+{
+	loop_group_timer_head_delete(conf_listen->network.recv_timer_group);
+	loop_group_timer_head_delete(conf_listen->network.send_timer_group);
+	loop_group_timer_head_delete(conf_listen->http1.keepalive_timer_group);
+	loop_group_timer_head_delete(conf_listen->http2.idle_timer_group);
+}
+
+void h2d_connection_add_listen_event(int fd, struct h2d_conf_listen *conf_listen)
+{
+	loop_tcp_listen_t *ev = loop_tcp_listen_fd(h2d_loop, fd,
+			&h2d_connection_listen_ops, &h2d_connection_stream_ops);
+
+	loop_tcp_listen_set_app_data(ev, conf_listen);
 }
 
 struct wuy_cflua_command h2d_conf_listen_network_commands[] = {

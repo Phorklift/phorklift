@@ -6,9 +6,13 @@
 
 /* This holds the global lua state.
  * This is persistent because of the functions defined in config file. */
-lua_State *h2d_L;
+lua_State *h2d_L = NULL;
 
-struct h2d_conf_listen **h2d_conf_listens;
+struct h2d_conf_listen **h2d_conf_listens = NULL;
+
+int h2d_conf_reload_count = 0;
+
+static wuy_pool_t *h2d_conf_pool = NULL;
 
 /* say nothing */
 static int h2d_conf_name(void *data, char *buf, int size)
@@ -17,26 +21,28 @@ static int h2d_conf_name(void *data, char *buf, int size)
 }
 
 #include "h2d_conf_parse_lua.h" /* defines h2d_conf_parse_lua_str */
-void h2d_conf_parse(const char *conf_file)
+bool h2d_conf_parse(const char *conf_file)
 {
-	h2d_L = lua_open();
-	luaL_openlibs(h2d_L);
+	h2d_conf_reload_count++;
 
-	int ret = luaL_loadstring(h2d_L, h2d_conf_parse_lua_str);
+	lua_State *L = lua_open();
+	luaL_openlibs(L);
+
+	int ret = luaL_loadstring(L, h2d_conf_parse_lua_str);
 	if (ret != 0) {
 		fprintf(stderr, "load h2d_conf_parse.lua fail: %d\n", ret);
-		exit(H2D_EXIT_CONF);
+		return false;
 	}
 
 	/* two input arguments: listen-table, and conf-file */
-	wuy_cflua_build_tables(h2d_L, &h2d_conf_listen_table);
-	lua_pushstring(h2d_L, conf_file);
+	wuy_cflua_build_tables(L, &h2d_conf_listen_table);
+	lua_pushstring(L, conf_file);
 
-	ret = lua_pcall(h2d_L, 2, 1, 0);
+	ret = lua_pcall(L, 2, 1, 0);
 	if (ret != 0) {
-		const char *errmsg = lua_tostring(h2d_L, -1);
+		const char *errmsg = lua_tostring(L, -1);
 		fprintf(stderr, "load conf_file fail(%d): %s\n", ret, errmsg);
-		exit(H2D_EXIT_CONF);
+		return false;
 	}
 
 	/* returned listen array, handled by wuy_cflua_parse(). */
@@ -51,12 +57,25 @@ void h2d_conf_parse(const char *conf_file)
 		.name = h2d_conf_name,
 	};
 
+	struct h2d_conf_listen **conf_listens;
+
 	wuy_pool_t *pool = wuy_pool_new(4096);
-	const char *err = wuy_cflua_parse(h2d_L, &global, &h2d_conf_listens, pool);
+	const char *err = wuy_cflua_parse(L, &global, &conf_listens, pool);
 	if (err != WUY_CFLUA_OK) {
 		fprintf(stderr, "parse conf_file fail: %s\n", err);
-		exit(H2D_EXIT_CONF);
+		wuy_pool_release(pool);
+		return false;
 	}
+
+	if (h2d_conf_pool != NULL) {
+		wuy_pool_release(h2d_conf_pool);
+		lua_close(h2d_L);
+	}
+	h2d_conf_listens = conf_listens;
+	h2d_conf_pool = pool;
+	h2d_L = L;
+
+	return true;
 }
 
 void h2d_conf_doc(void)

@@ -47,7 +47,10 @@ void h2d_connection_close(struct h2d_connection *c);
 
 const char *h2d_connection_listen_conf(struct h2d_conf_listen *conf_listen);
 
-void h2d_connection_add_listen_event(void);
+void h2d_connection_add_listen_event(int fd, struct h2d_conf_listen *conf_listen);
+
+void h2d_connection_conf_timers_init(struct h2d_conf_listen *conf_listen);
+void h2d_connection_conf_timers_free(struct h2d_conf_listen *conf_listen);
 
 void h2d_connection_init(void);
 

@@ -14,6 +14,10 @@ static int opt_worker_num = 0;
 static const char *opt_pid_file = "h2tpd.pid";
 static const char *opt_error_file = "error.log";
 
+static bool sig_reload_conf = false;
+
+static pid_t *h2d_workers = NULL;
+
 static const char *h2d_getopt(int argc, char *const *argv)
 {
 	const char *help = "Usage: h2tpd [options] conf_file\n"
@@ -94,6 +98,7 @@ static void h2d_worker_entry(void)
 {
 	printf("start worker: %d\n", getpid());
 
+	signal(SIGHUP, SIG_IGN);
 	signal(SIGQUIT, h2d_signal_worker_quit);
 
 	prctl(PR_SET_NAME, (unsigned long)"h2tpd-worker", 0, 0, 0);
@@ -102,13 +107,18 @@ static void h2d_worker_entry(void)
 
 	loop_new_event(h2d_loop);
 
-	h2d_connection_add_listen_event();
+	h2d_conf_listen_init_worker();
 
 	h2d_module_worker_init();
 
 	/* go to work! */
 	loop_run(h2d_loop);
 	printf("!!!!! worker quit\n");
+}
+
+static void h2d_signal_reload_conf(int signo)
+{
+	sig_reload_conf = true;
 }
 
 static void h2d_signal_dispatch(int signo)
@@ -140,11 +150,82 @@ static pid_t h2d_worker_new(void)
 	return pid;
 }
 
+static bool h2d_worker_check(void)
+{
+	int status;
+	pid_t pid = waitpid(-1, &status, WNOHANG);
+	if (pid <= 0) {
+		return true;
+	}
+	if (pid < 0) {
+		if (errno == EINTR) {
+			return true;
+		}
+		return false; /* errno == ECHILD */
+	}
+
+	int i;
+	for (i = 0; i < opt_worker_num; i++) {
+		if (pid == h2d_workers[i]) {
+			h2d_workers[i] = 0;
+			break;
+		}
+	}
+
+	if (WIFEXITED(status)) {
+		printf("worker %d exit with %d\n", pid, WEXITSTATUS(status));
+
+	} else if (WIFSIGNALED(status)) {
+		assert(i < opt_worker_num); /* must found */
+		printf("worker %d is terminated by signal %d\n", pid, WTERMSIG(status));
+		h2d_workers[i] = h2d_worker_new();
+
+	} else {
+		printf("worker %d quit!\n", pid);
+	}
+
+	return h2d_worker_check();
+}
+
+static int h2d_run(const char *conf_file)
+{
+	if (!h2d_conf_parse(conf_file)) {
+		return H2D_EXIT_CONF;
+	}
+
+	h2d_module_master_post();
+
+	h2d_lua_api_init_post();
+
+	if (opt_worker_num < 0) {
+		h2d_worker_entry();
+		return 0;
+	}
+	if (opt_worker_num == 0) {
+		opt_worker_num = sysconf(_SC_NPROCESSORS_ONLN);
+	}
+
+	/* kill old workers if any */
+	for (int i = 0; i < opt_worker_num; i++) {
+		if (h2d_workers[i] != 0) {
+			kill(h2d_workers[i], SIGQUIT);
+		}
+	}
+
+	/* start workers */
+	for (int i = 0; i < opt_worker_num; i++) {
+		h2d_workers[i] = h2d_worker_new();
+	}
+
+	return 0;
+}
+
 int main(int argc, char * const *argv)
 {
 	const char *conf_file = h2d_getopt(argc, argv);
 
 	signal(SIGPIPE, SIG_IGN);
+	signal(SIGHUP, h2d_signal_reload_conf);
 	signal(SIGQUIT, h2d_signal_dispatch);
 
 	/* The loop is run at workers. We create it here because some
@@ -165,47 +246,25 @@ int main(int argc, char * const *argv)
 
 	h2d_module_master_init();
 
-	h2d_conf_parse(conf_file);
+	h2d_workers = calloc(opt_worker_num, sizeof(pid_t));
 
-	h2d_module_master_post();
-
-	h2d_lua_api_init_post();
-
-	if (opt_worker_num < 0) {
-		h2d_worker_entry();
-		return 0;
-	}
-
-	/* start workers */
-	if (opt_worker_num == 0) {
-		opt_worker_num = sysconf(_SC_NPROCESSORS_ONLN);
-	}
-	for (int i = 0; i < opt_worker_num; i++) {
-		if (h2d_worker_new() < 0) {
-			return H2D_EXIT_FORK_WORKER;
-		}
+	int ret = h2d_run(conf_file);
+	if (ret != 0) {
+		return ret;
 	}
 
 	/* master */
 	while (1) {
-		int status;
-		pid_t pid = wait(&status);
-		if (pid < 0) {
-			if (errno == EINTR) {
-				continue;
-			}
-			break; /* errno == ECHILD */
+		printf("master pause...\n");
+		pause(); /* wait for signals */
+
+		if (sig_reload_conf) {
+			sig_reload_conf = false;
+			h2d_run(conf_file);
 		}
 
-		if (WIFEXITED(status)) {
-			printf("worker %d exit with %d\n", pid, WEXITSTATUS(status));
-
-		} else if (WIFSIGNALED(status)) {
-			printf("worker %d is terminated by signal %d\n", pid, WTERMSIG(status));
-			h2d_worker_new();
-
-		} else {
-			printf("worker %d quit!\n", pid);
+		if (!h2d_worker_check()) {
+			break;
 		}
 	}
 

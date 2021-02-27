@@ -92,6 +92,7 @@ struct h2d_conf_listen {
 	char			**addresses;
 	int			address_num;
 	int			*fds;
+	int			*reuse_magics;
 
 	SSL_CTX			*ssl_ctx;
 
@@ -146,13 +147,17 @@ extern lua_State *h2d_L;
 
 extern struct h2d_conf_listen **h2d_conf_listens;
 
-void h2d_conf_parse(const char *conf_file);
+extern int h2d_conf_reload_count;
+
+bool h2d_conf_parse(const char *conf_file);
 
 struct h2d_conf_host *h2d_conf_host_locate(struct h2d_conf_listen *conf_listen,
 		const char *name);
 
 struct h2d_conf_path *h2d_conf_path_locate(struct h2d_conf_host *conf_host,
 		const char *name);
+
+void h2d_conf_listen_init_worker(void);
 
 void h2d_conf_path_stats(struct h2d_conf_path *conf_path, wuy_json_ctx_t *json);
 void h2d_conf_host_stats(struct h2d_conf_host *conf_host, wuy_json_ctx_t *json);
