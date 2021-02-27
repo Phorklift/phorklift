@@ -5,7 +5,7 @@
 struct h2d_jump_if_conf {
 	const char	*pathnames[H2D_JUMP_IF_MAX];
 	int		status_codes[H2D_JUMP_IF_MAX];
-	int		index;
+	int		num;
 };
 
 struct h2d_module h2d_jump_if_module;
@@ -13,12 +13,12 @@ struct h2d_module h2d_jump_if_module;
 static int h2d_jump_if_filter_response_headers(struct h2d_request *r)
 {
 	struct h2d_jump_if_conf *conf = r->conf_path->module_confs[h2d_jump_if_module.index];
-	if (conf->index == 0) {
+	if (conf->num == 0) {
 		return H2D_OK;
 	}
 
 	const char *jump_path = NULL;
-	for (int i = 0; i < conf->index; i++) {
+	for (int i = 0; i < conf->num; i++) {
 		if (r->resp.status_code == conf->status_codes[i]) {
 			jump_path = conf->pathnames[i];
 			break;
@@ -28,24 +28,7 @@ static int h2d_jump_if_filter_response_headers(struct h2d_request *r)
 		return H2D_OK;
 	}
 
-	if (jump_path[0] != '@') {
-		printf("TODO\n");
-		return H2D_OK;
-	}
-
-	h2d_request_reset_response(r);
-	r->state = H2D_REQUEST_STATE_PARSE_HEADERS;
-	r->filter_indexs[0] = r->filter_indexs[1] = r->filter_indexs[2] = 0;
-	r->filter_terminal = NULL;
-	r->is_broken = false;
-
-	r->conf_path = h2d_conf_path_locate(r->conf_host, jump_path);
-	if (r->conf_path == NULL) {
-		printf("fail to jump_if\n");
-		return H2D_ERROR;
-	}
-
-	return H2D_OK;
+	return h2d_request_redirect(r, jump_path);
 }
 
 static const char *h2d_jump_if_arbitrary(lua_State *L, void *data)
@@ -62,9 +45,9 @@ static const char *h2d_jump_if_arbitrary(lua_State *L, void *data)
 		return "invalid pathname";
 	}
 
-	conf->status_codes[conf->index] = status_code;
-	conf->pathnames[conf->index] = wuy_pool_strdup(wuy_cflua_pool, pathname);
-	conf->index++;
+	conf->status_codes[conf->num] = status_code;
+	conf->pathnames[conf->num] = wuy_pool_strdup(wuy_cflua_pool, pathname);
+	conf->num++;
 
 	return WUY_CFLUA_OK;
 }

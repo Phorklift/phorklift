@@ -161,6 +161,7 @@ int main(int argc, char * const *argv)
 	h2d_log_init();
 	h2d_request_init();
 	h2d_connection_init();
+	h2d_lua_api_init();
 
 	h2d_module_master_init();
 
@@ -168,7 +169,7 @@ int main(int argc, char * const *argv)
 
 	h2d_module_master_post();
 
-	h2d_lua_api_init();
+	h2d_lua_api_init_post();
 
 	if (opt_worker_num < 0) {
 		h2d_worker_entry();

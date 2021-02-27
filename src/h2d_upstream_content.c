@@ -36,11 +36,7 @@ int h2d_upstream_content_generate_response_headers(struct h2d_request *r)
 	struct h2d_upstream_ops *ops = upstream->ops;
 
 	if (ctx == NULL) {
-		if (ops->new_ctx != NULL) {
-			ctx = ops->new_ctx(r);
-		} else {
-			ctx = wuy_pool_alloc(r->pool, sizeof(struct h2d_upstream_content_ctx));
-		}
+		ctx = wuy_pool_alloc(r->pool, sizeof(struct h2d_upstream_content_ctx));
 		r->module_ctxs[r->conf_path->content->index] = ctx;
 
 		int ret = ops->build_request(r);

@@ -34,6 +34,7 @@ void h2d_connection_close(struct h2d_connection *c)
 	atomic_fetch_sub(&c->conf_listen->stats->connections, 1);
 
 	if (c->loop_stream == NULL) {
+		printf("!!!!!!!!impossible\n");
 		goto skip_subr;
 	}
 

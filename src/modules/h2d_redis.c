@@ -36,8 +36,28 @@ static int h2d_redis_build_request(struct h2d_request *r)
 	return H2D_OK;
 }
 
+static int h2d_redis_parse_response_headers(struct h2d_request *r,
+		const char *buffer, int buf_len, bool *is_done)
+{
+	*is_done = true;
+
+	if (buffer[0] == '-') {
+		r->resp.status_code = WUY_HTTP_500;
+		return 1;
+	}
+
+	if (memcmp(buffer, "$-1\r\n", 5) == 0) {
+		r->resp.status_code = WUY_HTTP_404;
+		return 5;
+	}
+
+	r->resp.status_code = WUY_HTTP_200;
+	return 0;
+}
+
 static struct h2d_upstream_ops h2d_redis_upstream_ops = {
 	.build_request = h2d_redis_build_request,
+	.parse_response_headers = h2d_redis_parse_response_headers,
 };
 
 static const char *h2d_redis_conf_post(void *data)

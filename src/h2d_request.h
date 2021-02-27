@@ -65,6 +65,8 @@ struct h2d_request {
 	bool			closed;
 	bool			is_broken; //TODO may put in h2d_request_run()?
 
+	int			redirects;
+
 	int			filter_indexs[3];
 	const struct h2d_module	*filter_terminal;
 
@@ -72,13 +74,13 @@ struct h2d_request {
 	long			req_end_time;
 	long			resp_begin_time;
 
+	const char		*named_path;
+
 	struct h2d_dynamic_ctx	*dynamic_ctx;
 
-	struct h2d_lua_api_thread	*lth;
+	struct h2d_lua_api_thread	lth;
 
 	struct h2d_request	*father; /* only for subreq */
-	wuy_list_t		subr_head;
-	wuy_list_node_t		subr_node;
 
 	wuy_list_node_t		list_node;
 
@@ -105,10 +107,7 @@ bool h2d_request_set_host(struct h2d_request *r, const char *host_str, int host_
 
 void h2d_request_reset_response(struct h2d_request *r);
 
-static inline bool h2d_request_is_subreq(struct h2d_request *r)
-{
-	return r->father != NULL;
-}
+int h2d_request_redirect(struct h2d_request *r, const char *path);
 
 void h2d_request_run(struct h2d_request *r, int window);
 
@@ -117,7 +116,9 @@ void h2d_request_active_list(wuy_list_t *list, const char *from);
 
 void h2d_request_init(void);
 
-struct h2d_request *h2d_request_subrequest(struct h2d_request *father, const char *url);
+struct h2d_request *h2d_request_subr_new(struct h2d_request *father, const char *uri);
+void h2d_request_subr_detach(struct h2d_request *subr);
+void h2d_request_subr_close(struct h2d_request *subr);
 
 /* used only for h2d_request_log and h2d_request_log_at */
 static inline struct h2d_log *h2d_request_get_log(struct h2d_request *r)

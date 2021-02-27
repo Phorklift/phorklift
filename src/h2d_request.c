@@ -2,6 +2,8 @@
 
 static WUY_LIST(h2d_request_defer_run_list);
 
+static struct h2d_request *H2D_REQUEST_DETACHED_SUBR_FATHER = (struct h2d_request *)(-1L);
+
 struct h2d_request *h2d_request_new(struct h2d_connection *c)
 {
 	wuy_pool_t *pool = wuy_pool_new(4096);
@@ -16,9 +18,11 @@ struct h2d_request *h2d_request_new(struct h2d_connection *c)
 
 	wuy_slist_init(&r->req.headers);
 	wuy_slist_init(&r->resp.headers);
-	wuy_list_init(&r->subr_head);
 	r->resp.content_length = H2D_CONTENT_LENGTH_INIT;
 
+	if (c == NULL) { /* subrequest */
+		c = wuy_pool_alloc(pool, sizeof(struct h2d_connection));
+	}
 	r->c = c;
 	r->pool = pool;
 	return r;
@@ -37,6 +41,15 @@ void h2d_request_reset_response(struct h2d_request *r)
 	r->resp.sent_length = 0;
 	r->resp.content_length = H2D_CONTENT_LENGTH_INIT;
 	wuy_slist_init(&r->resp.headers);
+}
+
+static void h2d_request_clear_stuff(struct h2d_request *r)
+{
+	wuy_list_del_if(&r->list_node);
+
+	h2d_lua_api_thread_clear(r);
+
+	h2d_module_request_ctx_free(r);
 }
 
 static void h2d_request_stats(struct h2d_request *r)
@@ -127,9 +140,15 @@ static void h2d_request_access_log(struct h2d_request *r)
 
 void h2d_request_close(struct h2d_request *r)
 {
-	if (h2d_request_is_subreq(r) && !r->father->closed) {
-		/* father should close me */
-		h2d_request_log(r, H2D_LOG_DEBUG, "sub wake up father: %p -> %p", r, r->father);
+	/* detached subrequest: just close it */
+	if (r->father == H2D_REQUEST_DETACHED_SUBR_FATHER) {
+		h2d_request_log(r, H2D_LOG_DEBUG, "close detached subr: %p", r);
+		h2d_request_subr_close(r);
+		return;
+	}
+	/* normal subrequest: wake up father, and should be closed by father later */
+	if (r->father != NULL) {
+		h2d_request_log(r, H2D_LOG_DEBUG, "subr wake up father: %p -> %p", r, r->father);
 		h2d_request_active(r->father, "finished subrequest");
 		return;
 	}
@@ -144,21 +163,57 @@ void h2d_request_close(struct h2d_request *r)
 	h2d_request_access_log(r);
 	h2d_request_stats(r);
 
-	if (!wuy_list_empty(&r->subr_head)) {
-		h2d_request_log(r, H2D_LOG_DEBUG, "!!!!!!!!! subruest %p", r);
-	}
-
 	if (r->h2s != NULL) { /* HTTP/2 */
 		h2d_http2_request_close(r);
 	} else { /* HTTP/1.x */
 		h2d_http1_request_close(r);
 	}
 
-	wuy_list_del_if(&r->list_node);
-
-	h2d_module_request_ctx_free(r);
-
+	h2d_request_clear_stuff(r);
 	wuy_pool_release(r->pool);
+}
+
+void h2d_request_subr_close(struct h2d_request *r)
+{
+	h2d_request_log(r, H2D_LOG_DEBUG, "subr done: %s", r->req.uri.raw);
+	free(r->c->send_buffer);
+	h2d_request_clear_stuff(r);
+	wuy_pool_release(r->pool);
+}
+
+int h2d_request_redirect(struct h2d_request *r, const char *path)
+{
+	if (r->redirects++ > 10) {
+		h2d_request_log(r, H2D_LOG_ERROR, "too many redirect");
+		return H2D_ERROR;
+	}
+
+	switch (path[0]) {
+	case '@':
+		r->named_path = path;
+		break;
+	case '/':
+		h2d_request_set_uri(r, path, strlen(path));
+		break;
+	default:
+		h2d_request_log(r, H2D_LOG_ERROR, "invalid redirect: %s", path);
+		return H2D_ERROR;
+	}
+
+	h2d_request_log(r, H2D_LOG_DEBUG, "redirect %s", path);
+
+	h2d_request_access_log(r);
+
+	h2d_request_reset_response(r);
+	h2d_request_clear_stuff(r);
+
+	r->conf_path = NULL;
+	r->state = H2D_REQUEST_STATE_PARSE_HEADERS;
+	r->filter_indexs[0] = r->filter_indexs[1] = r->filter_indexs[2] = 0;
+	r->filter_terminal = NULL;
+	r->is_broken = false;
+
+	return H2D_BREAK;
 }
 
 bool h2d_request_set_host(struct h2d_request *r, const char *host_str, int host_len)
@@ -229,14 +284,15 @@ static int h2d_request_process_headers(struct h2d_request *r)
 
 	/* locate path */
 	if (r->conf_path == NULL) {
-		if (r->req.uri.raw == NULL) {
+		const char *uri_path = r->named_path ? r->named_path : r->req.uri.path;
+		if (uri_path == NULL) {
 			h2d_request_log(r, H2D_LOG_INFO, "no request path");
 			return H2D_ERROR;
 		}
-		r->conf_path = h2d_conf_path_locate(r->conf_host, r->req.uri.path);
+		r->conf_path = h2d_conf_path_locate(r->conf_host, uri_path);
 		if (r->conf_path == NULL) {
 			r->conf_path = r->conf_host->default_path;
-			h2d_request_log(r, H2D_LOG_DEBUG, "no path matched: %s", r->req.uri.raw);
+			h2d_request_log(r, H2D_LOG_DEBUG, "no path matched: %s", uri_path);
 			return WUY_HTTP_404;
 		}
 		while (h2d_dynamic_is_enabled(&r->conf_path->dynamic)) {
@@ -336,7 +392,7 @@ static int h2d_request_response_headers_2(struct h2d_request *r)
 
 static int h2d_request_response_headers_3(struct h2d_request *r)
 {
-	if (h2d_request_is_subreq(r)) {
+	if (r->father != NULL) {
 		/* subruest does not send response headers out */
 		return H2D_OK;
 	}
@@ -460,11 +516,12 @@ void h2d_request_run(struct h2d_request *r, int window)
 	if (ret == H2D_AGAIN) {
 		return;
 	}
+	if (ret == H2D_BREAK) {
+		ret = H2D_OK;
+	}
 	if (ret == H2D_ERROR) {
 		if (r->resp.status_code != 0) {
 			ret = r->resp.status_code;
-		} else if (r->state == H2D_REQUEST_STATE_PARSE_HEADERS) { // XXX reset the request??
-			ret = H2D_OK;
 		} else if (r->state <= H2D_REQUEST_STATE_RESPONSE_HEADERS_1) {
 			h2d_request_log(r, H2D_LOG_ERROR, "should not be here");
 			ret = WUY_HTTP_500;
@@ -473,6 +530,7 @@ void h2d_request_run(struct h2d_request *r, int window)
 			return;
 		}
 	}
+
 	if (ret != H2D_OK) { /* returns status code and breaks the normal process */
 		r->is_broken = true;
 		r->resp.status_code = ret;
@@ -512,30 +570,43 @@ void h2d_request_active_list(wuy_list_t *list, const char *from)
 	}
 }
 
-struct h2d_request *h2d_request_subrequest(struct h2d_request *father, const char *url)
+struct h2d_request *h2d_request_subr_new(struct h2d_request *father, const char *uri)
 {
-	/* fake connection */
-	struct h2d_connection *c = calloc(1, sizeof(struct h2d_connection));
-	c->conf_listen = father->c->conf_listen;
-
-	/* init subrequest */
-	struct h2d_request *subr = h2d_request_new(c);
+	struct h2d_request *subr = h2d_request_new(NULL);
 	subr->req.host = wuy_pool_strdup(subr->pool, father->req.host);
 	subr->conf_host = father->conf_host;
 	subr->state = H2D_REQUEST_STATE_PROCESS_HEADERS;
 	subr->father = father;
-	wuy_list_append(&father->subr_head, &subr->subr_node);
 
-	c->u.request = subr;
+	subr->c->conf_listen = father->c->conf_listen;
+	subr->c->u.request = subr; /* HTTP/1 only */
 
-	/* set subrequest */
+	/* set request */
 	subr->req.method = WUY_HTTP_GET;
-	h2d_request_set_uri(subr, url, strlen(url));
 
-	h2d_request_log(father, H2D_LOG_DEBUG, "h2d_request_subrequest %p -> %p", father, subr);
+	switch (uri[0]) {
+	case '@':
+		subr->req.uri = father->req.uri;
+		subr->named_path = uri;
+		break;
+	case '/':
+		h2d_request_set_uri(subr, uri, strlen(uri));
+		break;
+	default:
+		h2d_request_subr_close(subr);
+		h2d_request_log(father, H2D_LOG_ERROR, "subr invalid uri %s", uri);
+		return NULL;
+	}
+
+	h2d_request_log(father, H2D_LOG_DEBUG, "new subr %p -> %p", father, subr);
 
 	h2d_request_active(subr, "new subrequest");
 	return subr;
+}
+
+void h2d_request_subr_detach(struct h2d_request *subr)
+{
+	subr->father = H2D_REQUEST_DETACHED_SUBR_FATHER;
 }
 
 static void h2d_request_defer_run(void *data)

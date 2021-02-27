@@ -289,8 +289,8 @@ void h2d_module_request_ctx_free(struct h2d_request *r)
 		struct h2d_module *m = h2d_modules[i];
 		if (m->ctx_free != NULL && r->module_ctxs[m->index] != NULL) {
 			m->ctx_free(r);
-			r->module_ctxs[m->index] = (void *)(uintptr_t)(-1L); /* reset */
 		}
+		r->module_ctxs[m->index] = NULL;
 	}
 }
 

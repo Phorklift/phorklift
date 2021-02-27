@@ -5,11 +5,6 @@ struct h2d_proxy_conf {
 	bool				x_forwarded_for;
 };
 
-struct h2d_proxy_ctx {
-	struct h2d_upstream_content_ctx	upstream; /* at top! */
-	wuy_http_chunked_t		chunked;
-};
-
 struct h2d_module h2d_proxy_module;
 
 // TODO move this out
@@ -27,16 +22,6 @@ static const char *client_addr(struct h2d_request *r)
 		return NULL;
 	}
 	return buf;
-}
-
-static void *h2d_proxy_new_ctx(struct h2d_request *r)
-{
-	struct h2d_proxy_ctx *ctx = wuy_pool_alloc(r->pool, sizeof(struct h2d_proxy_ctx));
-
-	if (r->req.method != WUY_HTTP_GET && r->req.method != WUY_HTTP_HEAD) {
-		ctx->upstream.retries = -1;
-	}
-	return ctx;
 }
 
 static int h2d_proxy_build_request_headers(struct h2d_request *r, char *buffer)
@@ -88,6 +73,10 @@ static int h2d_proxy_build_request(struct h2d_request *r)
 {
 	struct h2d_upstream_content_ctx *ctx = r->module_ctxs[h2d_proxy_module.index];
 
+	if (r->req.method != WUY_HTTP_GET && r->req.method != WUY_HTTP_HEAD) {
+		ctx->retries = -1;
+	}
+
 	ctx->req_buf = wuy_pool_alloc(r->pool, 4096 + r->req.body_len); // TODO
 	ctx->req_len = h2d_proxy_build_request_headers(r, ctx->req_buf);
 	memcpy(ctx->req_buf + ctx->req_len, r->req.body_buf, r->req.body_len);
@@ -100,7 +89,7 @@ static int h2d_proxy_parse_response_headers(struct h2d_request *r,
 {
 	const char *p = buffer;
 	const char *buf_end = buffer + buf_len;
-	struct h2d_proxy_ctx *ctx = r->module_ctxs[h2d_proxy_module.index];
+	struct h2d_upstream_content_ctx *ctx = r->module_ctxs[h2d_proxy_module.index];
 
 	if (r->resp.status_code == 0) {
 		int proc_len = wuy_http_status_line(p, buf_len,
@@ -142,7 +131,8 @@ static int h2d_proxy_parse_response_headers(struct h2d_request *r,
 			continue;
 		}
 		if (memcmp(name_str, "Transfer-Encoding", 17) == 0) {
-			wuy_http_chunked_enable(&ctx->chunked);
+			ctx->data = wuy_pool_alloc(r->pool, sizeof(wuy_http_chunked_t));
+			wuy_http_chunked_enable(ctx->data);
 			continue;
 		}
 
@@ -155,9 +145,11 @@ static int h2d_proxy_parse_response_headers(struct h2d_request *r,
 
 static bool h2d_proxy_is_response_body_done(struct h2d_request *r)
 {
-	struct h2d_proxy_ctx *ctx = r->module_ctxs[h2d_proxy_module.index];
-	if (wuy_http_chunked_is_enabled(&ctx->chunked)) {
-		return wuy_http_chunked_is_finished(&ctx->chunked);
+	struct h2d_upstream_content_ctx *ctx = r->module_ctxs[h2d_proxy_module.index];
+	wuy_http_chunked_t *chunked = ctx->data;
+
+	if (chunked != NULL) {
+		return wuy_http_chunked_is_finished(chunked);
 	}
 	return false;
 }
@@ -165,25 +157,26 @@ static bool h2d_proxy_is_response_body_done(struct h2d_request *r)
 static int h2d_proxy_build_response_body(struct h2d_request *r, uint8_t *buffer,
 		int data_len, int buf_size)
 {
-	struct h2d_proxy_ctx *ctx = r->module_ctxs[h2d_proxy_module.index];
+	struct h2d_upstream_content_ctx *ctx = r->module_ctxs[h2d_proxy_module.index];
+	wuy_http_chunked_t *chunked = ctx->data;
 
-	if (!wuy_http_chunked_is_enabled(&ctx->chunked)) {
+	if (chunked == NULL) {
 		/* do nothing for none-chunked */
 		return data_len;
 	}
 
-	/* chunked */
+	/* decode chunked */
 	uint8_t raw_buffer[data_len];
 	memcpy(raw_buffer, buffer, data_len); // TODO remove this memcpy()
 
-	int proc_len = wuy_http_chunked_process(&ctx->chunked, raw_buffer,
+	int proc_len = wuy_http_chunked_process(chunked, raw_buffer,
 			data_len, buffer, &buf_size);
 	if (proc_len < 0) {
 		printf("invalid chunked: %d\n", proc_len);
 		return H2D_ERROR;
 	}
 
-	if (buf_size == 0 && !wuy_http_chunked_is_finished(&ctx->chunked)) {
+	if (buf_size == 0 && !wuy_http_chunked_is_finished(chunked)) {
 		return H2D_AGAIN;
 	}
 
@@ -193,7 +186,6 @@ static int h2d_proxy_build_response_body(struct h2d_request *r, uint8_t *buffer,
 }
 
 static struct h2d_upstream_ops h2d_proxy_upstream_ops = {
-	.new_ctx = h2d_proxy_new_ctx,
 	.build_request = h2d_proxy_build_request,
 	.parse_response_headers = h2d_proxy_parse_response_headers,
 	.is_response_body_done = h2d_proxy_is_response_body_done,

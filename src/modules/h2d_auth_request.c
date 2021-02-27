@@ -15,7 +15,7 @@ static int h2d_auth_request_process_headers(struct h2d_request *r)
 
 	struct h2d_request *subr = r->module_ctxs[h2d_auth_request_module.index];
 	if (subr == NULL) { /* first time get in */
-		subr = h2d_request_subrequest(r, conf->pathname);
+		subr = h2d_request_subr_new(r, conf->pathname);
 		h2d_header_dup_list(&subr->req.headers, &r->req.headers, r->pool);
 		// TODO req-body
 		// subr->req.method = r->req.method;
@@ -29,6 +29,8 @@ static int h2d_auth_request_process_headers(struct h2d_request *r)
 	case 0:
 		return H2D_AGAIN;
 	case WUY_HTTP_200:
+		h2d_request_subr_close(subr);
+		r->module_ctxs[h2d_auth_request_module.index] = NULL;
 		return H2D_OK;
 	case WUY_HTTP_401:
 		h2d_header_iter(&subr->resp.headers, h) {
@@ -51,7 +53,7 @@ static int h2d_auth_request_process_headers(struct h2d_request *r)
 static void h2d_auth_request_ctx_free(struct h2d_request *r)
 {
 	struct h2d_request *subr = r->module_ctxs[h2d_auth_request_module.index];
-	h2d_request_close(subr);
+	h2d_request_subr_close(subr);
 }
 
 static const char *h2d_auth_request_conf_post(void *data)

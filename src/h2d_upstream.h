@@ -119,8 +119,6 @@ struct h2d_upstream_ops {
 	int	(*build_request)(struct h2d_request *r);
 
 	/* optional bellow */
-	void	*(*new_ctx)(struct h2d_request *r);
-
 	int	(*parse_response_headers)(struct h2d_request *r,
 			const char *buffer, int buf_len, bool *is_done);
 
@@ -201,14 +199,14 @@ struct h2d_upstream_conf {
 };
 
 
-/* {{{ defined in h2d_upstream_content.c and used by other modules, i.e. proxy.
- *     Make sure the `h2d_upstream_content_ctx` at the top of your module ctx. */
+/* {{{ defined in h2d_upstream_content.c and used by other modules, i.e. proxy. */
 struct h2d_upstream_content_ctx {
 	bool				has_sent_request;
 	int				retries;
 	char				*req_buf;
 	int				req_len;
 	struct h2d_upstream_connection	*upc;
+	void				*data;
 };
 void h2d_upstream_content_ctx_free(struct h2d_request *r);
 

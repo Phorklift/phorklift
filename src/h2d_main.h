@@ -22,6 +22,7 @@
 #include "libwuya/wuy_json.h"
 #include "libwuya/wuy_base64.h"
 #include "libwuya/wuy_shmpool.h"
+#include "libwuya/wuy_pool.h"
 #include "libwuya/wuy_time.h"
 #include "libwuya/wuy_rand.h"
 #include "libwuya/wuy_murmurhash.h"
@@ -48,6 +49,7 @@
 #define H2D_OK			0
 #define H2D_ERROR		-1
 #define H2D_AGAIN		-2
+#define H2D_BREAK		-3
 
 #define H2D_PTR_ERROR		(void *)-1
 #define H2D_PTR_AGAIN		(void *)-2

@@ -14,8 +14,6 @@ struct h2d_save_to_ctx {
 	size_t		buf_size;
 	size_t		length;
 	time_t		expire_after;
-
-	struct h2d_request	*subr;
 };
 
 #define _log(level, fmt, ...) h2d_request_log_at(r, \
@@ -25,14 +23,6 @@ struct h2d_save_to_ctx {
 		level, "save_to: " fmt, ##__VA_ARGS__)
 
 struct h2d_module h2d_save_to_module;
-
-static void h2d_save_to_ctx_free(struct h2d_request *r)
-{
-	struct h2d_save_to_ctx *ctx = r->module_ctxs[h2d_save_to_module.index];
-	if (ctx->subr != NULL) {
-		h2d_request_close(ctx->subr); // TODO not need close subr
-	}
-}
 
 static int h2d_save_to_filter_response_headers(struct h2d_request *r)
 {
@@ -96,9 +86,13 @@ static int h2d_save_to_filter_response_body(struct h2d_request *r,
 	memcpy(ctx->buffer + ctx->length, data, data_len);
 	ctx->length += data_len;
 
-	if (*p_is_last && ctx->subr == NULL) {
-		ctx->subr = h2d_request_subrequest(r, conf->pathname);
-		ctx->subr->req.method = WUY_HTTP_POST;
+	if (*p_is_last) {
+		struct h2d_request *subr = h2d_request_subr_new(r, conf->pathname);
+		h2d_request_subr_detach(subr);
+
+		subr->req.method = WUY_HTTP_POST;
+		subr->req.body_buf = wuy_pool_strndup(subr->pool, ctx->buffer, ctx->buf_size);
+		subr->req.body_len = ctx->buf_size;
 	}
 
 	return data_len;
@@ -153,6 +147,4 @@ struct h2d_module h2d_save_to_module = {
 		.response_headers = h2d_save_to_filter_response_headers,
 		.response_body = h2d_save_to_filter_response_body,
 	},
-
-	.ctx_free = h2d_save_to_ctx_free,
 };
