@@ -241,7 +241,7 @@ static int h2d_file_cache_filter_process_headers(struct h2d_request *r)
 	}
 
 	uint64_t hash[2];
-	wuy_murmurhash(key, len, hash);
+	wuy_vhash128(key, len, hash);
 
 	atomic_fetch_add(&conf->stats->total, 1);
 

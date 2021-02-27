@@ -33,7 +33,7 @@ static void h2d_upstream_address_delete(struct h2d_upstream_address *address)
 static struct h2d_upstream_address_stats *h2d_upstream_alloc_stats(
 		struct h2d_upstream_conf *upstream, const char *name)
 {
-	uint64_t key = wuy_murmurhash_id(name, strlen(name));
+	uint64_t key = wuy_vhash64(name, strlen(name));
 
 	struct h2d_upstream_address_stats *first_idle = NULL;
 

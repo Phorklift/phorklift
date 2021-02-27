@@ -1,7 +1,5 @@
 #include "h2d_main.h"
 
-#include "libwuya/wuy_murmurhash.h"
-
 struct h2d_upstream_hash_conf {
 	wuy_cflua_function_t	key;
 	int			address_vnodes;
@@ -63,11 +61,10 @@ static void h2d_upstream_hash_update(struct h2d_upstream_conf *upstream)
 
 	struct h2d_upstream_hash_vnode *vnode = ctx->vnodes;
 	wuy_list_iter_type(&upstream->address_head, address, upstream_node) {
-		uint64_t hash = wuy_murmurhash_id(&address->sockaddr.s,
-				wuy_sockaddr_size(&address->sockaddr.s));
+		uint64_t hash = wuy_vhash64(&address->sockaddr.s, wuy_sockaddr_size(&address->sockaddr.s));
 
 		for (int i = 0; i < h2d_upstream_hash_address_vnode_num(address); i++) {
-			vnode->hash = hash ^ wuy_murmurhash_id(&i, sizeof(int));
+			vnode->hash = hash ^ wuy_vhash64(&i, sizeof(int));
 			vnode->address = address;
 			vnode++;
 		}
@@ -88,7 +85,7 @@ static struct h2d_upstream_address *h2d_upstream_hash_pick(
 	if (key_str == NULL) {
 		return NULL;
 	}
-	uint64_t hash = wuy_murmurhash_id(key_str, key_len);
+	uint64_t hash = wuy_vhash64(key_str, key_len);
 
 	/* pick one address */
 	struct h2d_upstream_hash_vnode *vnode = NULL;

@@ -25,7 +25,7 @@
 #include "libwuya/wuy_pool.h"
 #include "libwuya/wuy_time.h"
 #include "libwuya/wuy_rand.h"
-#include "libwuya/wuy_murmurhash.h"
+#include "libwuya/wuy_vhash.h"
 
 #include "libloop/loop.h"
 

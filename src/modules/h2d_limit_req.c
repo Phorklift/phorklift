@@ -2,7 +2,6 @@
 #include <pthread.h>
 
 #include "libwuya/wuy_meter.h"
-#include "libwuya/wuy_murmurhash.h"
 
 struct h2d_limit_req_node {
 	struct wuy_meter_node	meter;
@@ -116,7 +115,7 @@ static int h2d_limit_req_process_headers(struct h2d_request *r)
 	}
 
 	/* hash search */
-	uint64_t hash = wuy_murmurhash_id(key, len) % conf->hash_buckets;
+	uint64_t hash = wuy_vhash64(key, len) % conf->hash_buckets;
 	wuy_nop_hlist_t *bucket = &shared->hash_buckets[hash];
 
 	pthread_mutex_lock(&shared->lock); /* lock here */
