@@ -91,7 +91,7 @@ static int h2d_save_to_filter_response_body(struct h2d_request *r,
 		h2d_request_subr_detach(subr);
 
 		subr->req.method = WUY_HTTP_POST;
-		subr->req.body_buf = wuy_pool_strndup(subr->pool, ctx->buffer, ctx->buf_size);
+		subr->req.body_buf = (uint8_t *)wuy_pool_strndup(subr->pool, ctx->buffer, ctx->buf_size);
 		subr->req.body_len = ctx->buf_size;
 	}
 

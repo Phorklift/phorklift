@@ -34,7 +34,7 @@ static bool h2d_conf_path_name_match(const char *def, const char *req)
 	case '/':
 		return memcmp(def, req, strlen(def)) == 0;
 	case '~':
-		return wuy_luastr_find(req, def + 1);
+		return wuy_luastr_find2(req, def + 1);
 	case '@':
 		return false;
 	default:

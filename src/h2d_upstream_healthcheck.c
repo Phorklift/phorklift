@@ -58,7 +58,7 @@ static int h2d_upstream_healthcheck_on_read(loop_stream_t *s, void *data, int da
 		pass = memcmp(data, resp_str, resp_len) == 0;
 		break;
 	case '~':
-		pass = wuy_luastr_find(data, resp_str+1);
+		pass = wuy_luastr_find2(data, resp_str+1);
 		break;
 	default:
 		if (data_len < resp_len) {
