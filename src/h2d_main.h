@@ -26,6 +26,7 @@
 #include "libwuya/wuy_time.h"
 #include "libwuya/wuy_rand.h"
 #include "libwuya/wuy_vhash.h"
+#include "libwuya/wuy_luastr.h"
 
 #include "libloop/loop.h"
 

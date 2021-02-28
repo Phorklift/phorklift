@@ -193,9 +193,9 @@ static int h2d_run(const char *conf_file)
 		return H2D_EXIT_CONF;
 	}
 
-	h2d_module_master_post();
+	h2d_lua_api_init();
 
-	h2d_lua_api_init_post();
+	h2d_module_master_post();
 
 	if (opt_worker_num < 0) {
 		h2d_worker_entry();

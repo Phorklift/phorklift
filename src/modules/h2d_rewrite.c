@@ -17,7 +17,7 @@ static int h2d_rewrite_process_headers(struct h2d_request *r)
 	for (int i = 0; i < conf->num; i += 2) {
 		const char *pattern = conf->strs[i];
 		const char *repl = conf->strs[i + 1];
-		const char *new = h2d_lua_api_str_gsub(r->req.uri.path, pattern, repl);
+		const char *new = wuy_luastr_gsub(r->req.uri.path, pattern, repl);
 		if (new != NULL) {
 			printf("rewrite %s %s\n", r->req.uri.path, new);
 			r->req.uri.path = wuy_pool_strdup(r->pool, new);
