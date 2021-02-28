@@ -32,11 +32,11 @@ static void h2d_dynamic_delete(struct h2d_dynamic_conf *sub_dyn)
 	}
 
 	if (sub_dyn->shmpool != NULL) {
-		wuy_shmpool_release(sub_dyn->shmpool);
+		wuy_shmpool_destroy(sub_dyn->shmpool);
 	}
 	loop_timer_delete(sub_dyn->timer);
 	wuy_dict_delete(dynamic->sub_dict, sub_dyn);
-	wuy_pool_release(sub_dyn->pool);
+	wuy_pool_destroy(sub_dyn->pool);
 }
 
 static int64_t h2d_dynamic_timeout_handler(int64_t at, void *data)

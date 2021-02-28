@@ -291,6 +291,15 @@ static const char *h2d_ssl_conf_post(void *data)
 	return WUY_CFLUA_OK;
 }
 
+static void h2d_ssl_conf_free(void *data)
+{
+	struct h2d_ssl_conf *conf = data;
+
+	if (conf->ctx != NULL) {
+		SSL_CTX_free(conf->ctx);
+	}
+}
+
 static struct wuy_cflua_command h2d_ssl_conf_commands[] = {
 	{	.name = "certificate",
 		.type = WUY_CFLUA_TYPE_STRING,
@@ -322,4 +331,5 @@ struct wuy_cflua_table h2d_ssl_conf_table = {
 	.commands = h2d_ssl_conf_commands,
 	.size = sizeof(struct h2d_ssl_conf),
 	.post = h2d_ssl_conf_post,
+	.free = h2d_ssl_conf_free,
 };

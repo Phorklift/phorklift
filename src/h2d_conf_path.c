@@ -171,11 +171,6 @@ static const char *h2d_conf_path_post(void *data)
 	return WUY_CFLUA_OK;
 }
 
-static void h2d_conf_path_free(void *data)
-{
-	// TODO
-}
-
 static struct wuy_cflua_command h2d_conf_path_access_log_commands[] = {
 	{	.type = WUY_CFLUA_TYPE_STRING,
 		.is_single_array = true,
@@ -251,6 +246,5 @@ struct wuy_cflua_table h2d_conf_path_table = {
 	.refer_name = "Path",
 	.size = sizeof(struct h2d_conf_path),
 	.post = h2d_conf_path_post,
-	.free = h2d_conf_path_free,
 	.name = h2d_conf_path_name,
 };

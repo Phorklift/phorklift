@@ -242,7 +242,6 @@ int main(int argc, char * const *argv)
 	h2d_log_init();
 	h2d_request_init();
 	h2d_connection_init();
-	h2d_lua_api_init();
 
 	h2d_module_master_init();
 

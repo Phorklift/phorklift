@@ -56,9 +56,12 @@ static const char *h2d_conf_listen_post(void *data)
 		conf_listen->address_num++;
 	}
 
-	conf_listen->fds = wuy_pool_alloc(wuy_cflua_pool, conf_listen->address_num * sizeof(int));
-	conf_listen->reuse_magics = wuy_pool_alloc(wuy_cflua_pool, conf_listen->address_num * sizeof(int));
+	conf_listen->fds = wuy_pool_alloc(wuy_cflua_pool,
+			conf_listen->address_num * sizeof(int));
+	conf_listen->reuse_magics = wuy_pool_alloc(wuy_cflua_pool,
+			conf_listen->address_num * sizeof(int));
 
+	/* listen on addresses */
 	for (int i = 0; i < conf_listen->address_num; i++) {
 		const char *address = conf_listen->addresses[i];
 
@@ -147,6 +150,8 @@ static void h2d_conf_listen_free(void *data)
 	}
 
 	h2d_connection_conf_timers_free(conf_listen);
+
+	wuy_dict_destroy(conf_listen->host_dict);
 }
 
 static struct wuy_cflua_command h2d_conf_listen_commands[] = {

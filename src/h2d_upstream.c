@@ -62,7 +62,6 @@ static loop_stream_ops_t h2d_upstream_ops = {
 	.on_readable = h2d_upstream_on_active,
 	.on_writable = h2d_upstream_on_active,
 	.on_close = h2d_upstream_on_close,
-	.timeout_ms = 10*1000, // TODO
 	H2D_SSL_LOOP_STREAM_UNDERLYINGS,
 };
 

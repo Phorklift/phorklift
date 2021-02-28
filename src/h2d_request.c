@@ -170,7 +170,7 @@ void h2d_request_close(struct h2d_request *r)
 	}
 
 	h2d_request_clear_stuff(r);
-	wuy_pool_release(r->pool);
+	wuy_pool_destroy(r->pool);
 }
 
 void h2d_request_subr_close(struct h2d_request *r)
@@ -178,7 +178,7 @@ void h2d_request_subr_close(struct h2d_request *r)
 	h2d_request_log(r, H2D_LOG_DEBUG, "subr done: %s", r->req.uri.raw);
 	free(r->c->send_buffer);
 	h2d_request_clear_stuff(r);
-	wuy_pool_release(r->pool);
+	wuy_pool_destroy(r->pool);
 }
 
 int h2d_request_redirect(struct h2d_request *r, const char *path)

@@ -63,12 +63,12 @@ bool h2d_conf_parse(const char *conf_file)
 	const char *err = wuy_cflua_parse(L, &global, &conf_listens, pool);
 	if (err != WUY_CFLUA_OK) {
 		fprintf(stderr, "parse conf_file fail: %s\n", err);
-		wuy_pool_release(pool);
+		wuy_pool_destroy(pool);
 		return false;
 	}
 
 	if (h2d_conf_pool != NULL) {
-		wuy_pool_release(h2d_conf_pool);
+		wuy_pool_destroy(h2d_conf_pool); /* free h2d_conf_listens too */
 		lua_close(h2d_L);
 	}
 	h2d_conf_listens = conf_listens;
