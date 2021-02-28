@@ -609,6 +609,21 @@ void h2d_request_subr_detach(struct h2d_request *subr)
 	subr->father = H2D_REQUEST_DETACHED_SUBR_FATHER;
 }
 
+int h2d_request_subr_flush_connection(struct h2d_connection *c)
+{
+	struct h2d_request *subr = c->u.request;
+	struct h2d_request *father = subr->father;
+
+	/* drop response for detached subrequests */
+	if (father == H2D_REQUEST_DETACHED_SUBR_FATHER) {
+		c->send_buf_pos = c->send_buffer;
+		return H2D_OK;
+	}
+
+	h2d_request_active(father, "subr response");
+	return H2D_OK;
+}
+
 static void h2d_request_defer_run(void *data)
 {
 	struct h2d_request *r;

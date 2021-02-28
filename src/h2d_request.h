@@ -120,6 +120,8 @@ struct h2d_request *h2d_request_subr_new(struct h2d_request *father, const char 
 void h2d_request_subr_detach(struct h2d_request *subr);
 void h2d_request_subr_close(struct h2d_request *subr);
 
+int h2d_request_subr_flush_connection(struct h2d_connection *c);
+
 /* used only for h2d_request_log and h2d_request_log_at */
 static inline struct h2d_log *h2d_request_get_log(struct h2d_request *r)
 {
