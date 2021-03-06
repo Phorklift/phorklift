@@ -98,21 +98,6 @@ static void h2d_log_routine(void *data)
 	}
 }
 
-struct h2d_log h2d_global_log;
-void h2d_log_global(const char *filename)
-{
-	h2d_global_log.level = H2D_LOG_ERROR;
-	h2d_global_log.max_line = 2 * 1024;
-	h2d_global_log.buf_size = 16 * 1024;
-	h2d_global_log.file = h2d_log_file_open(filename, 16*1024);
-
-	if (h2d_global_log.file == NULL) {
-		fprintf(stderr, "fail in open global error.log: %s %s\n",
-				filename, strerror(errno));
-		exit(H2D_EXIT_GETOPT);
-	}
-}
-
 void h2d_log_init(void)
 {
 	loop_defer_add(h2d_loop, h2d_log_routine, NULL);
@@ -122,19 +107,10 @@ void h2d_log_init(void)
 
 static enum h2d_log_level h2d_log_parse_level(const char *str)
 {
-	if (strcmp(str, "debug") == 0) {
-		return H2D_LOG_DEBUG;
-	} else if (strcmp(str, "info") == 0) {
-		return H2D_LOG_INFO;
-	} else if (strcmp(str, "warn") == 0) {
-		return H2D_LOG_WARN;
-	} else if (strcmp(str, "error") == 0) {
-		return H2D_LOG_ERROR;
-	} else if (strcmp(str, "fatal") == 0) {
-		return H2D_LOG_FATAL;
-	} else {
-		return -1;
-	}
+#define X(c, l)	if (strcmp(str, #l) == 0) return H2D_LOG_##c;
+	H2D_LOG_LEVEL_TABLE
+#undef X
+	return -1;
 }
 
 static const char *h2d_log_conf_post(void *data)
@@ -145,16 +121,16 @@ static const char *h2d_log_conf_post(void *data)
 	if (log->level < 0) {
 		return "invalid log level";
 	}
-	if (log->max_line > log->buf_size) {
+	if (log->buf_size == 0) {
+		log->is_line_buffer = true;
+		log->buf_size = log->max_line;
+	} else if (log->max_line > log->buf_size) {
 		return "expect max_line <= buffer_size";
 	}
 
 	if (log->filename == NULL) {
-		log->file = h2d_global_log.file;
-		log->file->refs++;
-		return WUY_CFLUA_OK;
+		log->filename = "error.log";
 	}
-
 	log->file = h2d_log_file_open(log->filename, log->buf_size);
 	if (log->file == NULL) {
 		wuy_cflua_post_arg = log->filename;
@@ -181,12 +157,13 @@ static struct wuy_cflua_command h2d_log_conf_commands[] = {
 	{	.name = "buffer_size",
 		.type = WUY_CFLUA_TYPE_INTEGER,
 		.offset = offsetof(struct h2d_log, buf_size),
-		.limits.n = WUY_CFLUA_LIMITS_LOWER(4 * 1024),
+		.limits.n = WUY_CFLUA_LIMITS_NON_NEGATIVE,
 		.default_value.n = 16 * 1024,
 	},
 	{	.name = "max_line",
 		.type = WUY_CFLUA_TYPE_INTEGER,
 		.offset = offsetof(struct h2d_log, max_line),
+		.limits.n = WUY_CFLUA_LIMITS_POSITIVE,
 		.default_value.n = 2 * 1024,
 	},
 	{	.name = "level",

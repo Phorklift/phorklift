@@ -10,39 +10,27 @@
 
 #define H2D_VERSION "0.1"
 
-static int opt_worker_num = 0;
+static bool opt_daemon = true;
 static const char *opt_pid_file = "h2tpd.pid";
-static const char *opt_error_file = "error.log";
 
 static bool sig_reload_conf = false;
-
-static pid_t *h2d_workers = NULL;
 
 static const char *h2d_getopt(int argc, char *const *argv)
 {
 	const char *help = "Usage: h2tpd [options] conf_file\n"
 		"Options:\n"
 		"    -p PREFIX   change directory\n"
-		"    -w NUM      set #worker processes, 0:#cpu-core, -1:disable [0]\n"
 		"    -i FILE     set pid file [h2tpd.pid]\n"
-		"    -e FILE     set error log file [error.log]\n"
 		"    -m MODULE   add dynamic module\n"
 		"    -m @FILE    add dynamic module list file\n"
+		"    -f          run in foreground, but not daemon\n"
 		"    -r          show configration reference and quit\n"
 		"    -v          show version and quit\n"
 		"    -h          show this help and quit\n";
 
 	int opt;
-	char *endptr;
-	while ((opt = getopt(argc, argv, "w:p:i:m:e:rvh")) != -1) {
+	while ((opt = getopt(argc, argv, "p:i:m:rfvh")) != -1) {
 		switch (opt) {
-		case 'w':
-			opt_worker_num = strtol(optarg, &endptr, 0);
-			if (endptr[0] != '\0') {
-				fprintf(stderr, "Invalid option worker number: %s\n", optarg);
-				exit(H2D_EXIT_GETOPT);
-			}
-			break;
 		case 'p':
 			if (chdir(optarg) != 0) {
 				fprintf(stderr, "Fail to chdir to %s : %s\n", optarg, strerror(errno));
@@ -52,11 +40,11 @@ static const char *h2d_getopt(int argc, char *const *argv)
 		case 'i':
 			opt_pid_file = optarg;
 			break;
-		case 'e':
-			opt_error_file = optarg;
-			break;
 		case 'm':
 			h2d_module_dynamic_add(optarg);
+			break;
+		case 'f':
+			opt_daemon = false;
 			break;
 		case 'r':
 			h2d_module_master_init();
@@ -90,20 +78,23 @@ loop_t *h2d_loop = NULL;
 
 bool h2d_in_worker = false;
 
+pid_t h2d_pid;
+
 static void h2d_signal_worker_quit(int signo)
 {
 	loop_kill(h2d_loop);
 }
 static void h2d_worker_entry(void)
 {
+	h2d_in_worker = true;
+	h2d_pid = getpid();
+
 	printf("start worker: %d\n", getpid());
 
 	signal(SIGHUP, SIG_IGN);
 	signal(SIGQUIT, h2d_signal_worker_quit);
 
 	prctl(PR_SET_NAME, (unsigned long)"h2tpd-worker", 0, 0, 0);
-
-	h2d_in_worker = true;
 
 	loop_new_event(h2d_loop);
 
@@ -164,10 +155,12 @@ static bool h2d_worker_check(void)
 		return false; /* errno == ECHILD */
 	}
 
+	struct h2d_conf_runtime_worker *worker = &h2d_conf_runtime->worker;
+
 	int i;
-	for (i = 0; i < opt_worker_num; i++) {
-		if (pid == h2d_workers[i]) {
-			h2d_workers[i] = 0;
+	for (i = 0; i < worker->num; i++) {
+		if (pid == worker->list[i]) {
+			worker->list[i] = 0;
 			break;
 		}
 	}
@@ -176,9 +169,9 @@ static bool h2d_worker_check(void)
 		printf("worker %d exit with %d\n", pid, WEXITSTATUS(status));
 
 	} else if (WIFSIGNALED(status)) {
-		assert(i < opt_worker_num); /* must found */
+		assert(i < worker->num); /* must found */
 		printf("worker %d is terminated by signal %d\n", pid, WTERMSIG(status));
-		h2d_workers[i] = h2d_worker_new();
+		worker->list[i] = h2d_worker_new();
 
 	} else {
 		printf("worker %d quit!\n", pid);
@@ -197,24 +190,15 @@ static int h2d_run(const char *conf_file)
 
 	h2d_module_master_post();
 
-	if (opt_worker_num < 0) {
-		h2d_worker_entry();
-		return 0;
-	}
-	if (opt_worker_num == 0) {
-		opt_worker_num = sysconf(_SC_NPROCESSORS_ONLN);
-	}
-
-	/* kill old workers if any */
-	for (int i = 0; i < opt_worker_num; i++) {
-		if (h2d_workers[i] != 0) {
-			kill(h2d_workers[i], SIGQUIT);
-		}
+	if (opt_daemon) {
+		opt_daemon = false;
+		assert(daemon(1, 0) == 0);
 	}
 
 	/* start workers */
-	for (int i = 0; i < opt_worker_num; i++) {
-		h2d_workers[i] = h2d_worker_new();
+	struct h2d_conf_runtime_worker *worker = &h2d_conf_runtime->worker;
+	for (int i = 0; i < worker->num; i++) {
+		worker->list[i] = h2d_worker_new();
 	}
 
 	return 0;
@@ -233,19 +217,16 @@ int main(int argc, char * const *argv)
 	 * It will be duplicated to the workers during fork(). */
 	h2d_loop = loop_new_noev();
 
-	h2d_log_global(opt_error_file);
 	h2d_ssl_init();
 	h2d_http2_init();
 	h2d_upstream_init();
 	h2d_resolver_init();
 	h2d_dynamic_init();
-	h2d_log_init();
 	h2d_request_init();
 	h2d_connection_init();
+	h2d_log_init(); /* init log at last for loop_defer:flush log at last */
 
 	h2d_module_master_init();
-
-	h2d_workers = calloc(opt_worker_num, sizeof(pid_t));
 
 	int ret = h2d_run(conf_file);
 	if (ret != 0) {

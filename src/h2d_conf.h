@@ -143,9 +143,25 @@ struct h2d_conf_listen {
 	struct h2d_conf_listen_stats	*stats;
 };
 
+struct h2d_conf_runtime {
+	struct h2d_conf_runtime_worker {
+		int	num;
+		pid_t	*list;
+	} worker;
+
+	struct {
+		const char	*server_prefix;
+		struct h2d_log	*log;
+	} resolver;
+
+	struct h2d_log		*log;
+};
+
 extern lua_State *h2d_L;
 
 extern struct h2d_conf_listen **h2d_conf_listens;
+
+extern struct h2d_conf_runtime *h2d_conf_runtime;
 
 extern int h2d_conf_reload_count;
 
@@ -169,5 +185,6 @@ void h2d_conf_doc(void);
 extern struct wuy_cflua_table h2d_conf_listen_table;
 extern struct wuy_cflua_table h2d_conf_host_table;
 extern struct wuy_cflua_table h2d_conf_path_table;
+extern struct wuy_cflua_table h2d_conf_runtime_table;
 
 #endif

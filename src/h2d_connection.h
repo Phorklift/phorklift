@@ -12,6 +12,9 @@ struct h2d_connection {
 	/* set by SSL SNI if any */
 	struct h2d_conf_host	*ssl_sni_conf_host;
 
+	uint64_t		id;
+	uint32_t		request_id;
+
 	bool			closed;
 
 	bool			is_http2;

@@ -3,7 +3,9 @@
 Author: Wu Bingzheng
   Date: 2019-09-20
 
-Configuration rules:
+Runtime() and Listen() are accepted at top level.
+Runtime() is simple.
+Configuration rules for Listen():
 
 + Array members and key-value options are allowed;
 
@@ -20,12 +22,12 @@ Configuration rules:
 
 
 Input arguments: Listen table, configuration file name
-Return: Listen array
+Return: Listen array, Runtime
 
 --]]
 
 
---
+-- constants
 H2D_ARRAY_APPEND = {}
 KiB = 1024
 MiB = 1024*1024
@@ -200,6 +202,17 @@ function Path(...)
 	end
 end
 
+
+-- Runtime
+local h2d_conf_runtime = {}
+function Runtime(t)
+	if next(h2d_conf_runtime) then
+		error("duplicate Runtime")
+	end
+	h2d_conf_runtime = t
+end
+
+
 dofile(h2d_conf_file)
 if #h2d_conf_listens == 0 then
 	error("at least 1 Listen() is need")
@@ -242,4 +255,4 @@ local function dumpall()
 end
 --dumpall()
 
-return h2d_conf_listens
+return h2d_conf_listens, h2d_conf_runtime

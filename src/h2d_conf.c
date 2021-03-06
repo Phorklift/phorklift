@@ -28,24 +28,39 @@ bool h2d_conf_parse(const char *conf_file)
 	lua_State *L = lua_open();
 	luaL_openlibs(L);
 
+	/* load function */
 	int ret = luaL_loadstring(L, h2d_conf_parse_lua_str);
 	if (ret != 0) {
 		fprintf(stderr, "load h2d_conf_parse.lua fail: %d\n", ret);
 		return false;
 	}
 
-	/* two input arguments: listen-table, and conf-file */
+	/* argument 1: listen-table */
 	wuy_cflua_build_tables(L, &h2d_conf_listen_table);
+
+	/* argument 2: conf-file */
 	lua_pushstring(L, conf_file);
 
-	ret = lua_pcall(L, 2, 1, 0);
+	/* call */
+	ret = lua_pcall(L, 2, 2, 0);
 	if (ret != 0) {
 		const char *errmsg = lua_tostring(L, -1);
 		fprintf(stderr, "load conf_file fail(%d): %s\n", ret, errmsg);
 		return false;
 	}
 
-	/* returned listen array, handled by wuy_cflua_parse(). */
+	/* return-value 1: runtime conf */
+	wuy_pool_t *pool = wuy_pool_new(4096);
+	const char *err = wuy_cflua_parse(L, &h2d_conf_runtime_table, &h2d_conf_runtime, pool);
+	if (err != WUY_CFLUA_OK) {
+		fprintf(stderr, "parse runtime fail: %s\n", err);
+		wuy_pool_destroy(pool);
+		lua_close(L);
+		return false;
+	}
+	lua_pop(L, 1);
+
+	/* return-value 2: listen array */
 	struct wuy_cflua_command listens_commands[] = {
 		{	.type = WUY_CFLUA_TYPE_TABLE,
 			.u.table = &h2d_conf_listen_table,
@@ -58,14 +73,15 @@ bool h2d_conf_parse(const char *conf_file)
 	};
 
 	struct h2d_conf_listen **conf_listens;
-
-	wuy_pool_t *pool = wuy_pool_new(4096);
-	const char *err = wuy_cflua_parse(L, &global, &conf_listens, pool);
+	err = wuy_cflua_parse(L, &global, &conf_listens, pool);
 	if (err != WUY_CFLUA_OK) {
 		fprintf(stderr, "parse conf_file fail: %s\n", err);
 		wuy_pool_destroy(pool);
+		lua_close(L);
 		return false;
 	}
+
+	/* done */
 
 	if (h2d_conf_pool != NULL) {
 		wuy_pool_destroy(h2d_conf_pool); /* free h2d_conf_listens too */

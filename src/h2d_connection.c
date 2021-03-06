@@ -5,7 +5,7 @@
 			level, "connection: " fmt, ##__VA_ARGS__)
 #define _log(level, fmt, ...) \
 	h2d_log_level(c->conf_listen->default_host->default_path->error_log, \
-			level, "connection: " fmt, ##__VA_ARGS__)
+			level, "%lu connection: " fmt, c->id, ##__VA_ARGS__)
 
 static WUY_LIST(h2d_connection_defer_list);
 
@@ -238,6 +238,8 @@ static bool h2d_connection_on_accept(loop_tcp_listen_t *loop_listen,
 	if (c == NULL) {
 		return false;
 	}
+	static uint64_t h2d_connection_id = 1;
+	c->id = h2d_connection_id++;
 	c->client_addr = *addr;
 	c->conf_listen = conf_listen;
 	c->loop_stream = s;

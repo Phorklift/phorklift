@@ -13,22 +13,25 @@ void h2d_log_file_vwrite(struct h2d_log_file *file, int max_line, const char *fm
 
 /* error log */
 
+#define H2D_LOG_LEVEL_TABLE \
+	X(DEBUG, debug) \
+	X(INFO, info) \
+	X(WARN, warn) \
+	X(ERROR, error) \
+	X(FATAL, fatal)
+
 enum h2d_log_level {
-	H2D_LOG_DEBUG,
-	H2D_LOG_INFO,
-	H2D_LOG_WARN,
-	H2D_LOG_ERROR,
-	H2D_LOG_FATAL,
+#define X(c, l) H2D_LOG_##c,
+	H2D_LOG_LEVEL_TABLE
+#undef X
 };
 
 static inline const char *h2d_log_strlevel(enum h2d_log_level level)
 {
 	switch (level) {
-	case H2D_LOG_DEBUG: return "[debug]";
-	case H2D_LOG_INFO:  return "[info]";
-	case H2D_LOG_WARN:  return "[warn]";
-	case H2D_LOG_ERROR: return "[error]";
-	case H2D_LOG_FATAL: return "[fatal]";
+#define X(c, l) case H2D_LOG_##c: return "[" #l "]";
+	H2D_LOG_LEVEL_TABLE
+#undef X
 	default: abort();
 	}
 }
@@ -40,6 +43,7 @@ struct h2d_log {
 	int			level_meta_level;
 	int			buf_size;
 	int			max_line;
+	bool			is_line_buffer;
 
 	enum h2d_log_level	level;
 	struct h2d_log_file	*file;
@@ -47,7 +51,7 @@ struct h2d_log {
 
 #define h2d_log_level_nocheck(log, level2, fmt, ...) \
 	h2d_log_file_write(log->file, log->max_line, \
-			"%s %d " fmt, h2d_log_strlevel(level2), 0, ##__VA_ARGS__)
+			"%s %d:" fmt, h2d_log_strlevel(level2), h2d_pid, ##__VA_ARGS__)
 
 // XXX add level
 #define h2d_log_level_v_nocheck(log, level2, fmt, ap) \
@@ -62,10 +66,6 @@ struct h2d_log {
 #define h2d_assert(expr) if (!(expr)) h2d_log_fatal("assert fail: " #expr " at %s()", __FUNCTION__)
 
 extern struct wuy_cflua_table h2d_log_conf_table; 
-
-extern struct h2d_log h2d_global_log;
-
-void h2d_log_global(const char *filename);
 
 void h2d_log_init(void);
 
