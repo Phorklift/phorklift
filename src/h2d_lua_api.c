@@ -195,7 +195,8 @@ int h2d_lua_api_call_boolean(struct h2d_request *r, wuy_cflua_function_t f)
 	return ret;
 }
 
-/* APIs */
+
+/* API: top */
 
 static int64_t h2d_lua_api_sleep_timeout(int64_t at, void *data)
 {
@@ -224,48 +225,6 @@ static int h2d_lua_api_sleep(lua_State *L)
 	lth->resume_handler = h2d_lua_api_sleep_resume;
 
 	return lua_yield(L, 0);
-}
-
-static int h2d_lua_api_uri_raw(lua_State *L)
-{
-	lua_pushstring(L, h2d_lua_api_current->req.uri.raw);
-	return 1;
-}
-static int h2d_lua_api_uri_path(lua_State *L)
-{
-	lua_pushstring(L, h2d_lua_api_current->req.uri.path);
-	return 1;
-}
-static int h2d_lua_api_host(lua_State *L)
-{
-	lua_pushstring(L, h2d_lua_api_current->req.host);
-	return 1;
-}
-static int h2d_lua_api_req_body(lua_State *L)
-{
-	struct h2d_request *r = h2d_lua_api_current;
-	lua_pushlstring(L, (char *)r->req.body_buf, r->req.body_len);
-	return 1;
-}
-
-static int h2d_lua_api_headers(lua_State *L)
-{
-	lua_newtable(L);
-
-	struct h2d_request *r = h2d_lua_api_current;
-	struct h2d_header *h;
-	h2d_header_iter(&r->req.headers, h) {
-		lua_pushstring(L, h2d_header_value(h));
-		lua_setfield(L, -2, h->str);
-	}
-
-	return 1;
-}
-
-static int h2d_lua_api_status_code(lua_State *L)
-{
-	lua_pushinteger(L, h2d_lua_api_current->resp.status_code);
-	return 1;
 }
 
 static int h2d_lua_api_subrequest_resume(void)
@@ -314,20 +273,163 @@ static int h2d_lua_api_subrequest(lua_State *L)
 	return lua_yield(L, 0);
 }
 
-static const struct luaL_Reg h2d_lua_api_list [] = {
-	{ "uri_raw", h2d_lua_api_uri_raw},
-	{ "uri_path", h2d_lua_api_uri_path },
-	{ "host", h2d_lua_api_host },
-	{ "req_body", h2d_lua_api_req_body },
-	{ "headers", h2d_lua_api_headers },
-	{ "status_code", h2d_lua_api_status_code },
+static const struct luaL_Reg h2d_lua_api_top_functions[] = {
 	{ "sleep", h2d_lua_api_sleep },
 	{ "subrequest", h2d_lua_api_subrequest },
+	{ "log", NULL },
+	{ "exit", NULL },
 	{ NULL, NULL }  /* sentinel */
 };
 
+
+/* API: req */
+
+static int h2d_lua_api_req_get_header(lua_State *L)
+{
+	const char *name = lua_tostring(L, -1);
+	if (name == NULL) {
+		return 0;
+	}
+
+	struct h2d_header *h;
+	h2d_header_iter(&h2d_lua_api_current->req.headers, h) {
+		if (strcasecmp(name, h->str) == 0) {
+			lua_pushstring(L, h2d_header_value(h));
+			return 1;
+		}
+	}
+	return 0;
+}
+
+static int h2d_lua_api_req_add_header(lua_State *L)
+{
+	size_t name_len, value_len;
+	const char *name_str = lua_tolstring(L, -2, &name_len);
+	const char *value_str = lua_tolstring(L, -1, &value_len);
+	if (name_str == NULL) {
+		return 0;
+	}
+
+	h2d_header_add(&h2d_lua_api_current->req.headers, name_str, name_len,
+			value_str, value_len, h2d_lua_api_current->pool);
+	return 0;
+}
+
+static int h2d_lua_api_req_set_header(lua_State *L)
+{
+	const char *name = lua_tostring(L, -2);
+	if (name == NULL) {
+		return 0;
+	}
+
+	struct h2d_header *h;
+	h2d_header_iter(&h2d_lua_api_current->req.headers, h) {
+		if (strcasecmp(name, h->str) == 0) {
+			// TODO delete
+		}
+	}
+
+	return h2d_lua_api_req_add_header(L);
+}
+
+static const struct luaL_Reg h2d_lua_api_req_functions[] = {
+	{ "get_header", h2d_lua_api_req_get_header },
+	{ "set_header", h2d_lua_api_req_set_header },
+	{ "add_header", h2d_lua_api_req_add_header },
+	{ NULL, NULL }  /* sentinel */
+};
+
+static int h2d_lua_api_req_mm_index(lua_State *L)
+{
+	const char *key = lua_tostring(L, -1);
+	if (key == NULL) {
+		return 0;
+	}
+
+	struct h2d_request *r = h2d_lua_api_current;
+
+	if (strcmp(key, "method") == 0) {
+		lua_pushinteger(L, r->req.method);
+
+	} else if (strcmp(key, "uri_raw") == 0) {
+		lua_pushstring(L, r->req.uri.raw);
+
+	} else if (strcmp(key, "uri_path") == 0) {
+		lua_pushstring(L, r->req.uri.path);
+
+	} else if (strcmp(key, "host") == 0) {
+		lua_pushstring(L, r->req.host);
+
+	} else if (strcmp(key, "headers") == 0) {
+		lua_newtable(L);
+		struct h2d_header *h;
+		h2d_header_iter(&r->req.headers, h) {
+			lua_pushstring(L, h2d_header_value(h));
+			lua_setfield(L, -2, h->str);
+		}
+
+	} else if (strcmp(key, "body") == 0) {
+		lua_pushlstring(L, (char *)r->req.body_buf, r->req.body_len);
+
+	} else {
+		lua_pushnil(L);
+	}
+	return 1;
+}
+
+static int h2d_lua_api_req_mm_newindex(lua_State *L)
+{
+	return 0;
+}
+
+
+/* API: resp */
+
+
+/* register APIs */
+
+static void h2d_lua_api_add_functions(const struct luaL_Reg *list)
+{
+	for (const struct luaL_Reg *r = list; r->name != NULL; r++) {
+		lua_pushstring(h2d_L, r->name);
+		lua_pushcfunction(h2d_L, r->func);
+		lua_settable(h2d_L, -3);
+	}
+}
+
+void h2d_lua_api_add_object(const char *name, const struct luaL_Reg *list,
+		lua_CFunction index_f, lua_CFunction newindex_f)
+{
+	lua_newtable(h2d_L);
+
+	if (list != NULL) {
+		h2d_lua_api_add_functions(list);
+	}
+
+	if (index_f != NULL) {
+		lua_pushcfunction(h2d_L, index_f);
+		lua_setfield(h2d_L, -2, "__index");
+	}
+
+	if (newindex_f != NULL) {
+		lua_pushcfunction(h2d_L, newindex_f);
+		lua_setfield(h2d_L, -2, "__newindex");
+	}
+
+	lua_pushvalue(h2d_L, -1);
+	lua_setmetatable(h2d_L, -2);
+
+	lua_setfield(h2d_L, -2, name);
+}
+
 void h2d_lua_api_init(void)
 {
-	/* C functions for Lua code to call */
-	luaL_register(h2d_L, "h2d", h2d_lua_api_list);
+	lua_newtable(h2d_L);
+
+	h2d_lua_api_add_functions(h2d_lua_api_top_functions);
+
+	h2d_lua_api_add_object("req", h2d_lua_api_req_functions,
+			h2d_lua_api_req_mm_index, h2d_lua_api_req_mm_newindex);
+
+	lua_setglobal(h2d_L, "h2d");
 }
