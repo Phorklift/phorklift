@@ -159,9 +159,8 @@ struct h2d_conf_runtime {
 
 extern lua_State *h2d_L;
 
-extern struct h2d_conf_listen **h2d_conf_listens;
-
 extern struct h2d_conf_runtime *h2d_conf_runtime;
+extern struct h2d_conf_listen **h2d_conf_listens;
 
 extern int h2d_conf_reload_count;
 

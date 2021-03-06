@@ -197,10 +197,14 @@ static int h2d_run(const char *conf_file)
 
 	/* start workers */
 	struct h2d_conf_runtime_worker *worker = &h2d_conf_runtime->worker;
+	if (worker->num < 0) {
+		h2d_worker_entry();
+		return 0;
+	}
+
 	for (int i = 0; i < worker->num; i++) {
 		worker->list[i] = h2d_worker_new();
 	}
-
 	return 0;
 }
 

@@ -3,8 +3,6 @@
 
 #include "h2d_main.h"
 
-struct h2d_conf_runtime *h2d_conf_runtime;
-
 static int h2d_conf_runtime_name(void *data, char *buf, int size)
 {
 	return snprintf(buf, size, "Runtime>");
@@ -14,10 +12,10 @@ static const char *h2d_conf_runtime_worker_post(void *data)
 {
 	struct h2d_conf_runtime_worker *worker = data;
 
-	if (worker->num == 0) {
+	if (worker->num < 0) {
 		return WUY_CFLUA_OK;
 	}
-	if (worker->num < 0) {
+	if (worker->num == 0) {
 		worker->num = sysconf(_SC_NPROCESSORS_ONLN);
 		if (worker->num <= 0) {
 			return "fail to get #CPU";
@@ -41,11 +39,12 @@ static void h2d_conf_runtime_worker_free(void *data)
 
 static struct wuy_cflua_command h2d_conf_runtime_worker_commands[] = {
 	{	.type = WUY_CFLUA_TYPE_INTEGER,
-		.offset = offsetof(struct h2d_conf_runtime, worker.num),
+		.is_single_array = true,
+		.offset = offsetof(struct h2d_conf_runtime_worker, num),
 	},
 	{ NULL },
 };
-struct wuy_cflua_table h2d_conf_runtime_worker_table = {
+static struct wuy_cflua_table h2d_conf_runtime_worker_table = {
 	.commands = h2d_conf_runtime_worker_commands,
 	.post = h2d_conf_runtime_worker_post,
 	.free = h2d_conf_runtime_worker_free,

@@ -8,6 +8,7 @@
  * This is persistent because of the functions defined in config file. */
 lua_State *h2d_L = NULL;
 
+struct h2d_conf_runtime *h2d_conf_runtime = NULL;
 struct h2d_conf_listen **h2d_conf_listens = NULL;
 
 int h2d_conf_reload_count = 0;
@@ -51,7 +52,8 @@ bool h2d_conf_parse(const char *conf_file)
 
 	/* return-value 1: runtime conf */
 	wuy_pool_t *pool = wuy_pool_new(4096);
-	const char *err = wuy_cflua_parse(L, &h2d_conf_runtime_table, &h2d_conf_runtime, pool);
+	struct h2d_conf_runtime *conf_runtime;
+	const char *err = wuy_cflua_parse(L, &h2d_conf_runtime_table, &conf_runtime, pool);
 	if (err != WUY_CFLUA_OK) {
 		fprintf(stderr, "parse runtime fail: %s\n", err);
 		wuy_pool_destroy(pool);
@@ -84,9 +86,10 @@ bool h2d_conf_parse(const char *conf_file)
 	/* done */
 
 	if (h2d_conf_pool != NULL) {
-		wuy_pool_destroy(h2d_conf_pool); /* free h2d_conf_listens too */
+		wuy_pool_destroy(h2d_conf_pool); /* free h2d_conf_runtime and h2d_conf_listens too */
 		lua_close(h2d_L);
 	}
+	h2d_conf_runtime = conf_runtime;
 	h2d_conf_listens = conf_listens;
 	h2d_conf_pool = pool;
 	h2d_L = L;
