@@ -23,8 +23,12 @@ struct h2d_request *h2d_request_new(struct h2d_connection *c)
 	if (c == NULL) { /* subrequest */
 		c = wuy_pool_alloc(pool, sizeof(struct h2d_connection));
 	}
+	r->id = c->request_id++;
 	r->c = c;
 	r->pool = pool;
+
+	h2d_request_log(r, H2D_LOG_DEBUG, "new request");
+
 	return r;
 }
 
@@ -47,7 +51,7 @@ static void h2d_request_clear_stuff(struct h2d_request *r)
 {
 	wuy_list_del_if(&r->list_node);
 
-	h2d_lua_api_thread_clear(r);
+	h2d_lua_thread_clear(r);
 
 	h2d_module_request_ctx_free(r);
 }
@@ -102,7 +106,7 @@ static void h2d_request_access_log(struct h2d_request *r)
 	}
 
 	if (wuy_cflua_is_function_set(log->filter)) {
-		if (!h2d_lua_api_call_boolean(r, log->filter)) {
+		if (!h2d_lua_call_boolean(r, log->filter)) {
 			return;
 		}
 	}
@@ -113,7 +117,7 @@ static void h2d_request_access_log(struct h2d_request *r)
 
 	const char *format = "-";
 	if (wuy_cflua_is_function_set(log->format)) {
-		const char *format = h2d_lua_api_call_lstring(r, log->format, NULL);
+		const char *format = h2d_lua_call_lstring(r, log->format, NULL);
 		if (format == NULL) {
 			format = "-";
 

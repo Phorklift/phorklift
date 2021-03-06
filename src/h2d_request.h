@@ -7,7 +7,7 @@ struct h2d_request;
 #include "h2d_header.h"
 #include "h2d_conf.h"
 #include "h2d_connection.h"
-#include "h2d_lua_api.h"
+#include "h2d_lua_thread.h"
 
 #define H2D_CONTENT_LENGTH_INIT		SIZE_MAX
 
@@ -62,6 +62,8 @@ struct h2d_request {
 		H2D_REQUEST_STATE_DONE,
 	} state;
 
+	uint32_t		id;
+
 	bool			closed;
 	bool			is_broken; //TODO may put in h2d_request_run()?
 
@@ -78,7 +80,7 @@ struct h2d_request {
 
 	struct h2d_dynamic_ctx	*dynamic_ctx;
 
-	struct h2d_lua_api_thread	lth;
+	struct h2d_lua_thread	lth;
 
 	struct h2d_request	*father; /* only for subreq */
 
@@ -136,9 +138,9 @@ static inline struct h2d_log *h2d_request_get_log(struct h2d_request *r)
 
 #define h2d_request_do_log(r, log, level, fmt, ...) \
 	if (level >= H2D_LOG_ERROR && r->req.uri.raw) { \
-		h2d_log_level_nocheck(log, level, "%s " fmt, r->req.uri.raw, ##__VA_ARGS__); \
+		h2d_log_level_nocheck(log, level, "%lu:%u %s " fmt, r->c->id, r->id, r->req.uri.raw, ##__VA_ARGS__); \
 	} else { \
-		h2d_log_level_nocheck(log, level, fmt, ##__VA_ARGS__); \
+		h2d_log_level_nocheck(log, level, "%lu:%u " fmt, r->c->id, r->id, ##__VA_ARGS__); \
 	}
 
 #define h2d_request_log_at(r, log, level2, fmt, ...) \

@@ -345,7 +345,7 @@ bool h2d_upstream_address_is_pickable(struct h2d_upstream_address *address,
 		return false;
 	}
 	if (wuy_cflua_is_function_set(upstream->failure.filter)) {
-		return h2d_lua_api_call_boolean(r, upstream->failure.filter);
+		return h2d_lua_call_boolean(r, upstream->failure.filter);
 	}
 	return true;
 }

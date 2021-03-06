@@ -59,7 +59,7 @@ static bool h2d_dynamic_need_get_conf(struct h2d_dynamic_conf *sub_dyn,
 		return false;
 	}
 	if (wuy_cflua_is_function_set(sub_dyn->check_filter)) {
-		if (h2d_lua_api_call_boolean(r, sub_dyn->check_filter) != 1) {
+		if (h2d_lua_call_boolean(r, sub_dyn->check_filter) != 1) {
 			return false;
 		}
 	}
@@ -97,7 +97,7 @@ static struct h2d_dynamic_conf *h2d_dynamic_get_sub_dyn(struct h2d_dynamic_conf 
 		return H2D_PTR_ERROR;
 	}
 
-	if (h2d_lua_api_thread_in_running(r)) {
+	if (h2d_lua_thread_in_running(r)) {
 		return sub_dyn;
 	}
 
@@ -164,7 +164,11 @@ void *h2d_dynamic_get(struct h2d_dynamic_conf *dynamic, struct h2d_request *r)
 {
 	/* call get_name() */
 	int name_len;
-	const char *name = h2d_lua_api_call_lstring(r, dynamic->get_name, &name_len);
+	const char *name = h2d_lua_call_lstring(r, dynamic->get_name, &name_len);
+	if (name == NULL) {
+		_log(H2D_LOG_ERROR, "fail to call get_name");
+		return H2D_PTR_ERROR;
+	}
 	if (name_len > 100) {
 		_log(H2D_LOG_ERROR, "too long name");
 		return H2D_PTR_ERROR;
@@ -182,7 +186,7 @@ void *h2d_dynamic_get(struct h2d_dynamic_conf *dynamic, struct h2d_request *r)
 	}
 
 	/* call get_conf() */
-	lua_State *L = h2d_lua_api_thread_run(r, dynamic->get_conf, "sl",
+	lua_State *L = h2d_lua_thread_run(r, dynamic->get_conf, "sl",
 			name, sub_dyn->modify_time);
 	if (L == H2D_PTR_ERROR || L == H2D_PTR_AGAIN) {
 		return L;

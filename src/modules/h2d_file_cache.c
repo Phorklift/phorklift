@@ -231,7 +231,7 @@ static int h2d_file_cache_filter_process_headers(struct h2d_request *r)
 	int len;
 	const char *key = r->req.uri.raw;
 	if (wuy_cflua_is_function_set(conf->key)) {
-		key = h2d_lua_api_call_lstring(r, conf->key, &len);
+		key = h2d_lua_call_lstring(r, conf->key, &len);
 		if (key == NULL) {
 			_log(H2D_LOG_DEBUG, "none key");
 			return H2D_OK;

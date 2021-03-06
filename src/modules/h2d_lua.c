@@ -32,7 +32,7 @@ static int h2d_lua_generate_response_headers(struct h2d_request *r)
 		r->module_ctxs[h2d_lua_module.index] = ctx;
 	}
 
-	lua_State *L = h2d_lua_api_thread_run(r, conf->content, NULL);
+	lua_State *L = h2d_lua_thread_run(r, conf->content, NULL);
 	if (!H2D_PTR_IS_OK(L)) {
 		return H2D_PTR2RET(L);
 	}

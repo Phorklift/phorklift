@@ -1,30 +1,19 @@
 #ifndef H2D_LUA_API_H
 #define H2D_LUA_API_H
 
-#include <lua5.1/lua.h>
+#include <lua5.1/lauxlib.h>
 
 #include "h2d_request.h"
 
-/* used by Lua APIs only */
-struct h2d_lua_api_thread {
-	lua_State	*L;
-
-	int		(*resume_handler)(void);
-	void		*data;
+struct h2d_lua_api_const_int {
+	const char	*name;
+	int		n;
 };
 
-lua_State *h2d_lua_api_thread_run(struct h2d_request *r,
-		wuy_cflua_function_t entry, const char *argf, ...);
+extern struct h2d_request *h2d_lua_api_current;
 
-bool h2d_lua_api_thread_in_running(struct h2d_request *r);
-
-void h2d_lua_api_thread_clear(struct h2d_request *r);
-
-const char *h2d_lua_api_call_lstring(struct h2d_request *r,
-		wuy_cflua_function_t f, int *plen);
-
-int h2d_lua_api_call_boolean(struct h2d_request *r,
-		wuy_cflua_function_t f);
+void h2d_lua_api_add_object(const char *name, const struct luaL_Reg *list,
+		lua_CFunction index_f, lua_CFunction newindex_f);
 
 void h2d_lua_api_init(void);
 

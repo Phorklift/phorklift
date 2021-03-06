@@ -33,7 +33,7 @@ static int h2d_gzip_filter_response_headers(struct h2d_request *r)
 		}
 	}
 
-	if (wuy_cflua_is_function_set(conf->filter) && h2d_lua_api_call_boolean(r, conf->filter) != 1) {
+	if (wuy_cflua_is_function_set(conf->filter) && h2d_lua_call_boolean(r, conf->filter) != 1) {
 		return H2D_OK;
 	}
 

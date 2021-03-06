@@ -81,7 +81,7 @@ static struct h2d_upstream_address *h2d_upstream_hash_pick(
 	struct h2d_upstream_hash_ctx *ctx = upstream->lb_ctx;
 
 	int key_len;
-	const char *key_str = h2d_lua_api_call_lstring(r, conf->key, &key_len);
+	const char *key_str = h2d_lua_call_lstring(r, conf->key, &key_len);
 	if (key_str == NULL) {
 		return NULL;
 	}

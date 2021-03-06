@@ -98,7 +98,7 @@ static int h2d_limit_req_process_headers(struct h2d_request *r)
 	int len;
 	const void *key;
 	if (wuy_cflua_is_function_set(conf->key)) {
-		key = h2d_lua_api_call_lstring(r, conf->key, &len);
+		key = h2d_lua_call_lstring(r, conf->key, &len);
 		if (key == NULL) {
 			_log(H2D_LOG_ERROR, "fail in key()");
 			return H2D_ERROR;

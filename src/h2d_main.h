@@ -43,6 +43,8 @@
 #include "h2d_ssl.h"
 #include "h2d_upstream.h"
 #include "h2d_resolver.h"
+#include "h2d_lua_thread.h"
+#include "h2d_lua_call.h"
 #include "h2d_lua_api.h"
 #include "h2d_log.h"
 
@@ -74,5 +76,7 @@
 extern loop_t *h2d_loop;
 
 extern bool h2d_in_worker;
+
+extern pid_t h2d_pid;
 
 #endif

@@ -14,7 +14,7 @@ static int h2d_redis_build_request(struct h2d_request *r)
 
 	const char *query;
 	if (wuy_cflua_is_function_set(conf->query)) {
-		query = h2d_lua_api_call_lstring(r, conf->query, &ctx->req_len);
+		query = h2d_lua_call_lstring(r, conf->query, &ctx->req_len);
 		if (query == NULL) {
 			return r->resp.status_code ? r->resp.status_code : WUY_HTTP_500;
 		}
