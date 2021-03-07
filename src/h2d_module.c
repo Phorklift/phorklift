@@ -61,7 +61,7 @@ struct wuy_cflua_command *h2d_module_next_path_command(struct wuy_cflua_command 
 	return h2d_module_next_command(cmd, offsetof(struct h2d_module, command_path));
 }
 
-void h2d_module_stats_listen(struct h2d_conf_listen *conf_listen, wuy_json_ctx_t *json)
+void h2d_module_stats_listen(struct h2d_conf_listen *conf_listen, wuy_json_t *json)
 {
 	for (int i = 0; i < h2d_module_number; i++) {
 		struct h2d_module *m = h2d_modules[i];
@@ -70,7 +70,7 @@ void h2d_module_stats_listen(struct h2d_conf_listen *conf_listen, wuy_json_ctx_t
 		}
 	}
 }
-void h2d_module_stats_host(struct h2d_conf_host *conf_host, wuy_json_ctx_t *json)
+void h2d_module_stats_host(struct h2d_conf_host *conf_host, wuy_json_t *json)
 {
 	for (int i = 0; i < h2d_module_number; i++) {
 		struct h2d_module *m = h2d_modules[i];
@@ -79,7 +79,7 @@ void h2d_module_stats_host(struct h2d_conf_host *conf_host, wuy_json_ctx_t *json
 		}
 	}
 }
-void h2d_module_stats_path(struct h2d_conf_path *conf_path, wuy_json_ctx_t *json)
+void h2d_module_stats_path(struct h2d_conf_path *conf_path, wuy_json_t *json)
 {
 	for (int i = 0; i < h2d_module_number; i++) {
 		struct h2d_module *m = h2d_modules[i];

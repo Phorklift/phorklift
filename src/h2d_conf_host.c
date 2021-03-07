@@ -136,7 +136,7 @@ struct h2d_conf_host *h2d_conf_host_locate(struct h2d_conf_listen *conf_listen,
 	return conf_listen->host_wildcard;
 }
 
-void h2d_conf_host_stats(struct h2d_conf_host *conf_host, wuy_json_ctx_t *json)
+void h2d_conf_host_stats(struct h2d_conf_host *conf_host, wuy_json_t *json)
 {
 	struct h2d_conf_host_stats *stats = conf_host->stats;
 	wuy_json_object_int(json, "fail_no_path", atomic_load(&stats->fail_no_path));

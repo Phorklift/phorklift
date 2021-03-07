@@ -174,9 +174,9 @@ struct h2d_conf_path *h2d_conf_path_locate(struct h2d_conf_host *conf_host,
 
 void h2d_conf_listen_init_worker(void);
 
-void h2d_conf_path_stats(struct h2d_conf_path *conf_path, wuy_json_ctx_t *json);
-void h2d_conf_host_stats(struct h2d_conf_host *conf_host, wuy_json_ctx_t *json);
-void h2d_conf_listen_stats(struct h2d_conf_listen *conf_listen, wuy_json_ctx_t *json);
+void h2d_conf_path_stats(struct h2d_conf_path *conf_path, wuy_json_t *json);
+void h2d_conf_host_stats(struct h2d_conf_host *conf_host, wuy_json_t *json);
+void h2d_conf_listen_stats(struct h2d_conf_listen *conf_listen, wuy_json_t *json);
 
 void h2d_conf_doc(void);
 

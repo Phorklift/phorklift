@@ -260,7 +260,7 @@ extern struct wuy_cflua_command h2d_upstream_healthcheck_commands[];
 bool h2d_upstream_address_is_pickable(struct h2d_upstream_address *address,
 		struct h2d_request *r);
 
-void h2d_upstream_stats(wuy_json_ctx_t *json);
+void h2d_upstream_stats(wuy_json_t *json);
 
 void h2d_upstream_init(void);
 

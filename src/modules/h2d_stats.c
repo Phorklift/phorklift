@@ -8,7 +8,7 @@ struct h2d_stats_ctx {
 
 struct h2d_module h2d_stats_module;
 
-static void h2d_stats_dump_path(struct h2d_conf_path *conf_path, wuy_json_ctx_t *json)
+static void h2d_stats_dump_path(struct h2d_conf_path *conf_path, wuy_json_t *json)
 {
 	wuy_json_new_object(json);
 	wuy_json_object_string(json, "name", conf_path->name);
@@ -16,7 +16,7 @@ static void h2d_stats_dump_path(struct h2d_conf_path *conf_path, wuy_json_ctx_t 
 	h2d_module_stats_path(conf_path, json);
 	wuy_json_object_close(json);
 }
-static void h2d_stats_dump_host(struct h2d_conf_host *conf_host, wuy_json_ctx_t *json)
+static void h2d_stats_dump_host(struct h2d_conf_host *conf_host, wuy_json_t *json)
 {
 	wuy_json_new_object(json);
 	wuy_json_object_string(json, "name", conf_host->name);
@@ -32,7 +32,7 @@ static void h2d_stats_dump_host(struct h2d_conf_host *conf_host, wuy_json_ctx_t 
 
 	wuy_json_object_close(json);
 }
-static void h2d_stats_dump_listen(struct h2d_conf_listen *conf_listen, wuy_json_ctx_t *json)
+static void h2d_stats_dump_listen(struct h2d_conf_listen *conf_listen, wuy_json_t *json)
 {
 	wuy_json_new_object(json);
 	wuy_json_object_string(json, "name", conf_listen->name);
@@ -54,7 +54,7 @@ static int h2d_stats_generate_response_headers(struct h2d_request *r)
 	struct h2d_stats_ctx *ctx = wuy_pool_alloc(r->pool, sizeof(struct h2d_stats_ctx));
 	r->module_ctxs[h2d_stats_module.index] = ctx;
 
-	WUY_JSON_CTX(json, ctx->body_buf, sizeof(ctx->body_buf));
+	WUY_JSON(json, ctx->body_buf, sizeof(ctx->body_buf));
 
 	char scope_str[r->req.uri.query_len];
 	int scope_len = wuy_http_uri_query_get(r->req.uri.query_pos, r->req.uri.query_len,

@@ -1,6 +1,6 @@
 #include "h2d_main.h"
 
-void h2d_conf_path_stats(struct h2d_conf_path *conf_path, wuy_json_ctx_t *json)
+void h2d_conf_path_stats(struct h2d_conf_path *conf_path, wuy_json_t *json)
 {
 	struct h2d_conf_path_stats *stats = conf_path->stats;
 	wuy_json_object_int(json, "total", atomic_load(&stats->total));

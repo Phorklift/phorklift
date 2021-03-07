@@ -465,7 +465,7 @@ static void h2d_upstream_conf_free(void *data)
 	conf->loadbalance->ctx_free(conf->lb_ctx);
 }
 
-static void h2d_upstream_conf_stats(struct h2d_upstream_conf *conf, wuy_json_ctx_t *json)
+static void h2d_upstream_conf_stats(struct h2d_upstream_conf *conf, wuy_json_t *json)
 {
 	wuy_json_new_object(json);
 
@@ -509,7 +509,7 @@ static void h2d_upstream_conf_stats(struct h2d_upstream_conf *conf, wuy_json_ctx
 
 	wuy_json_object_close(json);
 }
-void h2d_upstream_stats(wuy_json_ctx_t *json)
+void h2d_upstream_stats(wuy_json_t *json)
 {
 	wuy_json_new_array(json);
 

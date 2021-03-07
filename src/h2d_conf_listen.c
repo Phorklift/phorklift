@@ -1,6 +1,6 @@
 #include "h2d_main.h"
 
-void h2d_conf_listen_stats(struct h2d_conf_listen *conf_listen, wuy_json_ctx_t *json)
+void h2d_conf_listen_stats(struct h2d_conf_listen *conf_listen, wuy_json_t *json)
 {
 	struct h2d_conf_listen_stats *stats = conf_listen->stats;
 	wuy_json_object_int(json, "fail_no_host", atomic_load(&stats->fail_no_host));

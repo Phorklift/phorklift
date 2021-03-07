@@ -459,7 +459,7 @@ static int h2d_file_cache_generate_response_body(struct h2d_request *r, uint8_t 
 	return ret;
 }
 
-static void h2d_file_cache_stats_path(void *data, wuy_json_ctx_t *json)
+static void h2d_file_cache_stats_path(void *data, wuy_json_t *json)
 {
 	struct h2d_file_cache_conf *conf = data;
 	struct h2d_file_cache_stats *stats = conf->stats;
