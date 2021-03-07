@@ -151,7 +151,9 @@ static void h2d_conf_listen_free(void *data)
 
 	h2d_connection_conf_timers_free(conf_listen);
 
-	wuy_dict_destroy(conf_listen->host_dict);
+	if (conf_listen->host_dict != NULL) {
+		wuy_dict_destroy(conf_listen->host_dict);
+	}
 }
 
 static struct wuy_cflua_command h2d_conf_listen_commands[] = {

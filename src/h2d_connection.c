@@ -303,6 +303,9 @@ void h2d_connection_conf_timers_init(struct h2d_conf_listen *conf_listen)
 
 void h2d_connection_conf_timers_free(struct h2d_conf_listen *conf_listen)
 {
+	if (conf_listen->network.recv_timer_group == NULL) {
+		return;
+	}
 	loop_group_timer_head_delete(conf_listen->network.recv_timer_group);
 	loop_group_timer_head_delete(conf_listen->network.send_timer_group);
 	loop_group_timer_head_delete(conf_listen->http1.keepalive_timer_group);
