@@ -32,7 +32,7 @@ bool h2d_conf_parse(const char *conf_file)
 	/* load function */
 	int ret = luaL_loadstring(L, h2d_conf_parse_lua_str);
 	if (ret != 0) {
-		fprintf(stderr, "load h2d_conf_parse.lua fail: %d\n", ret);
+		h2d_conf_log(H2D_LOG_FATAL, "load h2d_conf_parse.lua fail: %d", ret);
 		return false;
 	}
 
@@ -45,8 +45,7 @@ bool h2d_conf_parse(const char *conf_file)
 	/* call */
 	ret = lua_pcall(L, 2, 2, 0);
 	if (ret != 0) {
-		const char *errmsg = lua_tostring(L, -1);
-		fprintf(stderr, "load conf_file fail(%d): %s\n", ret, errmsg);
+		h2d_conf_log(H2D_LOG_ERROR, "load conf_file fail(%d): %s", ret, lua_tostring(L, -1));
 		return false;
 	}
 
@@ -55,7 +54,7 @@ bool h2d_conf_parse(const char *conf_file)
 	struct h2d_conf_runtime *conf_runtime;
 	const char *err = wuy_cflua_parse(L, &h2d_conf_runtime_table, &conf_runtime, pool);
 	if (err != WUY_CFLUA_OK) {
-		fprintf(stderr, "parse runtime fail: %s\n", err);
+		h2d_conf_log(H2D_LOG_ERROR, "parse Runtime conf fail: %s", err);
 		wuy_pool_destroy(pool);
 		lua_close(L);
 		return false;
@@ -77,7 +76,7 @@ bool h2d_conf_parse(const char *conf_file)
 	struct h2d_conf_listen **conf_listens;
 	err = wuy_cflua_parse(L, &global, &conf_listens, pool);
 	if (err != WUY_CFLUA_OK) {
-		fprintf(stderr, "parse conf_file fail: %s\n", err);
+		h2d_conf_log(H2D_LOG_ERROR, "parse conf_file fail: %s", err);
 		wuy_pool_destroy(pool);
 		lua_close(L);
 		return false;

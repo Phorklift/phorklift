@@ -123,7 +123,7 @@ static const char *h2d_log_conf_post(void *data)
 	}
 	if (log->buf_size == 0) {
 		log->is_line_buffer = true;
-		log->buf_size = log->max_line;
+		log->buf_size = 16 * 1024;
 	} else if (log->max_line > log->buf_size) {
 		return "expect max_line <= buffer_size";
 	}
@@ -163,8 +163,8 @@ static struct wuy_cflua_command h2d_log_conf_commands[] = {
 	{	.name = "max_line",
 		.type = WUY_CFLUA_TYPE_INTEGER,
 		.offset = offsetof(struct h2d_log, max_line),
-		.limits.n = WUY_CFLUA_LIMITS_POSITIVE,
-		.default_value.n = 2 * 1024,
+		.limits.n = WUY_CFLUA_LIMITS_LOWER(80),
+		.default_value.n = 4 * 1024,
 	},
 	{	.name = "level",
 		.type = WUY_CFLUA_TYPE_STRING,

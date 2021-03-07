@@ -37,6 +37,13 @@ static void h2d_conf_runtime_worker_free(void *data)
 	}
 }
 
+static const char *h2d_conf_runtime_post(void *data)
+{
+	struct h2d_conf_runtime *conf_runtime = data;
+	conf_runtime->log->is_line_buffer = true;
+	return WUY_CFLUA_OK;
+}
+
 static struct wuy_cflua_command h2d_conf_runtime_worker_commands[] = {
 	{	.type = WUY_CFLUA_TYPE_INTEGER,
 		.is_single_array = true,
@@ -68,4 +75,5 @@ struct wuy_cflua_table h2d_conf_runtime_table = {
 	.commands = h2d_conf_runtime_commands,
 	.size = sizeof(struct h2d_conf_runtime),
 	.name = h2d_conf_runtime_name,
+	.post = h2d_conf_runtime_post,
 };

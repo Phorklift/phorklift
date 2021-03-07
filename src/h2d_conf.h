@@ -180,6 +180,12 @@ void h2d_conf_listen_stats(struct h2d_conf_listen *conf_listen, wuy_json_ctx_t *
 
 void h2d_conf_doc(void);
 
+#define h2d_conf_log(level2, fmt, ...) \
+	if (h2d_conf_runtime == NULL) \
+		fprintf(stderr, fmt"\n", ##__VA_ARGS__); \
+	else if (level2 >= h2d_conf_runtime->log->level) \
+		h2d_log_level_nocheck(h2d_conf_runtime->log, level2, fmt, ##__VA_ARGS__)
+
 /* internal */
 extern struct wuy_cflua_table h2d_conf_listen_table;
 extern struct wuy_cflua_table h2d_conf_host_table;

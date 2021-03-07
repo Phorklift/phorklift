@@ -89,7 +89,7 @@ static void h2d_worker_entry(void)
 	h2d_in_worker = true;
 	h2d_pid = getpid();
 
-	printf("start worker: %d\n", getpid());
+	h2d_conf_log(H2D_LOG_INFO, "worker starts!");
 
 	signal(SIGHUP, SIG_IGN);
 	signal(SIGQUIT, h2d_signal_worker_quit);
@@ -104,7 +104,8 @@ static void h2d_worker_entry(void)
 
 	/* go to work! */
 	loop_run(h2d_loop);
-	printf("!!!!! worker quit\n");
+
+	h2d_conf_log(H2D_LOG_INFO, "worker quits!");
 }
 
 static void h2d_signal_reload_conf(int signo)
@@ -131,7 +132,7 @@ static pid_t h2d_worker_new(void)
 {
 	pid_t pid = fork();
 	if (pid < 0) {
-		perror("fail in fork");
+		h2d_conf_log(H2D_LOG_ERROR, "fail in fork %s", strerror(errno));
 		return -1;
 	}
 	if (pid == 0) {
@@ -166,15 +167,15 @@ static bool h2d_worker_check(void)
 	}
 
 	if (WIFEXITED(status)) {
-		printf("worker %d exit with %d\n", pid, WEXITSTATUS(status));
+		h2d_conf_log(H2D_LOG_ERROR, "worker exits with status=%d", WEXITSTATUS(status));
 
 	} else if (WIFSIGNALED(status)) {
 		assert(i < worker->num); /* must found */
-		printf("worker %d is terminated by signal %d\n", pid, WTERMSIG(status));
+		h2d_conf_log(H2D_LOG_ERROR, "worker is terminated by signal %d", WTERMSIG(status));
 		worker->list[i] = h2d_worker_new();
 
 	} else {
-		printf("worker %d quit!\n", pid);
+		h2d_conf_log(H2D_LOG_ERROR, "worker quits!");
 	}
 
 	return h2d_worker_check();
@@ -193,6 +194,7 @@ static int h2d_run(const char *conf_file)
 	if (opt_daemon) {
 		opt_daemon = false;
 		assert(daemon(1, 0) == 0);
+		h2d_pid = getpid();
 	}
 
 	/* start workers */
@@ -210,6 +212,7 @@ static int h2d_run(const char *conf_file)
 
 int main(int argc, char * const *argv)
 {
+	h2d_pid = getpid();
 	const char *conf_file = h2d_getopt(argc, argv);
 
 	signal(SIGPIPE, SIG_IGN);
@@ -239,7 +242,7 @@ int main(int argc, char * const *argv)
 
 	/* master */
 	while (1) {
-		printf("master pause...\n");
+		h2d_conf_log(H2D_LOG_INFO, "master pause...");
 		pause(); /* wait for signals */
 
 		if (sig_reload_conf) {
