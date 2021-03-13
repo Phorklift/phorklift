@@ -111,7 +111,7 @@ static int h2d_ssl_ticket_callback(SSL *ssl, unsigned char *name,
 			return -1;
 		}
 		atomic_fetch_add(&stats->ticket_reuse, 1);
-		return 1; /* TODO: renew? */;
+		return 1;
 	}
 }
 
@@ -248,6 +248,8 @@ static const char *h2d_ssl_conf_post(void *data)
 
 	conf->ctx = h2d_ssl_new_empty_server_ctx();
 
+	SSL_CTX_set_cipher_list(conf->ctx, conf->ciphers);
+
 	/* certificate and private_key */
 	if (SSL_CTX_use_certificate_chain_file(conf->ctx, conf->certificate) != 1) {
 		wuy_cflua_post_arg = conf->certificate;;
@@ -268,11 +270,11 @@ static const char *h2d_ssl_conf_post(void *data)
 			return "fail in open ticket_secret file";
 		}
 
-		size_t len = fread(secret, H2D_SECRET_SIZE + 1, 1, fp);
+		size_t len = fread(secret, 1, H2D_SECRET_SIZE + 1, fp);
 		fclose(fp);
 		if (len != H2D_SECRET_SIZE) {
 			wuy_cflua_post_arg = conf->ticket_secret;
-			return "invalid ticket_secret length, expect ";
+			return "invalid ticket_secret length";
 		}
 	} else {
 		if (!RAND_bytes((unsigned char *)secret, H2D_SECRET_SIZE)) {
@@ -312,7 +314,14 @@ static struct wuy_cflua_command h2d_ssl_conf_commands[] = {
 	{	.name = "ciphers",
 		.type = WUY_CFLUA_TYPE_STRING,
 		.offset = offsetof(struct h2d_ssl_conf, ciphers),
-		.default_value.s = "HIGH", // TODO
+		.default_value.s = "ECDHE-ECDSA-AES128-GCM-SHA256"
+			":ECDHE-RSA-AES128-GCM-SHA256"
+			":ECDHE-ECDSA-AES256-GCM-SHA384"
+			":ECDHE-RSA-AES256-GCM-SHA384"
+			":ECDHE-ECDSA-CHACHA20-POLY1305"
+			":ECDHE-RSA-CHACHA20-POLY1305"
+			":DHE-RSA-AES128-GCM-SHA256"
+			":DHE-RSA-AES256-GCM-SHA384",
 	},
 	{	.name = "ticket_secret",
 		.type = WUY_CFLUA_TYPE_STRING,
