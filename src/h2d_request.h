@@ -106,6 +106,7 @@ void h2d_request_close(struct h2d_request *r);
 
 bool h2d_request_set_uri(struct h2d_request *r, const char *uri_str, int uri_len);
 bool h2d_request_set_host(struct h2d_request *r, const char *host_str, int host_len);
+int h2d_request_append_body(struct h2d_request *r, const uint8_t *buf, int len);
 
 void h2d_request_reset_response(struct h2d_request *r);
 

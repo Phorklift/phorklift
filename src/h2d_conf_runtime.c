@@ -1,6 +1,3 @@
-#include <sys/types.h>
-#include <signal.h>
-
 #include "h2d_main.h"
 
 static int h2d_conf_runtime_name(void *data, char *buf, int size)
@@ -21,20 +18,8 @@ static const char *h2d_conf_runtime_worker_post(void *data)
 			return "fail to get #CPU";
 		}
 	}
-	worker->list = wuy_pool_alloc(wuy_cflua_pool, worker->num * sizeof(pid_t));
 
 	return WUY_CFLUA_OK;
-}
-
-static void h2d_conf_runtime_worker_free(void *data)
-{
-	struct h2d_conf_runtime_worker *worker = data;
-
-	for (int i = 0; i < worker->num; i++) {
-		if (worker->list[i] != 0) {
-			kill(worker->list[i], SIGQUIT);
-		}
-	}
 }
 
 static const char *h2d_conf_runtime_post(void *data)
@@ -54,7 +39,6 @@ static struct wuy_cflua_command h2d_conf_runtime_worker_commands[] = {
 static struct wuy_cflua_table h2d_conf_runtime_worker_table = {
 	.commands = h2d_conf_runtime_worker_commands,
 	.post = h2d_conf_runtime_worker_post,
-	.free = h2d_conf_runtime_worker_free,
 };
 
 static struct wuy_cflua_command h2d_conf_runtime_commands[] = {

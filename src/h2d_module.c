@@ -1,6 +1,4 @@
-#include <ctype.h>
 #include <stdlib.h>
-#include <string.h>
 #include <dlfcn.h>
 #include <sys/types.h>
 #include <math.h>
@@ -89,48 +87,8 @@ void h2d_module_stats_path(struct h2d_conf_path *conf_path, wuy_json_t *json)
 	}
 }
 
-static const char *trim_whitespace(char *str) // TODO move this out
-{
-	while (isspace(*str)) {
-		str++;
-	}
-	if (*str == 0) {
-		return str;
-	}
-
-	char *end = str + strlen(str) - 1;
-	while (end > str && isspace(*end)) {
-		end--;
-	}
-	end[1] = '\0';
-
-	return str;
-}
-
 void h2d_module_dynamic_add(const char *filename)
 {
-	/* list-file of module files */
-	if (filename[0] == '@') {
-		FILE *fp = fopen(filename + 1, "r");
-		if (fp == NULL) {
-			fprintf(stderr, "error in open module list file: %s: %s\n",
-					filename, strerror(errno));
-			exit(H2D_EXIT_DYNAMIC);
-		}
-		char line[2000];
-		while (fgets(line, sizeof(line), fp) != NULL) {
-			const char *name = trim_whitespace(line);
-			if (name[0] == '#' || name[0] == '\0') {
-				continue;
-			}
-			if (name[0] == '@') {
-				fprintf(stderr, "no @ allowed in module list file!\n");
-				exit(H2D_EXIT_DYNAMIC);
-			}
-			h2d_module_dynamic_add(name);
-		}
-	}
-
 	if (h2d_module_number++ >= H2D_MODULE_MAX) {
 		fprintf(stderr, "excess dynamic module limit: %d\n", H2D_MODULE_DYNAMIC_MAX);
 		exit(H2D_EXIT_DYNAMIC);
@@ -170,6 +128,28 @@ void h2d_module_dynamic_add(const char *filename)
 
 	h2d_modules[h2d_module_number++] = m;
 	printf("load module: %s\n", mod_name);
+}
+
+void h2d_module_dynamic_list_add(const char *filename)
+{
+	FILE *fp = fopen(filename, "r");
+	if (fp == NULL) {
+		fprintf(stderr, "error in open module list file: %s: %s\n",
+				filename, strerror(errno));
+		exit(H2D_EXIT_DYNAMIC);
+	}
+
+	char line[2000];
+	while (fgets(line, sizeof(line), fp) != NULL) {
+		if (line[0] == '#' || line[0] == '\0') {
+			continue;
+		}
+		char *p_end = line + strlen(line);
+		if (*p_end == '\n') {
+			*p_end = '\0';
+		}
+		h2d_module_dynamic_add(line);
+	}
 }
 
 void h2d_module_master_init(void)

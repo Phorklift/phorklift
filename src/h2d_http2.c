@@ -35,19 +35,15 @@ static bool h2d_http2_hook_stream_header(http2_stream_t *h2s, const char *name_s
 	/* end of headers */
 	if (name_str == NULL) {
 
-		if (name_len != 0) { /* end of request */
-			if (r->req.content_length != H2D_CONTENT_LENGTH_INIT && r->req.content_length != 0) {
+		if (name_len != 0) { /* means end-of-stream */
+			if (r->req.content_length != H2D_CONTENT_LENGTH_INIT
+					&& r->req.content_length != 0) {
 				return false;
-			}
-		} else { /* request body follows */
-			if (r->req.content_length == H2D_CONTENT_LENGTH_INIT) {
-				/* just to tell h2d_request_process_body() that there is body */
-				wuy_http_chunked_enable(&r->req.chunked);
 			}
 		}
 
 		r->state = H2D_REQUEST_STATE_PROCESS_HEADERS;
-		return true; //  return what ??
+		return true; //  TODO return what ??
 	}
 
 	_log(H2D_LOG_DEBUG, "request header: %.*s %.*s",
@@ -73,6 +69,12 @@ static bool h2d_http2_hook_stream_header(http2_stream_t *h2s, const char *name_s
 	} else {
 		if (h2d_litestr_equal(name_str, name_len, "content-length")) {
 			r->req.content_length = atoi(value_str);
+			if (r->req.content_length == 0) {
+				return WUY_HTTP_400;
+			}
+			if (r->req.content_length > r->c->conf_listen->req_body_max) {
+				return WUY_HTTP_413;
+			}
 			return true;
 		}
 	}
@@ -91,15 +93,14 @@ static bool h2d_http2_hook_stream_body(http2_stream_t *h2s, const uint8_t *buf, 
 	if (buf == NULL) {
 		_log(H2D_LOG_DEBUG, "set r->req.body_finished");
 		r->req.body_finished = true;
-		h2d_request_run(r, -1); // TODO only for POST, should remove this
 		return true;
 	}
 
-	if (r->req.body_buf == NULL) {
-		r->req.body_buf = malloc(4096); // TODO
+	int ret = h2d_request_append_body(r, buf, len);
+	if (ret != H2D_OK) {
+		r->resp.status_code = ret;
+		return false;
 	}
-	memcpy(r->req.body_buf + r->req.body_len, buf, len);
-	r->req.body_len += len;
 	return true;
 }
 
@@ -115,7 +116,7 @@ int h2d_http2_response_headers(struct h2d_request *r)
 {
 	struct h2d_connection *c = r->c;
 
-	int estimate_size = 4000; // TODO
+	int estimate_size = h2d_header_estimate_size(&r->resp.headers) + 100;
 	int buf_size = h2d_connection_make_space(c, estimate_size);
 	if (buf_size < 0) {
 		return buf_size;

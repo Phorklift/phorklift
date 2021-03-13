@@ -229,8 +229,12 @@ bool h2d_request_set_host(struct h2d_request *r, const char *host_str, int host_
 		return true;
 	}
 
-	r->req.host = wuy_pool_strndup(r->pool, host_str, host_len);
-	// TODO set lower case
+	char *host = wuy_pool_strndup(r->pool, host_str, host_len);
+
+	for (int i = 0; host[i] != '\0'; i++) {
+		host[i] = tolower(host[i]);
+	}
+	r->req.host = host;
 	return true;
 }
 
@@ -270,6 +274,35 @@ bool h2d_request_set_uri(struct h2d_request *r, const char *uri_str, int uri_len
 
 	r->req.uri.path = decode;
 	return true;
+}
+
+int h2d_request_append_body(struct h2d_request *r, const uint8_t *buf, int len)
+{
+	if (len == 0) {
+		return H2D_OK;
+	}
+
+	if (r->req.content_length != H2D_CONTENT_LENGTH_INIT) {
+		if (r->req.body_len + len > r->req.content_length) {
+			return WUY_HTTP_400;
+		}
+		if (r->req.body_buf == NULL) {
+			r->req.body_buf = wuy_pool_alloc(r->pool, r->req.content_length);
+		}
+		memcpy(r->req.body_buf + r->req.body_len, buf, len);
+		r->req.body_len += len;
+
+		r->req.body_finished = r->req.body_len >= r->req.content_length;
+
+	} else {
+		if (r->req.body_len + len > r->c->conf_listen->req_body_max) {
+			return WUY_HTTP_413;
+		}
+		r->req.body_buf = wuy_pool_realloc(r->pool, r->req.body_buf, r->req.body_len + len);
+		memcpy(r->req.body_buf + r->req.body_len, buf, len);
+		r->req.body_len += len;
+	}
+	return H2D_OK;
 }
 
 static int h2d_request_process_headers(struct h2d_request *r)

@@ -112,7 +112,6 @@ static void *h2d_resolver_routine(void *dummy)
 	struct sockaddr_un un;
 	un.sun_family = AF_UNIX;
 	strcpy(un.sun_path, h2d_resolver_address);
-	unlink(h2d_resolver_address);
 	if (bind(fd, (struct sockaddr *)&un, sizeof(un)) < 0) {
 		perror("bind resolver address");
 		exit(H2D_EXIT_RESOLVER);

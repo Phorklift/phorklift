@@ -25,7 +25,7 @@ static int h2d_http1_request_headers(struct h2d_request *r, const char *buffer, 
 			return H2D_ERROR;
 		}
 
-		_log(H2D_LOG_DEBUG, "request URI %.*s", url_len, url_str);
+		_log(H2D_LOG_DEBUG, "request URI %*s", url_len, url_str);
 
 		buf_pos += proc_len;
 	}
@@ -57,6 +57,12 @@ static int h2d_http1_request_headers(struct h2d_request *r, const char *buffer, 
 		/* handle some */
 		if (memcmp(name_str, "Content-Length", 14) == 0) {
 			r->req.content_length = atoi(value_str);
+			if (r->req.content_length == 0) {
+				return WUY_HTTP_400;
+			}
+			if (r->req.content_length > r->c->conf_listen->req_body_max) {
+				return WUY_HTTP_413;
+			}
 			continue;
 		}
 		if (memcmp(name_str, "Host", 4) == 0) {
@@ -85,7 +91,7 @@ static bool h2d_http1_response_is_chunked(struct h2d_request *r)
 }
 int h2d_http1_response_headers(struct h2d_request *r)
 {
-	int estimate_size = 4000; // TODO
+	int estimate_size = h2d_header_estimate_size(&r->resp.headers) + 100;
 	int ret = h2d_connection_make_space(r->c, estimate_size);
 	if (ret < 0) {
 		return ret;
@@ -183,16 +189,28 @@ int h2d_http1_on_read(struct h2d_connection *c, void *data, int buf_len)
 
 	/* save request body */
 	if (body_len > 0) {
-		if (r->req.body_buf == NULL) {
-			r->req.body_buf = malloc(4096); // TODO
-		}
-		memcpy(r->req.body_buf + r->req.body_len, body_buf, body_len);
-		r->req.body_len += body_len;
+		uint8_t *body_pos = body_buf;
+		if (r->req.content_length == H2D_CONTENT_LENGTH_INIT) {
+			if (!wuy_http_chunked_is_enabled(&r->req.chunked)) {
+				return WUY_HTTP_411;
+			}
 
-		if (r->req.content_length != H2D_CONTENT_LENGTH_INIT) {
-			r->req.body_finished = r->req.body_len >= r->req.content_length;
-		} else {
-			r->req.body_finished = wuy_http_chunked_is_finished(&r->req.chunked);
+			uint8_t out_buf[body_len];
+			body_pos = out_buf;
+			int proc_len = wuy_http_chunked_process(&r->req.chunked,
+					body_buf, body_len, out_buf, &body_len);
+			if (proc_len < 0) {
+				return WUY_HTTP_400;
+			}
+
+			if (wuy_http_chunked_is_finished(&r->req.chunked)) {
+				r->req.body_finished = true;
+			}
+		}
+
+		int ret = h2d_request_append_body(r, body_pos, body_len);
+		if (ret != H2D_OK) {
+			return ret;
 		}
 	}
 

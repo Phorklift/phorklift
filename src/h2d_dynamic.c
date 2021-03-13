@@ -22,7 +22,7 @@ static void h2d_dynamic_delete(struct h2d_dynamic_conf *sub_dyn)
 {
 	struct h2d_dynamic_conf *dynamic = sub_dyn->father;
 
-	_log_conf(H2D_LOG_DEBUG, "delete %s", sub_dyn->name);
+	_log_conf(H2D_LOG_INFO, "delete %s", sub_dyn->name);
 
 	if (sub_dyn->is_just_holder) {
 		if (sub_dyn->error_ret == 0) {
@@ -31,12 +31,18 @@ static void h2d_dynamic_delete(struct h2d_dynamic_conf *sub_dyn)
 		h2d_request_active_list(&sub_dyn->holder_wait_head, "dynamic holder");
 	}
 
+	if (sub_dyn->sub_dict != NULL && wuy_dict_count(sub_dyn->sub_dict) != 0) {
+		_log_conf(H2D_LOG_INFO, "%s holds subs, so wait a minute", sub_dyn->name);
+		loop_timer_set_after(sub_dyn->timer, 60 * 1000);
+		return;
+	}
+
 	if (sub_dyn->shmpool != NULL) {
 		wuy_shmpool_destroy(sub_dyn->shmpool);
 	}
 	loop_timer_delete(sub_dyn->timer);
 	wuy_dict_delete(dynamic->sub_dict, sub_dyn);
-	wuy_pool_destroy(sub_dyn->pool);
+	wuy_pool_destroy(sub_dyn->pool); /* this frees the container too */
 }
 
 static int64_t h2d_dynamic_timeout_handler(int64_t at, void *data)
@@ -295,9 +301,8 @@ static void h2d_dynamic_conf_free(void *data)
 {
 	struct h2d_dynamic_conf *dynamic = data;
 
-	// TODO any sub-sub-dyn?
-
 	if (dynamic->sub_dict != NULL) {
+		assert(wuy_dict_count(dynamic->sub_dict) == 0);
 		wuy_dict_destroy(dynamic->sub_dict);
 	}
 }

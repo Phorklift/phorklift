@@ -8,6 +8,7 @@
 #include <stdatomic.h>
 #include <assert.h>
 #include <time.h>
+#include <ctype.h>
 #include <string.h>
 
 #include "libwuya/wuy_dict.h"

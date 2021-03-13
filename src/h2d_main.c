@@ -13,6 +13,8 @@
 static bool opt_daemon = true;
 static const char *opt_pid_file = "h2tpd.pid";
 
+static pid_t *h2d_workers = NULL;
+
 static bool sig_reload_conf = false;
 
 static const char *h2d_getopt(int argc, char *const *argv)
@@ -22,14 +24,14 @@ static const char *h2d_getopt(int argc, char *const *argv)
 		"    -p PREFIX   change directory\n"
 		"    -i FILE     set pid file [h2tpd.pid]\n"
 		"    -m MODULE   add dynamic module\n"
-		"    -m @FILE    add dynamic module list file\n"
+		"    -M FILE     add dynamic module list file\n"
 		"    -f          run in foreground, but not daemon\n"
 		"    -r          show configration reference and quit\n"
 		"    -v          show version and quit\n"
 		"    -h          show this help and quit\n";
 
 	int opt;
-	while ((opt = getopt(argc, argv, "p:i:m:rfvh")) != -1) {
+	while ((opt = getopt(argc, argv, "p:i:m:M:rfvh")) != -1) {
 		switch (opt) {
 		case 'p':
 			if (chdir(optarg) != 0) {
@@ -42,6 +44,9 @@ static const char *h2d_getopt(int argc, char *const *argv)
 			break;
 		case 'm':
 			h2d_module_dynamic_add(optarg);
+			break;
+		case 'M':
+			h2d_module_dynamic_list_add(optarg);
 			break;
 		case 'f':
 			opt_daemon = false;
@@ -156,24 +161,17 @@ static bool h2d_worker_check(void)
 		return false; /* errno == ECHILD */
 	}
 
-	struct h2d_conf_runtime_worker *worker = &h2d_conf_runtime->worker;
-
-	int i;
-	for (i = 0; i < worker->num; i++) {
-		if (pid == worker->list[i]) {
-			worker->list[i] = 0;
-			break;
-		}
-	}
-
 	if (WIFEXITED(status)) {
 		h2d_conf_log(H2D_LOG_ERROR, "worker exits with status=%d", WEXITSTATUS(status));
 
 	} else if (WIFSIGNALED(status)) {
-		assert(i < worker->num); /* must found */
 		h2d_conf_log(H2D_LOG_ERROR, "worker is terminated by signal %d", WTERMSIG(status));
-		worker->list[i] = h2d_worker_new();
-
+		for (int i = 0; h2d_workers[i] != -1; i++) {
+			if (pid == h2d_workers[i]) {
+				h2d_workers[i] = h2d_worker_new();
+				break;
+			}
+		}
 	} else {
 		h2d_conf_log(H2D_LOG_ERROR, "worker quits!");
 	}
@@ -198,15 +196,33 @@ static int h2d_run(const char *conf_file)
 	}
 
 	/* start workers */
-	struct h2d_conf_runtime_worker *worker = &h2d_conf_runtime->worker;
-	if (worker->num < 0) {
+	int worker_num = h2d_conf_runtime->worker.num;
+	if (worker_num < 0) {
 		h2d_worker_entry();
 		return 0;
 	}
 
-	for (int i = 0; i < worker->num; i++) {
-		worker->list[i] = h2d_worker_new();
+	pid_t *workers = malloc((worker_num + 1) * sizeof(pid_t));
+	for (int i = 0; i < worker_num; i++) {
+		workers[i] = h2d_worker_new();
 	}
+	workers[worker_num] = -1;
+
+	/* sleep 10 ms to wait new workers start */
+	usleep(10000);
+
+	/* stop old workers */
+	if (h2d_workers != NULL) {
+		for (int i = 0; h2d_workers[i] != -1; i++) {
+			if (h2d_workers[i] != 0) {
+				kill(h2d_workers[i], SIGQUIT);
+			}
+		}
+
+		free(h2d_workers);
+	}
+
+	h2d_workers = workers;
 	return 0;
 }
 

@@ -22,8 +22,9 @@ static const char *h2d_conf_host_add_name(struct h2d_conf_listen *conf_listen,
 		return WUY_CFLUA_OK;
 	}
 
-	/* case insensitive */
-	// x_strlow(name);
+	for (int i = 0; name[i] != '\0'; i++) {
+		name[i] = tolower(name[i]);
+	}
 
 	/* omit the tail dot */
 	int len = strlen(name);

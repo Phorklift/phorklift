@@ -104,6 +104,8 @@ struct h2d_conf_listen {
 	bool			any_prefix_hostname;
 	bool			any_subfix_hostname;
 
+	int			req_body_max;
+
 	struct {
 		int		idle_timeout;
 		int		idle_min_timeout;
@@ -146,7 +148,6 @@ struct h2d_conf_listen {
 struct h2d_conf_runtime {
 	struct h2d_conf_runtime_worker {
 		int	num;
-		pid_t	*list;
 	} worker;
 
 	struct {

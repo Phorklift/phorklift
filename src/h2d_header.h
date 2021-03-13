@@ -73,6 +73,16 @@ static inline void h2d_header_dup_list(wuy_slist_t *to, wuy_slist_t *from, wuy_p
 	}
 }
 
+static inline int h2d_header_estimate_size(wuy_slist_t *list)
+{
+	int size = 0;
+	struct h2d_header *h;
+	wuy_slist_iter_type(list, h, list_node) {
+		size += h->name_len + h->value_len + 4;
+	}
+	return size;
+}
+
 static inline int h2d_header_dump_length(struct h2d_header *h)
 {
 	int len = 4 + h->name_len + h->value_len + 2;
