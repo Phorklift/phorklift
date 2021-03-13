@@ -217,6 +217,19 @@ static void h2d_file_cache_abort(struct h2d_request *r)
 	r->module_ctxs[h2d_file_cache_module.index] = NULL;
 }
 
+static int h2d_file_cache_generate_response_body(struct h2d_request *r, uint8_t *buf, int size)
+{
+	struct h2d_file_cache_conf *conf = r->conf_path->module_confs[h2d_file_cache_module.index];
+	struct h2d_file_cache_ctx *ctx = r->module_ctxs[h2d_file_cache_module.index];
+
+	int ret = read(ctx->fd, buf, size);
+	if (ret < 0) {
+		_log(H2D_LOG_ERROR, "read body %s", strerror(errno));
+		return H2D_ERROR;
+	}
+	return ret;
+}
+
 static int h2d_file_cache_filter_process_headers(struct h2d_request *r)
 {
 	struct h2d_file_cache_conf *conf = r->conf_path->module_confs[h2d_file_cache_module.index];
@@ -233,7 +246,7 @@ static int h2d_file_cache_filter_process_headers(struct h2d_request *r)
 	if (wuy_cflua_is_function_set(conf->key)) {
 		key = h2d_lua_call_lstring(r, conf->key, &len);
 		if (key == NULL) {
-			_log(H2D_LOG_DEBUG, "none key");
+			_log(H2D_LOG_ERROR, "none key");
 			return H2D_OK;
 		}
 	} else {
@@ -285,6 +298,7 @@ cache_miss:
 	/* cache hit! */
 	_log(H2D_LOG_DEBUG, "hit");
 
+	/* read meta information */
 	int ret = read(ctx->fd, &ctx->item, sizeof(struct h2d_file_cache_item));
 	if (ret < 0) {
 		_log(H2D_LOG_ERROR, "error to read cache file %s %s", filename, strerror(errno));
@@ -306,6 +320,26 @@ cache_miss:
 		ctx->new_filename = wuy_pool_strdup(r->pool, filename);
 		return H2D_OK;
 	}
+
+	/* read and set response headers */
+	char buffer[ctx->item.header_total_length], *buf_pos = buffer;
+	ret = read(ctx->fd, buffer, sizeof(buffer));
+	if (ret < 0) {
+		_log(H2D_LOG_ERROR, "read headers %s", strerror(errno));
+		return H2D_ERROR;
+	}
+
+	for (int i = 0; i < ctx->item.header_num; i++) {
+		struct h2d_header *h = h2d_header_load_from(buf_pos);
+		h2d_header_add(&r->resp.headers, h->str, h->name_len,
+				h2d_header_value(h), h->value_len, r->pool);
+		buf_pos += h2d_header_dump_length(h);
+	}
+
+	r->resp.content_length = ctx->item.content_length;
+
+	/* set response body handler */
+	r->resp.break_body_func = h2d_file_cache_generate_response_body;
 
 	return ctx->item.status_code;
 }
@@ -421,42 +455,6 @@ static int h2d_file_cache_filter_response_body(struct h2d_request *r,
 	}
 
 	return data_len;
-}
-
-static int h2d_file_cache_generate_response_headers(struct h2d_request *r)
-{
-	struct h2d_file_cache_conf *conf = r->conf_path->module_confs[h2d_file_cache_module.index];
-	struct h2d_file_cache_ctx *ctx = r->module_ctxs[h2d_file_cache_module.index];
-
-	char buffer[ctx->item.header_total_length], *buf_pos = buffer;
-	int ret = read(ctx->fd, buffer, sizeof(buffer));
-	if (ret < 0) {
-		_log(H2D_LOG_ERROR, "read headers %s", strerror(errno));
-		return H2D_ERROR;
-	}
-
-	for (int i = 0; i < ctx->item.header_num; i++) {
-		struct h2d_header *h = h2d_header_load_from(buf_pos);
-		h2d_header_add(&r->resp.headers, h->str, h->name_len,
-				h2d_header_value(h), h->value_len, r->pool);
-		buf_pos += h2d_header_dump_length(h);
-	}
-
-	r->resp.content_length = ctx->item.content_length;
-	return H2D_OK;
-}
-
-static int h2d_file_cache_generate_response_body(struct h2d_request *r, uint8_t *buf, int size)
-{
-	struct h2d_file_cache_conf *conf = r->conf_path->module_confs[h2d_file_cache_module.index];
-	struct h2d_file_cache_ctx *ctx = r->module_ctxs[h2d_file_cache_module.index];
-
-	int ret = read(ctx->fd, buf, size);
-	if (ret < 0) {
-		_log(H2D_LOG_ERROR, "read body %s", strerror(errno));
-		return H2D_ERROR;
-	}
-	return ret;
 }
 
 static void h2d_file_cache_stats_path(void *data, wuy_json_t *json)
@@ -651,9 +649,6 @@ struct h2d_module h2d_file_cache_module = {
 		.process_headers = h2d_file_cache_filter_process_headers,
 		.response_headers = h2d_file_cache_filter_response_headers,
 		.response_body = h2d_file_cache_filter_response_body,
-
-		.content_headers = h2d_file_cache_generate_response_headers,
-		.content_body = h2d_file_cache_generate_response_body,
 	},
 
 	.ctx_free = h2d_file_cache_ctx_free,

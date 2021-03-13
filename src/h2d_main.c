@@ -8,7 +8,7 @@
 
 #include "h2d_main.h"
 
-#define H2D_VERSION "0.1"
+#define H2D_VERSION "0.0.1"
 
 static bool opt_daemon = true;
 static const char *opt_pid_file = "h2tpd.pid";
@@ -117,7 +117,7 @@ static void h2d_signal_reload_conf(int signo)
 {
 	sig_reload_conf = true;
 }
-static void h2d_signal_ignore(int signo)
+static void h2d_signal_nothing(int signo)
 {
 }
 
@@ -235,7 +235,7 @@ int main(int argc, char * const *argv)
 	const char *conf_file = h2d_getopt(argc, argv);
 
 	signal(SIGPIPE, SIG_IGN);
-	signal(SIGCHLD, h2d_signal_ignore); /* to wake up pause() */
+	signal(SIGCHLD, h2d_signal_nothing); /* to wake up pause() */
 	signal(SIGHUP, h2d_signal_reload_conf);
 	signal(SIGQUIT, h2d_signal_dispatch);
 

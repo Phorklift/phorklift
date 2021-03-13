@@ -166,7 +166,7 @@ static void h2d_upstream_resolve_hostname(struct h2d_upstream_conf *upstream)
 	}
 
 	if (upstream->address_num == 0) {
-		printf("!!! no address. no update\n");
+		_log(H2D_LOG_ERROR, "!!! no address. no update\n");
 		return;
 	}
 
@@ -183,7 +183,7 @@ static int h2d_upstream_resolve_on_read(loop_stream_t *s, void *data, int len)
 
 	if (memcmp(data, "ERROR", 5) == 0) {
 		_log(H2D_LOG_ERROR, "resolve error");
-		return len; /* TODO XXX stop or goto resolve next?  and wake up dynamic->wait_head*/
+		goto next;
 	}
 
 	/* diff */
@@ -234,6 +234,7 @@ static int h2d_upstream_resolve_on_read(loop_stream_t *s, void *data, int len)
 	}
 
 	/* resolve next hostname */
+next:
 	h2d_upstream_resolve_hostname(upstream);
 
 	return len;
