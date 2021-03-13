@@ -117,6 +117,9 @@ static void h2d_signal_reload_conf(int signo)
 {
 	sig_reload_conf = true;
 }
+static void h2d_signal_ignore(int signo)
+{
+}
 
 static void h2d_signal_dispatch(int signo)
 {
@@ -151,7 +154,7 @@ static bool h2d_worker_check(void)
 {
 	int status;
 	pid_t pid = waitpid(-1, &status, WNOHANG);
-	if (pid <= 0) {
+	if (pid == 0) {
 		return true;
 	}
 	if (pid < 0) {
@@ -232,6 +235,7 @@ int main(int argc, char * const *argv)
 	const char *conf_file = h2d_getopt(argc, argv);
 
 	signal(SIGPIPE, SIG_IGN);
+	signal(SIGCHLD, h2d_signal_ignore); /* to wake up pause() */
 	signal(SIGHUP, h2d_signal_reload_conf);
 	signal(SIGQUIT, h2d_signal_dispatch);
 
@@ -260,6 +264,7 @@ int main(int argc, char * const *argv)
 	while (1) {
 		h2d_conf_log(H2D_LOG_INFO, "master pause...");
 		pause(); /* wait for signals */
+		h2d_conf_log(H2D_LOG_INFO, "master wake up");
 
 		if (sig_reload_conf) {
 			sig_reload_conf = false;

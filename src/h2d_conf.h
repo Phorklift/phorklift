@@ -150,11 +150,6 @@ struct h2d_conf_runtime {
 		int	num;
 	} worker;
 
-	struct {
-		const char	*server_prefix;
-		struct h2d_log	*log;
-	} resolver;
-
 	struct h2d_log		*log;
 };
 
