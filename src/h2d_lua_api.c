@@ -81,6 +81,73 @@ out:
 
 	return 1;
 }
+
+static bool h2d_lua_api_subrequest_options(lua_State *L, struct h2d_request *subr)
+{
+	/* parse options one by one */
+
+	lua_getfield(L, 2, "method");
+	enum wuy_http_method method = lua_tonumber(L, -1);
+	if (method > 0) {
+		subr->req.method = method;
+	}
+	lua_pop(L, 1);
+
+	lua_getfield(L, 2, "queries");
+	if (lua_isstring(L, -1)) {
+		size_t len;
+		const char *str = lua_tolstring(L, -1, &len);
+		subr->req.uri.query_pos = wuy_pool_strndup(subr->pool, str, len);
+
+	} else if (lua_istable(L, -1)) {
+		char tmpbuf[4096];
+		char *p = tmpbuf, *end = tmpbuf + sizeof(tmpbuf);
+		lua_pushnil(L);
+		while (lua_next(L, -2) != 0) {
+			size_t key_len, value_len;
+			const char *key_str = lua_tolstring(L, -2, &key_len);
+			const char *value_str = lua_tolstring(L, -1, &value_len);
+			p += wuy_http_encode_query(key_str, key_len, value_str, value_len, p, end - p);
+			lua_pop(L, 1);
+		}
+		tmpbuf[0] = '?';
+		subr->req.uri.query_pos = wuy_pool_strndup(subr->pool, tmpbuf, p - tmpbuf);
+	}
+	lua_pop(L, 1);
+
+	lua_getfield(L, 2, "headers");
+	if (lua_istable(L, -1)) {
+		lua_pushnil(L);
+		while (lua_next(L, -2) != 0) {
+			size_t name_len, value_len;
+			const char *name_str = lua_tolstring(L, -2, &name_len);
+			const char *value_str = lua_tolstring(L, -1, &value_len);
+			h2d_header_add(&subr->req.headers, name_str, name_len,
+					value_str, value_len, subr->pool);
+			lua_pop(L, 1);
+		}
+	}
+	lua_pop(L, 1);
+
+	lua_getfield(L, 2, "body");
+	size_t body_len;
+	const void *body_buf = lua_tolstring(L, -1, &body_len);
+	if (body_buf != NULL) {
+		subr->req.content_length = body_len;
+		h2d_request_append_body(subr, body_buf, body_len);
+	}
+	lua_pop(L, 1);
+
+	lua_getfield(L, 2, "detach"); /* at last */
+	if (lua_toboolean(L, -1)) {
+		h2d_request_subr_detach(subr);
+		return false;
+	}
+	lua_pop(L, 1);
+
+	return true;
+}
+
 static int h2d_lua_api_subrequest(lua_State *L)
 {
 	/* argument uri @stack:1*/
@@ -93,42 +160,9 @@ static int h2d_lua_api_subrequest(lua_State *L)
 
 	/* options @stack:2 */
 	if (lua_istable(L, 2)) {
-		lua_getfield(L, 2, "method");
-		enum wuy_http_method method = lua_tonumber(L, -1);
-		if (method > 0) {
-			subr->req.method = method;
-		}
-		lua_pop(L, 1);
-
-		lua_getfield(L, 2, "headers");
-		if (lua_istable(L, -1)) {
-			lua_pushnil(L);
-			while (lua_next(L, -2) != 0) {
-				size_t name_len, value_len;
-				const char *name_str = lua_tolstring(L, -2, &name_len);
-				const char *value_str = lua_tolstring(L, -1, &value_len);
-				h2d_header_add(&subr->req.headers, name_str, name_len,
-						value_str, value_len, subr->pool);
-				lua_pop(L, 1);
-			}
-		}
-		lua_pop(L, 1);
-
-		lua_getfield(L, 2, "body");
-		size_t body_len;
-		const void *body_buf = lua_tolstring(L, -1, &body_len);
-		if (body_buf != NULL) {
-			subr->req.content_length = body_len;
-			h2d_request_append_body(subr, body_buf, body_len);
-		}
-		lua_pop(L, 1);
-
-		lua_getfield(L, 2, "detach");
-		if (lua_toboolean(L, -1)) {
-			h2d_request_subr_detach(subr);
+		if (!h2d_lua_api_subrequest_options(L, subr)) {
 			return 0;
 		}
-		lua_pop(L, 1);
 	}
 
 	struct h2d_lua_thread *lth = &h2d_lua_api_current->lth;
@@ -274,6 +308,67 @@ static int h2d_lua_api_set_header(lua_State *L, wuy_slist_t *headers)
 	return h2d_lua_api_add_header(L, headers);
 }
 
+static int h2d_lua_api_req_get_query(lua_State *L, const char *query_str, int query_len)
+{
+	if (query_str == NULL) {
+		return 0;
+	}
+
+	size_t key_len;
+	const char *key_str = lua_tolstring(L, -1, &key_len);
+	if (key_str == NULL) {
+		return 0;
+	}
+
+	char value_str[query_len];
+	int value_len = wuy_http_uri_query_get(query_str, query_len,
+			key_str, key_len, value_str);
+	if (value_len < 0) {
+		return 0;
+	}
+
+	lua_pushlstring(L, value_str, value_len);
+	return 1;
+}
+
+static void h2d_lua_api_req_queries(lua_State *L, const char *query_str, int query_len)
+{
+	lua_newtable(L);
+
+	if (query_str == NULL) {
+		return;
+	}
+
+	const char *p = query_str;
+	const char *end = query_str + query_len;
+
+	while (p < end) {
+		char value_buf[query_len];
+		int key_len, value_len;
+
+		int proc_len = wuy_http_uri_query_first(p, end - p, &key_len, value_buf, &value_len);
+		if (proc_len < 0) {
+			break;
+		}
+
+		lua_pushlstring(L, p + 1, key_len);
+		lua_pushlstring(L, value_buf, value_len);
+		lua_settable(L, -3);
+
+		p += proc_len;
+	}
+}
+
+static int h2d_lua_api_req_get_uri_query(lua_State *L)
+{
+	struct h2d_request *r = h2d_lua_api_current;
+	return h2d_lua_api_req_get_query(L, r->req.uri.query_pos, r->req.uri.query_len);
+}
+static int h2d_lua_api_req_get_body_query(lua_State *L)
+{
+	struct h2d_request *r = h2d_lua_api_current;
+	return h2d_lua_api_req_get_query(L, (const char *)r->req.body_buf, r->req.body_len);
+}
 static int h2d_lua_api_req_get_header(lua_State *L)
 {
 	return h2d_lua_api_get_header(L, &h2d_lua_api_current->req.headers);
@@ -292,6 +387,8 @@ static int h2d_lua_api_req_set_header(lua_State *L)
 }
 
 static const struct luaL_Reg h2d_lua_api_req_functions[] = {
+	{ "get_uri_query", h2d_lua_api_req_get_uri_query },
+	{ "get_body_query", h2d_lua_api_req_get_body_query },
 	{ "get_header", h2d_lua_api_req_get_header },
 	{ "add_header", h2d_lua_api_req_add_header },
 	{ "delete_header", h2d_lua_api_req_delete_header },
@@ -317,6 +414,9 @@ static int h2d_lua_api_req_mm_index(lua_State *L)
 	} else if (strcmp(key, "uri_path") == 0) {
 		lua_pushstring(L, r->req.uri.path);
 
+	} else if (strcmp(key, "uri_queries") == 0) {
+		h2d_lua_api_req_queries(L, r->req.uri.query_pos, r->req.uri.query_len);
+
 	} else if (strcmp(key, "host") == 0) {
 		lua_pushstring(L, r->req.host);
 
@@ -330,6 +430,9 @@ static int h2d_lua_api_req_mm_index(lua_State *L)
 
 	} else if (strcmp(key, "body") == 0) {
 		lua_pushlstring(L, (char *)r->req.body_buf, r->req.body_len);
+
+	} else if (strcmp(key, "body_queries") == 0) {
+		h2d_lua_api_req_queries(L, (char *)r->req.body_buf, r->req.body_len);
 
 	} else {
 		lua_pushnil(L);
@@ -388,6 +491,12 @@ static int h2d_lua_api_resp_mm_index(lua_State *L)
 	} else if (strcmp(key, "body") == 0) {
 		// TODO
 		lua_pushnil(L);
+
+	} else if (strcmp(key, "react_ms") == 0) {
+		lua_pushinteger(L, r->resp_begin_time - r->req_end_time);
+
+	} else if (strcmp(key, "content_ms") == 0) {
+		lua_pushinteger(L, wuy_time_ms() - r->resp_begin_time);
 	} else {
 		lua_pushnil(L);
 	}

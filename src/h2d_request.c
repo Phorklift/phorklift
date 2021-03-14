@@ -240,10 +240,10 @@ bool h2d_request_set_uri(struct h2d_request *r, const char *uri_str, int uri_len
 {
 	r->req.uri.raw = wuy_pool_strndup(r->pool, uri_str, uri_len);
 
-	/* parse uri into host:path:query:fragment */
-	const char *host, *fragment;
+	/* parse uri into host:path:query */
+	const char *host;
 	int path_len = wuy_http_uri(r->req.uri.raw, uri_len, &host,
-			&r->req.uri.path_pos, &r->req.uri.query_pos, &fragment);
+			&r->req.uri.path_pos, &r->req.uri.query_pos);
 	if (path_len < 0) {
 		h2d_request_log(r, H2D_LOG_INFO, "invalid request URI");
 		return false;
@@ -252,8 +252,7 @@ bool h2d_request_set_uri(struct h2d_request *r, const char *uri_str, int uri_len
 	r->req.uri.path_len = path_len;
 
 	if (r->req.uri.query_pos != NULL) {
-		r->req.uri.query_len = (fragment ? fragment : r->req.uri.raw+uri_len)
-				- r->req.uri.query_pos;
+		r->req.uri.query_len = r->req.uri.raw+uri_len - r->req.uri.query_pos;
 	}
 
 	if (host != NULL) {
