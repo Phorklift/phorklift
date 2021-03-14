@@ -73,6 +73,19 @@ static inline void h2d_header_dup_list(wuy_slist_t *to, wuy_slist_t *from, wuy_p
 	}
 }
 
+static inline bool h2d_header_delete(wuy_slist_t *list, const char *name)
+{
+	struct h2d_header *h;
+	wuy_slist_node_t **pprev;
+	wuy_slist_iter_prev_type(list, h, list_node, pprev) {
+		if (strcasecmp(h->str, name) == 0) {
+			wuy_slist_delete(list, &h->list_node, pprev);
+			return true;
+		}
+	}
+	return false;
+}
+
 static inline int h2d_header_estimate_size(wuy_slist_t *list)
 {
 	int size = 0;

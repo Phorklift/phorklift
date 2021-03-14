@@ -20,9 +20,6 @@ struct h2d_request *h2d_request_new(struct h2d_connection *c)
 	wuy_slist_init(&r->resp.headers);
 	r->resp.content_length = H2D_CONTENT_LENGTH_INIT;
 
-	if (c == NULL) { /* subrequest */
-		c = wuy_pool_alloc(pool, sizeof(struct h2d_connection));
-	}
 	r->id = c->request_id++;
 	r->c = c;
 	r->pool = pool;
@@ -181,6 +178,7 @@ void h2d_request_subr_close(struct h2d_request *r)
 {
 	h2d_request_log(r, H2D_LOG_DEBUG, "subr done: %s", r->req.uri.raw);
 	free(r->c->send_buffer);
+	free(r->c);
 	h2d_request_clear_stuff(r);
 	wuy_pool_destroy(r->pool);
 }
@@ -615,14 +613,16 @@ void h2d_request_active_list(wuy_list_t *list, const char *from)
 
 struct h2d_request *h2d_request_subr_new(struct h2d_request *father, const char *uri)
 {
-	struct h2d_request *subr = h2d_request_new(NULL);
+	struct h2d_connection *c = calloc(1, sizeof(struct h2d_connection));
+	c->conf_listen = father->c->conf_listen;
+
+	struct h2d_request *subr = h2d_request_new(c);
 	subr->req.host = wuy_pool_strdup(subr->pool, father->req.host);
 	subr->conf_host = father->conf_host;
 	subr->state = H2D_REQUEST_STATE_PROCESS_HEADERS;
 	subr->father = father;
 
-	subr->c->conf_listen = father->c->conf_listen;
-	subr->c->u.request = subr; /* HTTP/1 only */
+	c->u.request = subr; /* HTTP/1 only */
 
 	/* set request */
 	subr->req.method = WUY_HTTP_GET;
@@ -664,7 +664,7 @@ int h2d_request_subr_flush_connection(struct h2d_connection *c)
 	}
 
 	h2d_request_active(father, "subr response");
-	return H2D_OK;
+	return H2D_AGAIN;
 }
 
 static void h2d_request_defer_run(void *data)
