@@ -118,18 +118,19 @@ lua_State *h2d_lua_thread_run(struct h2d_request *r,
 
 	int ret = h2d_lua_thread_resume(r, argn);
 
-	_log(H2D_LOG_DEBUG, "resume returns %d", ret);
-
 	if (ret == H2D_AGAIN) {
+		_log(H2D_LOG_DEBUG, "resume returns AGAIN");
 		atomic_fetch_add(&r->conf_path->stats->lua_again, 1);
 		return H2D_PTR_AGAIN;
 	}
 	if (ret == H2D_ERROR) {
+		_log(H2D_LOG_ERROR, "resume returns ERROR");
 		atomic_fetch_add(&r->conf_path->stats->lua_error, 1);
 		h2d_lua_thread_clear(r);
 		return H2D_PTR_ERROR;
 	}
 
+	_log(H2D_LOG_DEBUG, "resume returns OK");
 	lua_State *L = lth->L;
 	h2d_lua_thread_clear(r);
 	return L;

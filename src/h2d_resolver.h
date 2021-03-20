@@ -7,6 +7,7 @@ struct h2d_resolver_query {
 };
 
 void h2d_resolver_init(void);
+void h2d_resolver_init_if_fork(void);
 
 int h2d_resolver_connect(void);
 

@@ -9,6 +9,7 @@
 #include <netdb.h>
 
 static char h2d_resolver_address[100];
+static int h2d_resolver_fd = 0;
 
 static int h2d_resolver_client_id = 0;
 
@@ -132,23 +133,12 @@ static struct h2d_resolver_result *h2d_resolver_process(struct h2d_resolver_quer
 
 static void *h2d_resolver_routine(void *dummy)
 {
-	int fd = socket(AF_UNIX, SOCK_DGRAM, 0);
-
-	struct sockaddr_un un;
-	un.sun_family = AF_UNIX;
-	strcpy(un.sun_path, h2d_resolver_address);
-	unlink(h2d_resolver_address);
-	if (bind(fd, (struct sockaddr *)&un, sizeof(un)) < 0) {
-		perror("bind resolver address");
-		exit(H2D_EXIT_RESOLVER);
-	}
-
 	while (1) {
 		struct h2d_resolver_query query;
 		struct sockaddr_un client;
 		socklen_t addr_len = sizeof(struct sockaddr_un);
 
-		int query_len = recvfrom(fd, &query, sizeof(query)-1, 0,
+		int query_len = recvfrom(h2d_resolver_fd, &query, sizeof(query)-1, 0,
 				(struct sockaddr *)&client, &addr_len);
 		if (query_len <= 0) {
 			h2d_conf_log(H2D_LOG_ERROR, "recvfrom() error %s", strerror(errno));
@@ -159,13 +149,11 @@ static void *h2d_resolver_routine(void *dummy)
 
 		struct h2d_resolver_result *result = h2d_resolver_process(&query);
 
-		sendto(fd, result->buffer, result->length, 0, (struct sockaddr *)&client, addr_len);
+		sendto(h2d_resolver_fd, result->buffer, result->length, 0,
+				(struct sockaddr *)&client, addr_len);
 
 		h2d_resolver_expire();
 	}
-
-	unlink(h2d_resolver_address);
-	close(fd);
 	return NULL;
 }
 
@@ -181,6 +169,12 @@ static void h2d_resolver_at_exit(void)
 		sprintf(path, "/tmp/h2d_resolver_client_%d_%d", getpid(), i);
 		unlink(path);
 	}
+}
+
+void h2d_resolver_init_if_fork(void)
+{
+	pthread_t tid;
+	pthread_create(&tid, 0, h2d_resolver_routine, NULL);
 }
 
 /* Create a thread as resolver.
@@ -199,8 +193,18 @@ void h2d_resolver_init(void)
 
 	atexit(h2d_resolver_at_exit);
 
-	pthread_t tid;
-	pthread_create(&tid, 0, h2d_resolver_routine, NULL);
+	h2d_resolver_fd = socket(AF_UNIX, SOCK_DGRAM, 0);
+
+	struct sockaddr_un un;
+	un.sun_family = AF_UNIX;
+	strcpy(un.sun_path, h2d_resolver_address);
+	unlink(h2d_resolver_address);
+	if (bind(h2d_resolver_fd, (struct sockaddr *)&un, sizeof(un)) < 0) {
+		perror("bind resolver address");
+		exit(H2D_EXIT_RESOLVER);
+	}
+
+	h2d_resolver_init_if_fork();
 }
 
 /* Create a client socket, connect it to the resolver server, and return its fd.

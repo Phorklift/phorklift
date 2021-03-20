@@ -196,6 +196,8 @@ static int h2d_run(const char *conf_file)
 		opt_daemon = false;
 		assert(daemon(1, 0) == 0);
 		h2d_pid = getpid();
+
+		h2d_resolver_init_if_fork();
 	}
 
 	/* start workers */

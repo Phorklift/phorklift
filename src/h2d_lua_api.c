@@ -97,6 +97,7 @@ static bool h2d_lua_api_subrequest_options(lua_State *L, struct h2d_request *sub
 	if (lua_isstring(L, -1)) {
 		size_t len;
 		const char *str = lua_tolstring(L, -1, &len);
+		subr->req.uri.query_len = len;
 		subr->req.uri.query_pos = wuy_pool_strndup(subr->pool, str, len);
 
 	} else if (lua_istable(L, -1)) {
@@ -111,6 +112,7 @@ static bool h2d_lua_api_subrequest_options(lua_State *L, struct h2d_request *sub
 			lua_pop(L, 1);
 		}
 		tmpbuf[0] = '?';
+		subr->req.uri.query_len = p - tmpbuf;
 		subr->req.uri.query_pos = wuy_pool_strndup(subr->pool, tmpbuf, p - tmpbuf);
 	}
 	lua_pop(L, 1);
