@@ -60,7 +60,7 @@ static struct h2d_upstream_address_stats *h2d_upstream_alloc_stats(
 		bzero(first_idle, sizeof(struct h2d_upstream_address_stats));
 		first_idle->key = key;
 		first_idle->create_time = time(NULL);
-		atomic_store(&first_idle->refs, h2d_in_worker ? 1 : 4); // XXX 4 is worker number
+		atomic_store(&first_idle->refs, h2d_in_worker ? 1 : h2d_conf_runtime->worker.num);
 	} else {
 		static struct h2d_upstream_address_stats fake_stats;
 		first_idle = &fake_stats;
@@ -267,10 +267,12 @@ static int64_t h2d_upstream_resolve_timer_handler(int64_t at, void *data)
 	return upstream->resolve_interval * 1000;
 }
 
-static void h2d_upstream_resolve_start_after(struct h2d_upstream_conf *conf, int64_t after)
+static void h2d_upstream_resolve_start_after(struct h2d_upstream_conf *conf, bool immediately)
 {
 	conf->resolve_timer = loop_timer_new(h2d_loop, h2d_upstream_resolve_timer_handler, conf);
-	loop_timer_set_after(conf->resolve_timer, after * 1000);
+
+	int64_t after = immediately ? 0 : random() % (conf->resolve_interval * 1000);
+	loop_timer_set_after(conf->resolve_timer, after);
 }
 
 const char *h2d_upstream_conf_resolve_init(struct h2d_upstream_conf *conf)
@@ -377,7 +379,7 @@ const char *h2d_upstream_conf_resolve_init(struct h2d_upstream_conf *conf)
 
 	/* resolve stream */
 	if (need_resolved && conf->resolve_interval > 0) {
-		h2d_upstream_resolve_start_after(conf, conf->resolve_interval);
+		h2d_upstream_resolve_start_after(conf, false);
 	}
 
 	return WUY_CFLUA_OK;
@@ -387,7 +389,7 @@ sub_check:
 		if (conf->resolve_interval == 0) {
 			return "resolve_interval can not be 0 for dynamic upstream with hostnames";
 		}
-		h2d_upstream_resolve_start_after(conf, 0);
+		h2d_upstream_resolve_start_after(conf, true);
 	} else {
 		if (conf->address_num == 0) {
 			return "no address for dynamic upstream";

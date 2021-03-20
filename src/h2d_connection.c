@@ -33,11 +33,6 @@ void h2d_connection_close(struct h2d_connection *c)
 
 	atomic_fetch_sub(&c->conf_listen->stats->connections, 1);
 
-	if (c->loop_stream == NULL) {
-		printf("!!!!!!!!impossible\n");
-		goto skip_subr;
-	}
-
 	if (c->send_buffer != NULL) {
 		loop_stream_write(c->loop_stream, c->send_buffer,
 				c->send_buf_pos - c->send_buffer);
@@ -48,7 +43,6 @@ void h2d_connection_close(struct h2d_connection *c)
 	loop_group_timer_delete(c->recv_timer);
 	loop_group_timer_delete(c->send_timer);
 
-skip_subr:
 	h2d_connection_put_defer(c);
 }
 

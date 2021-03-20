@@ -2,14 +2,9 @@
 
 static struct h2d_upstream_conf *h2d_upstream_content_conf(struct h2d_request *r)
 {
-	/* `struct h2d_upstream_conf *` must be at the top of content module's conf */
+	/* `struct h2d_upstream_conf *` must be at the top of content module's conf, as a pointer */
 	struct h2d_upstream_conf **p = r->conf_path->module_confs[r->conf_path->content->index];
 	return *p;
-}
-static struct h2d_upstream_content_ctx *h2d_upstream_content_ctx(struct h2d_request *r)
-{
-	/* `struct h2d_upstream_content_ctx` must be at the top of content module's ctx */
-	return r->module_ctxs[r->conf_path->content->index];
 }
 
 static bool h2d_upstream_content_status_code_retry(struct h2d_request *r)
@@ -32,7 +27,7 @@ static int h2d_upstream_content_fail(struct h2d_request *r);
 int h2d_upstream_content_generate_response_headers(struct h2d_request *r)
 {
 	struct h2d_upstream_conf *upstream = h2d_upstream_content_conf(r);
-	struct h2d_upstream_content_ctx *ctx = h2d_upstream_content_ctx(r);
+	struct h2d_upstream_content_ctx *ctx = r->module_ctxs[r->conf_path->content->index];
 	struct h2d_upstream_ops *ops = upstream->ops;
 
 	if (ctx == NULL) {
@@ -45,17 +40,15 @@ int h2d_upstream_content_generate_response_headers(struct h2d_request *r)
 		}
 	}
 
-	if (ctx->upc == NULL || ctx->upc == H2D_PTR_AGAIN) {
-		ctx->upc = h2d_upstream_get_connection(upstream, r);
-		if (!H2D_PTR_IS_OK(ctx->upc)) {
-			return H2D_PTR2RET(ctx->upc);
+	if (ctx->upc == NULL) {
+		void *upc = h2d_upstream_get_connection(upstream, r);
+		if (!H2D_PTR_IS_OK(upc)) {
+			return H2D_PTR2RET(upc);
 		}
+		ctx->upc = upc;
 	}
 
 	if (!ctx->has_sent_request) {
-		if (h2d_upstream_connection_write_blocked(ctx->upc)) {// remove this check if h2d_upstream_connection_write() can return H2D_AGAIN
-			return H2D_AGAIN;
-		}
 		int ret = h2d_upstream_connection_write(ctx->upc, ctx->req_buf, ctx->req_len);
 		if (ret == H2D_AGAIN) {
 			return H2D_AGAIN;
@@ -64,6 +57,11 @@ int h2d_upstream_content_generate_response_headers(struct h2d_request *r)
 			return h2d_upstream_content_fail(r);
 		}
 		ctx->has_sent_request = true;
+	}
+
+	if (ops->parse_response_headers == NULL) {
+		r->resp.status_code = WUY_HTTP_200;
+		return H2D_OK;
 	}
 
 	char buffer[4096];
@@ -75,36 +73,29 @@ int h2d_upstream_content_generate_response_headers(struct h2d_request *r)
 		return h2d_upstream_content_fail(r);
 	}
 
-	int proc_len = 0;
-	if (ops->parse_response_headers == NULL) {
-		r->resp.status_code = WUY_HTTP_200;
-		goto no_headers;
-	}
-
 	bool is_done;
-	proc_len = ops->parse_response_headers(r, buffer, read_len, &is_done);
+	int proc_len = ops->parse_response_headers(r, buffer, read_len, &is_done);
 	if (proc_len < 0) {
 		return h2d_upstream_content_fail(r);
 	}
+
+	h2d_upstream_connection_read_notfinish(ctx->upc, buffer + proc_len, read_len - proc_len);
+
 	if (!is_done) {
-		// TODO read again
-		printf("too long response header\n");
-		return H2D_ERROR;
+		return H2D_AGAIN;
 	}
 
 	if (h2d_upstream_content_status_code_retry(r)) {
 		return h2d_upstream_content_fail(r);
 	}
-no_headers:
 
-	h2d_upstream_connection_read_notfinish(ctx->upc, buffer + proc_len, read_len - proc_len);
 	return H2D_OK;
 }
 
 static int h2d_upstream_content_fail(struct h2d_request *r)
 {
 	struct h2d_upstream_conf *upstream = h2d_upstream_content_conf(r);
-	struct h2d_upstream_content_ctx *ctx = h2d_upstream_content_ctx(r);
+	struct h2d_upstream_content_ctx *ctx = r->module_ctxs[r->conf_path->content->index];
 
 	ctx->upc->error = true;
 
@@ -129,7 +120,7 @@ int h2d_upstream_content_generate_response_body(struct h2d_request *r,
 		uint8_t *buffer, int buf_len)
 {
 	struct h2d_upstream_conf *upstream = h2d_upstream_content_conf(r);
-	struct h2d_upstream_content_ctx *ctx = h2d_upstream_content_ctx(r);
+	struct h2d_upstream_content_ctx *ctx = r->module_ctxs[r->conf_path->content->index];
 	struct h2d_upstream_ops *ops = upstream->ops;
 
 	if (ops->is_response_body_done && ops->is_response_body_done(r)) {
@@ -150,8 +141,8 @@ int h2d_upstream_content_generate_response_body(struct h2d_request *r,
 
 void h2d_upstream_content_ctx_free(struct h2d_request *r)
 {
-	struct h2d_upstream_content_ctx *ctx = h2d_upstream_content_ctx(r);
-	if (H2D_PTR_IS_OK(ctx->upc)) {
+	struct h2d_upstream_content_ctx *ctx = r->module_ctxs[r->conf_path->content->index];
+	if (ctx->upc != NULL) {
 		h2d_upstream_release_connection(ctx->upc);
 	}
 }

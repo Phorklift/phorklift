@@ -12,7 +12,7 @@ static struct h2d_upstream_loadbalance *h2d_upstream_loadbalances[H2D_UPSTREAM_L
 
 static WUY_LIST(h2d_upstream_list);
 
-static int h2d_upstream_loadbalance_number;
+static int h2d_upstream_loadbalance_number = H2D_UPSTREAM_LOADBALANCE_STATIC_NUMBER;
 
 #define _log(level, fmt, ...) h2d_request_log_at(r, \
 		upstream->log, level, "upstream: " fmt, ##__VA_ARGS__)
@@ -77,7 +77,7 @@ h2d_upstream_get_connection(struct h2d_upstream_conf *upstream, struct h2d_reque
 		}
 	}
 
-	if (upstream->address_num == 0) { /* only for dynamic upstream */
+	if (upstream->address_num == 0) { /* only if dynamic upstream */
 		if (!wuy_list_node_linked(&r->list_node)) {
 			_log(H2D_LOG_DEBUG, "dynamic wait for resolving");
 			wuy_list_append(&upstream->wait_head, &r->list_node);
@@ -104,7 +104,7 @@ h2d_upstream_get_connection(struct h2d_upstream_conf *upstream, struct h2d_reque
 
 	atomic_fetch_add(&address->stats->pick, 1);
 
-	/* try to reuse */
+	/* try to reuse an idle one */
 	struct h2d_upstream_connection *upc;
 	if (wuy_list_pop_type(&address->idle_head, upc, list_node)) {
 		_log(H2D_LOG_DEBUG, "reuse %s", address->name);
@@ -282,8 +282,6 @@ void h2d_upstream_connection_read_notfinish(struct h2d_upstream_connection *upc,
 	upc->preread_len = buf_len;
 }
 
-/* We assume that the writing would not lead to block here.
- * If @data==NULL, we just check if in connecting. */
 int h2d_upstream_connection_write(struct h2d_upstream_connection *upc,
 		void *data, int data_len)
 {
@@ -295,17 +293,27 @@ int h2d_upstream_connection_write(struct h2d_upstream_connection *upc,
 		upc->create_time = 0;
 	}
 
+	if (loop_stream_is_write_blocked(upc->loop_stream)) {
+		return H2D_AGAIN;
+	}
+	if (upc->prewrite_len > 0) {
+		data = (char *)data + upc->prewrite_len;
+		data_len -= upc->prewrite_len;
+	}
+
 	int write_len = loop_stream_write(upc->loop_stream, data, data_len);
 	if (write_len < 0) {
 		_log_upc(H2D_LOG_ERROR, "write fail %d", write_len);
 		return H2D_ERROR;
 	}
-	if (write_len != data_len) { /* blocking happens */ // TODO
-		_log_upc(H2D_LOG_ERROR, "write blockes %d %d", write_len, data_len);
-		return H2D_ERROR;
+	if (write_len != data_len) {
+		_log_upc(H2D_LOG_DEBUG, "write blockes %d %d", write_len, data_len);
+		upc->prewrite_len = write_len;
+		return H2D_AGAIN;
 	}
 
 	_log_upc(H2D_LOG_DEBUG, "write %d", write_len);
+	upc->prewrite_len = 0;
 
 	/* we assume that the response is expected just after one write */
 	loop_stream_set_timeout(upc->loop_stream,
@@ -314,12 +322,18 @@ int h2d_upstream_connection_write(struct h2d_upstream_connection *upc,
 	return H2D_OK;
 }
 
+void h2d_upstream_dynamic_add(struct h2d_upstream_loadbalance *m)
+{
+	if (h2d_upstream_loadbalance_number >= H2D_UPSTREAM_LOADBALANCE_MAX) {
+		fprintf(stderr, "excess dynamic upstream module limit: %d\n",
+				H2D_UPSTREAM_LOADBALANCE_MAX);
+		exit(H2D_EXIT_DYNAMIC);
+	}
+	h2d_upstream_loadbalances[h2d_upstream_loadbalance_number++] = m;
+}
+
 void h2d_upstream_init(void)
 {
-	h2d_upstream_loadbalance_number = H2D_UPSTREAM_LOADBALANCE_STATIC_NUMBER;
-
-	// TODO load dynamic loadbalance here
-
 	for (int i = 0; i < h2d_upstream_loadbalance_number; i++) {
 		struct h2d_upstream_loadbalance *lb = h2d_upstream_loadbalances[i];
 		lb->index = i;

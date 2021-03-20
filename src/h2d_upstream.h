@@ -44,6 +44,8 @@ struct h2d_upstream_connection {
 	uint8_t			*preread_buf;
 	int			preread_len;
 
+	int			prewrite_len;
+
 	bool			error;
 
 	struct h2d_request	*request; /* NULL if in idle state */
@@ -241,11 +243,6 @@ int h2d_upstream_connection_write(struct h2d_upstream_connection *upc,
 		void *data, int data_len);
 
 void h2d_upstream_connection_fail(struct h2d_upstream_connection *upc);
-
-static inline bool h2d_upstream_connection_write_blocked(struct h2d_upstream_connection *upc)
-{
-	return loop_stream_is_write_blocked(upc->loop_stream);
-}
 /* }}} */
 
 
@@ -263,6 +260,8 @@ bool h2d_upstream_address_is_pickable(struct h2d_upstream_address *address,
 void h2d_upstream_stats(wuy_json_t *json);
 
 void h2d_upstream_init(void);
+
+void h2d_upstream_dynamic_add(struct h2d_upstream_loadbalance *m);
 
 extern struct wuy_cflua_table h2d_upstream_conf_table;
 

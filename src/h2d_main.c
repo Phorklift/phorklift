@@ -269,6 +269,7 @@ int main(int argc, char * const *argv)
 		h2d_conf_log(H2D_LOG_INFO, "master wake up");
 
 		if (sig_reload_conf) {
+			h2d_conf_log(H2D_LOG_INFO, "reload configration");
 			sig_reload_conf = false;
 			h2d_run(conf_file);
 		}

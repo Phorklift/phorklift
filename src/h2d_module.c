@@ -119,14 +119,18 @@ void h2d_module_dynamic_add(const char *filename)
 		fprintf(stderr, "fail in dlopen: %s\n", dlerror());
 		exit(H2D_EXIT_DYNAMIC);
 	}
-	struct h2d_module *m = dlsym(dyn, mod_name);
+	void *m = dlsym(dyn, mod_name);
 	if (m == NULL) {
 		fprintf(stderr, "fail in dlsym: %s\n", dlerror());
 		exit(H2D_EXIT_DYNAMIC);
 	}
 	dlclose(dyn);
 
-	h2d_modules[h2d_module_number++] = m;
+	if (memcmp(mod_name, "h2d_upstream_", 13) == 0) {
+		h2d_upstream_dynamic_add(m);
+	} else {
+		h2d_modules[h2d_module_number++] = m;
+	}
 	printf("load module: %s\n", mod_name);
 }
 
