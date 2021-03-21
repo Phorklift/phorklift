@@ -454,6 +454,14 @@ static int h2d_request_response_body(struct h2d_request *r)
 
 	if (c->is_http2) {
 		h2d_http2_response_body_packfix(r, &buf_pos, &buf_len);
+
+		int window = http2_stream_window(r->h2s);
+		if (window == 0) {
+			return H2D_AGAIN;
+		}
+		if (window < buf_len) {
+			buf_len = window;
+		}
 	} else {
 		h2d_http1_response_body_packfix(r, &buf_pos, &buf_len);
 	}
@@ -515,7 +523,7 @@ skip_generate:
 	return is_last ? H2D_OK : h2d_request_response_body(r);
 }
 
-void h2d_request_run(struct h2d_request *r, int window)
+void h2d_request_run(struct h2d_request *r)
 {
 	if (r->closed) {
 		return;
@@ -580,11 +588,7 @@ void h2d_request_run(struct h2d_request *r, int window)
 		r->state++;
 	}
 
-	if (window == 0 && r->state >= H2D_REQUEST_STATE_RESPONSE_HEADERS_1) {
-		return;
-	}
-
-	return h2d_request_run(r, window);
+	return h2d_request_run(r);
 }
 
 void h2d_request_active(struct h2d_request *r, const char *from)
@@ -671,7 +675,7 @@ static void h2d_request_defer_run(void *data)
 {
 	struct h2d_request *r;
 	while (wuy_list_pop_type(&h2d_request_defer_run_list, r, list_node)) {
-		h2d_request_run(r, -1);
+		h2d_request_run(r);
 	}
 }
 

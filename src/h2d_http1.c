@@ -156,7 +156,7 @@ void h2d_http1_on_writable(struct h2d_connection *c)
 	if (r == NULL) {
 		return;
 	}
-	h2d_request_run(r, -1);
+	h2d_request_run(r);
 }
 
 int h2d_http1_on_read(struct h2d_connection *c, void *data, int buf_len)
@@ -215,7 +215,7 @@ int h2d_http1_on_read(struct h2d_connection *c, void *data, int buf_len)
 	}
 
 	/* run */
-	h2d_request_run(r, -1);
+	h2d_request_run(r);
 
 	if (!c->closed && c->u.request != NULL && r->state <= H2D_REQUEST_STATE_PROCESS_BODY) {
 		h2d_connection_set_recv_timer(c);
