@@ -150,6 +150,11 @@ struct h2d_conf_runtime {
 		int	num;
 	} worker;
 
+	struct h2d_conf_runtime_resolver {
+		const char *	ai_family_str;
+		int		ai_family;
+	} resolver;
+
 	struct h2d_log		*log;
 };
 

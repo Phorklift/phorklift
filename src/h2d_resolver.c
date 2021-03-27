@@ -56,7 +56,7 @@ uint8_t *h2d_resolver_hostname(const char *hostname, int *plen)
 {
 	struct addrinfo hints;
 	bzero(&hints, sizeof(struct addrinfo));
-	hints.ai_family = AF_UNSPEC;
+	hints.ai_family = h2d_conf_runtime->resolver.ai_family;
 	hints.ai_socktype = SOCK_STREAM;
 	hints.ai_flags = AI_ADDRCONFIG;
 
@@ -234,3 +234,34 @@ int h2d_resolver_connect(void)
 
 	return fd;
 }
+
+static const char *h2d_conf_runtime_resolver_post(void *data)
+{
+	struct h2d_conf_runtime_resolver *conf = data;
+	const char *str = conf->ai_family_str;
+
+	if (strcmp(str, "both46") == 0) {
+		conf->ai_family = AF_UNSPEC;
+	} else if (strcmp(str, "ipv4") == 0) {
+		conf->ai_family = AF_INET;
+	} else if (strcmp(str, "ipv6") == 0) {
+		conf->ai_family = AF_INET6;
+	} else {
+		return "only accept: 'ipv4', 'ipv6' and 'both46' for IPv4, IPv6 and both.";
+	}
+
+	return WUY_CFLUA_OK;
+}
+
+static struct wuy_cflua_command h2d_conf_runtime_resovler_commands[] = {
+	{	.name = "ai_family",
+		.type = WUY_CFLUA_TYPE_STRING,
+		.offset = offsetof(struct h2d_conf_runtime_resolver, ai_family_str),
+		.default_value.s = "both46",
+	},
+	{ NULL },
+};
+struct wuy_cflua_table h2d_conf_runtime_resolver_table = {
+	.commands = h2d_conf_runtime_resovler_commands,
+	.post = h2d_conf_runtime_resolver_post,
+};

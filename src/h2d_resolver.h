@@ -13,4 +13,6 @@ int h2d_resolver_connect(void);
 
 uint8_t *h2d_resolver_hostname(const char *hostname, int *plen);
 
+extern struct wuy_cflua_table h2d_conf_runtime_resolver_table;
+
 #endif
