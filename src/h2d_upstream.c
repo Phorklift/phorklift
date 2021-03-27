@@ -121,6 +121,7 @@ h2d_upstream_get_connection(struct h2d_upstream_conf *upstream, struct h2d_reque
 	loop_stream_t *s = loop_tcp_connect_sockaddr(h2d_loop, &address->sockaddr.s,
 			&h2d_upstream_ops);
 	if (s == NULL) {
+		_log(H2D_LOG_ERROR, "connect fail %s", strerror(errno));
 		return H2D_PTR_ERROR;
 	}
 	loop_stream_set_timeout(s, upstream->send_timeout * 1000);

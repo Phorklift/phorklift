@@ -25,7 +25,7 @@ static int h2d_http1_request_headers(struct h2d_request *r, const char *buffer, 
 			return H2D_ERROR;
 		}
 
-		_log(H2D_LOG_DEBUG, "request URI %*s", url_len, url_str);
+		_log(H2D_LOG_DEBUG, "request URI %.*s", url_len, url_str);
 
 		buf_pos += proc_len;
 	}

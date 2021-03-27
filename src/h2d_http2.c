@@ -43,7 +43,7 @@ static bool h2d_http2_hook_stream_header(http2_stream_t *h2s, const char *name_s
 		}
 
 		r->state = H2D_REQUEST_STATE_PROCESS_HEADERS;
-		return true; //  TODO return what ??
+		return true;
 	}
 
 	_log(H2D_LOG_DEBUG, "request header: %.*s %.*s",
@@ -174,10 +174,12 @@ static void h2d_http2_response_body_finish(struct h2d_request *r)
 	r->c->send_buf_pos += HTTP2_FRAME_HEADER_SIZE;
 }
 
-static int h2d_http2_hook_stream_response(http2_stream_t *h2s)
+static bool h2d_http2_hook_stream_response(http2_stream_t *h2s)
 {
-	h2d_request_run(http2_stream_get_app_data(h2s));
-	return 1; // TODO check closed?
+	struct h2d_request *r = http2_stream_get_app_data(h2s);
+
+	h2d_request_run(r);
+	return !r->c->closed;
 }
 
 static bool h2d_http2_hook_control_frame(http2_connection_t *h2c, const uint8_t *buf, int len)
