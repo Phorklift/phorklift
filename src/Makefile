@@ -21,7 +21,7 @@ MODULES = modules/h2d_static.o modules/h2d_proxy.o modules/h2d_lua.o modules/h2d
 	  modules/h2d_auth_request.o modules/h2d_save_to.o modules/h2d_jump_if.o \
 	  modules/h2d_upstream_random.o modules/h2d_upstream_hash.o
 
-LUAPKGS = luapkgs/h2d_req.o luapkgs/h2d_resp.o
+LUAPKGS = luapkgs/h2d_req.o luapkgs/h2d_resp.o luapkgs/h2d_stream.o
 
 h2tpd: h2d_main.o h2d_conf.o h2d_conf_listen.o h2d_conf_host.o h2d_conf_path.o \
 		h2d_conf_runtime.o \

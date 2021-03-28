@@ -304,6 +304,7 @@ static void h2d_lua_api_register(const struct h2d_lua_api_package *p)
 
 extern const struct h2d_lua_api_package h2d_req_package;
 extern const struct h2d_lua_api_package h2d_resp_package;
+extern const struct h2d_lua_api_package h2d_stream_package;
 
 void h2d_lua_api_init(void)
 {
@@ -314,6 +315,7 @@ void h2d_lua_api_init(void)
 
 	h2d_lua_api_register(&h2d_req_package);
 	h2d_lua_api_register(&h2d_resp_package);
+	h2d_lua_api_register(&h2d_stream_package);
 
 	lua_setglobal(h2d_L, "h2d");
 }
