@@ -84,7 +84,7 @@ struct h2d_request {
 
 	struct h2d_dynamic_ctx	*dynamic_ctx;
 
-	struct h2d_lua_thread	lth;
+	lua_State		*L;
 
 	struct h2d_request	*father; /* only for subreq */
 

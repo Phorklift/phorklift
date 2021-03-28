@@ -25,38 +25,35 @@ static const struct h2d_lua_api_reg h2d_lua_api_const_ints[] = {
 
 static int64_t h2d_lua_api_sleep_timeout(int64_t at, void *data)
 {
-	printf("Lua timer finish.\n");
 	h2d_request_active(h2d_lua_api_current, "lua sleep");
 	return 0;
 }
-static int h2d_lua_api_sleep_resume(void)
+static int h2d_lua_api_sleep_resume(lua_State *L)
 {
-	struct h2d_lua_thread *lth = &h2d_lua_api_current->lth;
-	loop_timer_delete(lth->data);
+	loop_timer_t *timer = lua_touserdata(L, -1);
+	lua_pop(L, 1);
+	loop_timer_delete(timer);
 	return 0;
 }
 static int h2d_lua_api_sleep(lua_State *L)
 {
-	struct h2d_lua_thread *lth = &h2d_lua_api_current->lth;
-
-	lth->data = loop_timer_new(h2d_loop, h2d_lua_api_sleep_timeout, NULL);
+	loop_timer_t *timer = loop_timer_new(h2d_loop,
+			h2d_lua_api_sleep_timeout, NULL);
 
 	lua_Number value = lua_tonumber(L, -1);
-	loop_timer_set_after(lth->data, value * 1000); /* second -> ms */
-	printf("Lua add timer: %f\n", value);
+	loop_timer_set_after(timer, value * 1000); /* second -> ms */
 
-	lth->resume_handler = h2d_lua_api_sleep_resume;
-
-	return lua_yield(L, 0);
+	lua_pushlightuserdata(L, timer);
+	h2d_lua_thread_set_resume_handler(L, h2d_lua_api_sleep_resume);
+	return lua_yield(L, 1);
 }
 
-static int h2d_lua_api_subrequest_resume(void)
+static int h2d_lua_api_subrequest_resume(lua_State *L)
 {
-	struct h2d_lua_thread *lth = &h2d_lua_api_current->lth;
-	struct h2d_request *subr = lth->data;
-	lua_State *L = lth->L;
+	struct h2d_request *subr = lua_touserdata(L, -1);
+	lua_pop(L, 1);
 
-	if (L == NULL) { /* just clear */
+	if (h2d_lua_api_current->L == NULL) { /* just clear */
 		goto out;
 	}
 
@@ -167,10 +164,9 @@ static int h2d_lua_api_subrequest(lua_State *L)
 		}
 	}
 
-	struct h2d_lua_thread *lth = &h2d_lua_api_current->lth;
-	lth->data = subr;
-	lth->resume_handler = h2d_lua_api_subrequest_resume;
-	return lua_yield(L, 0);
+	lua_pushlightuserdata(L, subr);
+	h2d_lua_thread_set_resume_handler(L, h2d_lua_api_subrequest_resume);
+	return lua_yield(L, 1);
 }
 
 static int h2d_lua_api_dump(lua_State *L, int start, char *buffer, int buf_size)
