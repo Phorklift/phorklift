@@ -93,7 +93,12 @@ lua_State *h2d_lua_thread_run(struct h2d_request *r,
 	} else if (lua_gettop(r->L) > 0) {
 		lua_CFunction resume_handler = lua_tocfunction(r->L, 1);
 		argn = resume_handler(r->L);
-		if (argn < 0) {
+		if (argn == H2D_AGAIN) {
+			_log(H2D_LOG_DEBUG, "resume handler again");
+			atomic_fetch_add(&r->conf_path->stats->lua_again, 1);
+			return H2D_PTR_AGAIN;
+		}
+		if (argn == H2D_ERROR) {
 			_log(H2D_LOG_ERROR, "resume handler error: %d", argn);
 			atomic_fetch_add(&r->conf_path->stats->lua_error, 1);
 			h2d_lua_thread_close(r);
