@@ -31,8 +31,8 @@ static int64_t h2d_lua_api_sleep_timeout(int64_t at, void *data)
 static int h2d_lua_api_sleep_resume(lua_State *L)
 {
 	loop_timer_t *timer = lua_touserdata(L, -1);
-	lua_pop(L, 1);
 	loop_timer_delete(timer);
+	lua_pop(L, 2); /* pop resume_handler and argument */
 	return 0;
 }
 static int h2d_lua_api_sleep(lua_State *L)
@@ -43,19 +43,16 @@ static int h2d_lua_api_sleep(lua_State *L)
 	lua_Number value = lua_tonumber(L, -1);
 	loop_timer_set_after(timer, value * 1000); /* second -> ms */
 
+	/* push resume_handler and argument */
+	lua_pushcfunction(L, h2d_lua_api_sleep_resume);
 	lua_pushlightuserdata(L, timer);
-	h2d_lua_thread_set_resume_handler(L, h2d_lua_api_sleep_resume);
-	return lua_yield(L, 1);
+	return lua_yield(L, 2);
 }
 
 static int h2d_lua_api_subrequest_resume(lua_State *L)
 {
 	struct h2d_request *subr = lua_touserdata(L, -1);
-	lua_pop(L, 1);
-
-	if (h2d_lua_api_current->L == NULL) { /* just clear */
-		goto out;
-	}
+	lua_pop(L, 2); /* pop resume_handler and argument */
 
 	lua_newtable(L);
 
@@ -73,7 +70,6 @@ static int h2d_lua_api_subrequest_resume(lua_State *L)
 	}
 	lua_setfield(L, -2, "headers");
 
-out:
 	h2d_request_subr_close(subr);
 
 	return 1;
@@ -164,9 +160,10 @@ static int h2d_lua_api_subrequest(lua_State *L)
 		}
 	}
 
+	/* push resume_handler and argument */
+	lua_pushcfunction(L, h2d_lua_api_subrequest_resume);
 	lua_pushlightuserdata(L, subr);
-	h2d_lua_thread_set_resume_handler(L, h2d_lua_api_subrequest_resume);
-	return lua_yield(L, 1);
+	return lua_yield(L, 2);
 }
 
 static int h2d_lua_api_dump(lua_State *L, int start, char *buffer, int buf_size)

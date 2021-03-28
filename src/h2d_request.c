@@ -48,7 +48,7 @@ static void h2d_request_clear_stuff(struct h2d_request *r)
 {
 	wuy_list_del_if(&r->list_node);
 
-	h2d_lua_thread_clear(r);
+	h2d_lua_thread_kill(r);
 
 	h2d_module_request_ctx_free(r);
 }

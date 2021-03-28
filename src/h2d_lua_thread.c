@@ -6,24 +6,6 @@
 
 #define _log(level, fmt, ...) h2d_request_log(r, level, "lua: " fmt, ##__VA_ARGS__)
 
-#define H2D_LUA_THREAD_RESUME_KEY "_H2D_LTRH"
-void h2d_lua_thread_set_resume_handler(lua_State *L, h2d_lua_thread_resume_f handler)
-{
-	lua_pushlightuserdata(L, handler);
-	lua_setglobal(L, H2D_LUA_THREAD_RESUME_KEY);
-}
-static h2d_lua_thread_resume_f h2d_lua_thread_pop_resume_handler(lua_State *L)
-{
-	lua_getglobal(L, H2D_LUA_THREAD_RESUME_KEY);
-	h2d_lua_thread_resume_f handler = lua_touserdata(L, -1);
-	lua_pop(L, 1);
-
-	if (handler != NULL) {
-		h2d_lua_thread_set_resume_handler(L, NULL);
-	}
-	return handler;
-}
-
 static int h2d_lua_thread_start(struct h2d_request *r,
 		wuy_cflua_function_t entry, const char *argf, ...)
 {
@@ -71,81 +53,72 @@ static int h2d_lua_thread_start(struct h2d_request *r,
 	return strlen(argf);
 }
 
-static int h2d_lua_thread_resume(struct h2d_request *r, int argn)
+static void h2d_lua_thread_close(struct h2d_request *r)
 {
-	h2d_lua_api_current = r;
+	_log(H2D_LOG_DEBUG, "close");
+	atomic_fetch_add(&r->conf_path->stats->lua_free, 1);
 
-	h2d_lua_thread_resume_f resume_handler = h2d_lua_thread_pop_resume_handler(r->L);
-	if (resume_handler != NULL) {
-		argn = resume_handler(r->L);
-		if (argn < 0) {
-			return argn;
-		}
-	}
+	/* un-mark it for GC */
+	lua_pushlightuserdata(h2d_L, r->L);
+	lua_pushnil(h2d_L);
+	lua_settable(h2d_L, LUA_REGISTRYINDEX);
 
-	int ret = lua_resume(r->L, argn);
-	if (ret == LUA_YIELD) {
-		return H2D_AGAIN;
-	}
-	if (ret != 0) {
-		h2d_request_log(r, H2D_LOG_ERROR, "lua_resume fail: %s", lua_tostring(h2d_L, -1));
-		return H2D_ERROR;
-	}
-	return H2D_OK;
+	r->L = NULL;
 }
 
-void h2d_lua_thread_clear(struct h2d_request *r)
+void h2d_lua_thread_kill(struct h2d_request *r)
 {
 	if (r->L == NULL) {
 		return;
 	}
 
-	lua_State *L = r->L;
-
-	_log(H2D_LOG_DEBUG, "stop");
-	atomic_fetch_add(&r->conf_path->stats->lua_free, 1);
-
-	/* un-mark it for GC */
-	lua_pushlightuserdata(h2d_L, L);
-	lua_pushnil(h2d_L);
-	lua_settable(h2d_L, LUA_REGISTRYINDEX);
-
-	r->L = NULL;
-
-	/* clear resume-data */
-	h2d_lua_thread_resume_f resume_handler = h2d_lua_thread_pop_resume_handler(L);
-	if (resume_handler != NULL) {
-		resume_handler(L);
+	/* TODO clear resume-data, e.g. delete timer, close subr. is this OK? */
+	if (lua_gettop(r->L) > 0) {
+		lua_CFunction resume_handler = lua_tocfunction(r->L, 1);
+		resume_handler(r->L);
 	}
+
+	h2d_lua_thread_close(r);
 }
 
 lua_State *h2d_lua_thread_run(struct h2d_request *r,
 		wuy_cflua_function_t entry, const char *argf, ...)
 {
+	h2d_lua_api_current = r;
+
 	int argn = 0;
 	if (r->L == NULL) {
 		argn = h2d_lua_thread_start(r, entry, argf);
+
+	} else if (lua_gettop(r->L) > 0) {
+		lua_CFunction resume_handler = lua_tocfunction(r->L, 1);
+		argn = resume_handler(r->L);
+		if (argn < 0) {
+			_log(H2D_LOG_ERROR, "resume handler error: %d", argn);
+			atomic_fetch_add(&r->conf_path->stats->lua_error, 1);
+			h2d_lua_thread_close(r);
+			return H2D_PTR_ERROR;
+		}
 	}
 
 	_log(H2D_LOG_DEBUG, "resume...");
+	int ret = lua_resume(r->L, argn);
 
-	int ret = h2d_lua_thread_resume(r, argn);
-
-	if (ret == H2D_AGAIN) {
-		_log(H2D_LOG_DEBUG, "resume returns AGAIN");
+	if (ret == LUA_YIELD) {
+		_log(H2D_LOG_DEBUG, "resume yields");
 		atomic_fetch_add(&r->conf_path->stats->lua_again, 1);
 		return H2D_PTR_AGAIN;
 	}
-	if (ret == H2D_ERROR) {
-		_log(H2D_LOG_ERROR, "resume returns ERROR");
+	if (ret != 0) {
+		_log(H2D_LOG_ERROR, "resume error: %s", lua_tostring(r->L, -1));
 		atomic_fetch_add(&r->conf_path->stats->lua_error, 1);
-		h2d_lua_thread_clear(r);
+		h2d_lua_thread_close(r);
 		return H2D_PTR_ERROR;
 	}
 
 	_log(H2D_LOG_DEBUG, "resume returns OK");
 	lua_State *L = r->L;
-	h2d_lua_thread_clear(r);
+	h2d_lua_thread_close(r);
 	return L;
 }
 
