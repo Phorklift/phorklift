@@ -153,7 +153,7 @@ h2d_upstream_retry_connection(struct h2d_upstream_connection *old)
 
 	atomic_fetch_add(&upstream->stats->retry, 1);
 
-	h2d_upstream_release_connection(old);
+	h2d_upstream_release_connection(old, false);
 
 	/* mark this down temporarily to avoid picked again */
 	if (address->healthcheck.down_time == 0) {
@@ -171,7 +171,7 @@ h2d_upstream_retry_connection(struct h2d_upstream_connection *old)
 	return newc;
 }
 
-void h2d_upstream_release_connection(struct h2d_upstream_connection *upc)
+void h2d_upstream_release_connection(struct h2d_upstream_connection *upc, bool is_clean)
 {
 	assert(upc->request != NULL);
 	assert(upc->loop_stream != NULL);
@@ -200,7 +200,7 @@ void h2d_upstream_release_connection(struct h2d_upstream_connection *upc)
 	}
 
 	/* close the connection */
-	if (upc->error || loop_stream_is_closed(upc->loop_stream) || r->state != H2D_REQUEST_STATE_DONE) {
+	if (upc->error || !is_clean || loop_stream_is_closed(upc->loop_stream)) {
 		_log(H2D_LOG_DEBUG, "just close, state=%d", r->state);
 		h2d_upstream_connection_close(upc);
 		return;
@@ -284,7 +284,7 @@ void h2d_upstream_connection_read_notfinish(struct h2d_upstream_connection *upc,
 }
 
 int h2d_upstream_connection_write(struct h2d_upstream_connection *upc,
-		void *data, int data_len)
+		const void *data, int data_len)
 {
 	assert(upc->loop_stream != NULL);
 
@@ -298,7 +298,7 @@ int h2d_upstream_connection_write(struct h2d_upstream_connection *upc,
 		return H2D_AGAIN;
 	}
 	if (upc->prewrite_len > 0) {
-		data = (char *)data + upc->prewrite_len;
+		data = (const char *)data + upc->prewrite_len;
 		data_len -= upc->prewrite_len;
 	}
 

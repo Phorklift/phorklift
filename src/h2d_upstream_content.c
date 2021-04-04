@@ -143,7 +143,7 @@ void h2d_upstream_content_ctx_free(struct h2d_request *r)
 {
 	struct h2d_upstream_content_ctx *ctx = r->module_ctxs[r->conf_path->content->index];
 	if (ctx->upc != NULL) {
-		h2d_upstream_release_connection(ctx->upc);
+		h2d_upstream_release_connection(ctx->upc, r->state == H2D_REQUEST_STATE_DONE);
 	}
 }
 

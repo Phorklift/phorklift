@@ -232,7 +232,7 @@ h2d_upstream_get_connection(struct h2d_upstream_conf *upstream, struct h2d_reque
 struct h2d_upstream_connection *
 h2d_upstream_retry_connection(struct h2d_upstream_connection *old);
 
-void h2d_upstream_release_connection(struct h2d_upstream_connection *upc);
+void h2d_upstream_release_connection(struct h2d_upstream_connection *upc, bool is_clean);
 
 int h2d_upstream_connection_read(struct h2d_upstream_connection *upc,
 		void *buffer, int buf_len);
@@ -240,7 +240,7 @@ void h2d_upstream_connection_read_notfinish(struct h2d_upstream_connection *upc,
 		void *buffer, int buf_len);
 
 int h2d_upstream_connection_write(struct h2d_upstream_connection *upc,
-		void *data, int data_len);
+		const void *data, int data_len);
 
 void h2d_upstream_connection_fail(struct h2d_upstream_connection *upc);
 /* }}} */
