@@ -21,7 +21,7 @@ MODULES = modules/h2d_static.o modules/h2d_proxy.o modules/h2d_lua.o modules/h2d
 	  modules/h2d_auth_request.o modules/h2d_save_to.o modules/h2d_jump_if.o \
 	  modules/h2d_upstream_random.o modules/h2d_upstream_hash.o
 
-LUAPKGS = luapkgs/h2d_req.o luapkgs/h2d_resp.o luapkgs/h2d_stream.o luapkgs/h2d_ups.o
+LUAAPIS = luaapis/h2d_req.o luaapis/h2d_resp.o luaapis/h2d_stream.o luaapis/h2d_ups.o
 
 h2tpd: h2d_main.o h2d_conf.o h2d_conf_listen.o h2d_conf_host.o h2d_conf_path.o \
 		h2d_conf_runtime.o \
@@ -31,10 +31,10 @@ h2tpd: h2d_main.o h2d_conf.o h2d_conf_listen.o h2d_conf_host.o h2d_conf_path.o \
 		h2d_upstream_content.o \
 		h2d_lua_api.o h2d_lua_thread.o h2d_lua_call.o
 	make -C modules
-	make -C luapkgs
-	$(CC) -o $@ $^ $(MODULES) $(LUAPKGS) $(LDFLAGS) $(LDLIBS)
+	make -C luaapis
+	$(CC) -o $@ $^ $(MODULES) $(LUAAPIS) $(LDFLAGS) $(LDLIBS)
 
 clean:
 	make -C modules clean
-	make -C luapkgs clean
+	make -C luaapis clean
 	rm -f *.o h2d_conf_parse_lua.h h2tpd
