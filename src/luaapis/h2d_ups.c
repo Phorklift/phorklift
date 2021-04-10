@@ -154,7 +154,7 @@ static int h2d_ups_send_resume(lua_State *L)
 	int write_len = h2d_upstream_connection_write(upc, data, data_len);
 	if (write_len == H2D_ERROR) {
 		lua_pushboolean(L, false);
-		return 0;
+		return 1;
 	}
 	if (write_len == H2D_AGAIN) {
 		if (lua_gettop(L) == 2) {
@@ -167,7 +167,7 @@ static int h2d_ups_send_resume(lua_State *L)
 	}
 
 	lua_pushboolean(L, true);
-	return 0;
+	return 1;
 }
 
 static int h2d_ups_send(lua_State *L)
