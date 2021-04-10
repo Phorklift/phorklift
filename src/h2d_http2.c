@@ -199,8 +199,7 @@ static bool h2d_http2_hook_control_frame(http2_connection_t *h2c, const uint8_t 
 	return true;
 }
 
-static void h2d_http2_hook_log(http2_connection_t *h2c,
-		enum http2_log_level level, const char *fmt, ...)
+static void h2d_http2_hook_log(http2_connection_t *h2c, const char *fmt, ...)
 {
 	struct h2d_connection *c = http2_connection_get_app_data(h2c);
 	if (c == NULL) {
@@ -216,7 +215,7 @@ static void h2d_http2_hook_log(http2_connection_t *h2c,
 
 	va_list ap;
 	va_start(ap, fmt);
-	h2d_log_level_v(log, (enum h2d_log_level)level, fmt, ap);
+	h2d_log_level_v(log, H2D_LOG_DEBUG, fmt, ap);
 	va_end(ap);
 }
 
@@ -293,15 +292,8 @@ void h2d_http2_connection_init(struct h2d_connection *c)
 	} else {
 		level = c->conf_listen->default_host->default_path->error_log->level;
 	}
-	switch (level) {
-	case H2D_LOG_DEBUG:
-		http2_connection_set_log_level(h2c, HTTP2_LOG_DEBUG);
-		break;
-	case H2D_LOG_INFO:
-		http2_connection_set_log_level(h2c, HTTP2_LOG_ERROR);
-		break;
-	default:
-		; /* do not log */
+	if (level == H2D_LOG_DEBUG) {
+		http2_connection_enable_log(h2c);
 	}
 
 	c->is_http2 = true;
