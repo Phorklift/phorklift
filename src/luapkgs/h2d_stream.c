@@ -152,5 +152,5 @@ static const struct h2d_lua_api_reg h2d_stream_functions[] = {
 
 const struct h2d_lua_api_package h2d_stream_package = {
 	.name = "stream",
-	.fs = h2d_stream_functions,
+	.funcs = h2d_stream_functions,
 };

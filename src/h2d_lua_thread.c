@@ -21,8 +21,7 @@ static int h2d_lua_thread_start(struct h2d_request *r,
 	lua_settable(h2d_L, LUA_REGISTRYINDEX);
 
 	/* push entry function */
-	lua_rawgeti(h2d_L, LUA_REGISTRYINDEX, entry);
-	lua_xmove(h2d_L, r->L, 1);
+	lua_rawgeti(r->L, LUA_REGISTRYINDEX, entry);
 
 	/* push arguments if any */
 	if (argf == NULL) {

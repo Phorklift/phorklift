@@ -262,18 +262,16 @@ static const struct h2d_lua_api_reg h2d_lua_api_functions[] = {
 static void h2d_lua_api_add_const_ints(const struct h2d_lua_api_reg *list)
 {
 	for (const struct h2d_lua_api_reg *r = list; r->name != NULL; r++) {
-		lua_pushstring(h2d_L, r->name);
 		lua_pushinteger(h2d_L, r->u.n);
-		lua_settable(h2d_L, -3);
+		lua_setfield(h2d_L, -2, r->name);
 	}
 }
 
 static void h2d_lua_api_add_functions(const struct h2d_lua_api_reg *list)
 {
 	for (const struct h2d_lua_api_reg *r = list; r->name != NULL; r++) {
-		lua_pushstring(h2d_L, r->name);
 		lua_pushcfunction(h2d_L, r->u.f);
-		lua_settable(h2d_L, -3);
+		lua_setfield(h2d_L, -2, r->name);
 	}
 }
 
@@ -281,24 +279,25 @@ static void h2d_lua_api_register(const struct h2d_lua_api_package *p)
 {
 	lua_newtable(h2d_L);
 
+	if (p->ref != NULL) {
+		lua_pushvalue(h2d_L, -1);
+		*p->ref = luaL_ref(h2d_L, LUA_REGISTRYINDEX);
+
+		/* maybe covered by p->funcs */
+		lua_pushvalue(h2d_L, -1);
+		lua_setfield(h2d_L, -2, "__index");
+	}
 	if (p->init != NULL) {
 		p->init();
 	}
 	if (p->const_ints != NULL) {
 		h2d_lua_api_add_const_ints(p->const_ints);
 	}
-	if (p->fs != NULL) {
-		h2d_lua_api_add_functions(p->fs);
-	}
-	if (p->index != NULL) {
-		lua_pushcfunction(h2d_L, p->index);
-		lua_setfield(h2d_L, -2, "__index");
-	}
-	if (p->newindex != NULL) {
-		lua_pushcfunction(h2d_L, p->newindex);
-		lua_setfield(h2d_L, -2, "__newindex");
+	if (p->funcs != NULL) {
+		h2d_lua_api_add_functions(p->funcs);
 	}
 
+	/* for __index and __newindex */
 	lua_pushvalue(h2d_L, -1);
 	lua_setmetatable(h2d_L, -2);
 

@@ -49,14 +49,6 @@ static int h2d_resp_set_header(lua_State *L)
 	return h2d_resp_add_header(L);
 }
 
-static const struct h2d_lua_api_reg h2d_resp_functions[] = {
-	{ "get_header", .u.f=h2d_resp_get_header },
-	{ "add_header", .u.f=h2d_resp_add_header },
-	{ "delete_header", .u.f=h2d_resp_delete_header },
-	{ "set_header", .u.f=h2d_resp_set_header },
-	{ NULL }  /* sentinel */
-};
-
 static int h2d_resp_mm_index(lua_State *L)
 {
 	const char *key = lua_tostring(L, -1);
@@ -92,8 +84,17 @@ static int h2d_resp_mm_index(lua_State *L)
 	return 1;
 }
 
+static const struct h2d_lua_api_reg h2d_resp_functions[] = {
+	{ "get_header", .u.f=h2d_resp_get_header },
+	{ "add_header", .u.f=h2d_resp_add_header },
+	{ "delete_header", .u.f=h2d_resp_delete_header },
+	{ "set_header", .u.f=h2d_resp_set_header },
+
+	{ "__index", .u.f=h2d_resp_mm_index },
+	{ NULL }  /* sentinel */
+};
+
 const struct h2d_lua_api_package h2d_resp_package = {
 	.name = "resp",
-	.index = h2d_resp_mm_index,
-	.fs = h2d_resp_functions,
+	.funcs = h2d_resp_functions,
 };

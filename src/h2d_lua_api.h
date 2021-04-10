@@ -13,11 +13,10 @@ struct h2d_lua_api_reg {
 
 struct h2d_lua_api_package {
 	const char		*name;
+	int			*ref;
 	void			(*init)(void);
-	lua_CFunction		index;
-	lua_CFunction		newindex;
 	const struct h2d_lua_api_reg	*const_ints;
-	const struct h2d_lua_api_reg	*fs;
+	const struct h2d_lua_api_reg	*funcs;
 };
 
 extern struct h2d_request *h2d_lua_api_current;
