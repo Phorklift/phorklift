@@ -297,7 +297,8 @@ int h2d_request_append_body(struct h2d_request *r, const void *buf, int len)
 		r->req.body_finished = r->req.body_len >= r->req.content_length;
 
 	} else {
-		if (r->req.body_len + len > r->c->conf_listen->req_body_max) {
+		int req_body_max = r->conf_path->req_body_max;
+		if (req_body_max != 0 && r->req.body_len + len > req_body_max) {
 			return WUY_HTTP_413;
 		}
 		r->req.body_buf = wuy_pool_realloc(r->pool, r->req.body_buf, r->req.body_len + len);
@@ -315,13 +316,16 @@ static int h2d_request_receive_headers(struct h2d_request *r)
 	return h2d_http1_request_headers(r);
 }
 
-static int h2d_request_receive_body(struct h2d_request *r)
+static int h2d_request_receive_body_sync(struct h2d_request *r)
 {
-	if (r->c->is_http2) {
-		return h2d_http2_request_body(r);
-	} else {
-		return h2d_http1_request_body(r);
+	if (!r->conf_path->req_body_sync) {
+		return H2D_OK;
 	}
+
+	if (r->c->is_http2) {
+		return r->req.body_finished ? H2D_OK : H2D_AGAIN;
+	}
+	return h2d_http1_request_body(r);
 }
 
 static int h2d_request_locate_conf(struct h2d_request *r)
@@ -359,6 +363,13 @@ static int h2d_request_locate_conf(struct h2d_request *r)
 			}
 			r->conf_path = sub_path;
 		}
+
+		/* check some path-confs */
+		if (r->conf_path->req_body_max != 0
+				&& r->req.content_length != H2D_CONTENT_LENGTH_INIT
+				&& r->req.content_length > r->conf_path->req_body_max) {
+			return WUY_HTTP_413;
+		}
 	}
 
 	return H2D_OK;
@@ -377,7 +388,7 @@ static int h2d_request_process_headers(struct h2d_request *r)
 	return r->conf_path->content->content.process_headers(r);
 }
 
-static int h2d_request_process_body(struct h2d_request *r)
+static int h2d_request_process_body(struct h2d_request *r) // TODO!!!
 {
 	if (r->is_broken) { // TODO discard request body
 		return H2D_OK;
@@ -387,10 +398,6 @@ static int h2d_request_process_body(struct h2d_request *r)
 	}
 	if (r->req.content_length == 0) {
 		return H2D_OK;
-	}
-
-	if (!r->req.body_finished) {
-		return H2D_AGAIN;
 	}
 
 	int ret = h2d_module_filter_process_body(r);
@@ -563,8 +570,8 @@ void h2d_request_run(struct h2d_request *r)
 	case H2D_REQUEST_STATE_LOCATE_CONF:
 		ret = h2d_request_locate_conf(r);
 		break;
-	case H2D_REQUEST_STATE_RECEIVE_BODY:
-		ret = h2d_request_receive_body(r);
+	case H2D_REQUEST_STATE_RECEIVE_BODY_SYNC:
+		ret = h2d_request_receive_body_sync(r);
 		break;
 	case H2D_REQUEST_STATE_PROCESS_HEADERS:
 		ret = h2d_request_process_headers(r);

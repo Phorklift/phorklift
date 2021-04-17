@@ -6,7 +6,6 @@
 void h2d_http2_on_readable(struct h2d_connection *c);
 void h2d_http2_on_writable(struct h2d_connection *c);
 
-int h2d_http2_request_body(struct h2d_request *r);
 int h2d_http2_response_headers(struct h2d_request *r);
 
 void h2d_http2_response_body_packfix(struct h2d_request *r,

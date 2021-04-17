@@ -46,6 +46,9 @@ struct h2d_conf_path {
 
 	struct h2d_dynamic_conf	dynamic;
 
+	int			req_body_max;
+	bool			req_body_sync;
+
 	bool			(*req_hook)(void);
 
 	struct h2d_log		*error_log;
@@ -103,8 +106,6 @@ struct h2d_conf_listen {
 	struct h2d_conf_host	*host_wildcard;
 	bool			any_prefix_hostname;
 	bool			any_subfix_hostname;
-
-	int			req_body_max;
 
 	struct {
 		int		idle_timeout;

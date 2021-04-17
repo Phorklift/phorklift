@@ -73,9 +73,6 @@ static bool h2d_http2_hook_stream_header(http2_stream_t *h2s, const char *name_s
 			if (r->req.content_length == 0) {
 				return WUY_HTTP_400;
 			}
-			if (r->req.content_length > r->c->conf_listen->req_body_max) {
-				return WUY_HTTP_413;
-			}
 			return true;
 		}
 	}
@@ -111,11 +108,6 @@ static void h2d_http2_hook_stream_close(http2_stream_t *h2s)
 	if (r != NULL) {
 		h2d_request_close(r);
 	}
-}
-
-int h2d_http2_request_body(struct h2d_request *r)
-{
-	return r->req.body_finished ? H2D_OK : H2D_AGAIN;
 }
 
 int h2d_http2_response_headers(struct h2d_request *r)

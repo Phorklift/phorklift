@@ -61,9 +61,6 @@ int h2d_http1_request_headers(struct h2d_request *r)
 			if (r->req.content_length == 0) {
 				return WUY_HTTP_400;
 			}
-			if (r->req.content_length > r->c->conf_listen->req_body_max) {
-				return WUY_HTTP_413;
-			}
 			continue;
 		}
 		if (memcmp(name_str, "Host", 4) == 0) {
