@@ -59,7 +59,7 @@ static int h2d_lua_api_subrequest_resume(lua_State *L)
 	lua_pushinteger(L, subr->resp.status_code);
 	lua_setfield(L, -2, "status_code");
 
-	lua_pushlstring(L, (char *)subr->c->send_buffer, subr->c->send_buf_pos - subr->c->send_buffer);
+	lua_pushlstring(L, (char *)subr->c->send_buffer, subr->c->send_buf_len);
 	lua_setfield(L, -2, "body");
 
 	lua_newtable(L);

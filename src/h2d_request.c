@@ -171,7 +171,7 @@ void h2d_request_close(struct h2d_request *r)
 	}
 
 	h2d_request_clear_stuff(r);
-	wuy_pool_destroy(r->pool);
+	wuy_pool_destroy(r->pool); // TODO use defer
 }
 
 void h2d_request_subr_close(struct h2d_request *r)
@@ -214,7 +214,7 @@ int h2d_request_redirect(struct h2d_request *r, const char *path)
 	h2d_request_clear_stuff(r);
 
 	r->conf_path = NULL;
-	r->state = H2D_REQUEST_STATE_PARSE_HEADERS;
+	r->state = H2D_REQUEST_STATE_RECEIVE_HEADERS;
 	r->filter_indexs[0] = r->filter_indexs[1] = r->filter_indexs[2] = 0;
 	r->filter_terminal = NULL;
 	r->is_broken = false;
@@ -278,7 +278,7 @@ bool h2d_request_set_uri(struct h2d_request *r, const char *uri_str, int uri_len
 	return true;
 }
 
-int h2d_request_append_body(struct h2d_request *r, const uint8_t *buf, int len)
+int h2d_request_append_body(struct h2d_request *r, const void *buf, int len)
 {
 	if (len == 0) {
 		return H2D_OK;
@@ -307,7 +307,24 @@ int h2d_request_append_body(struct h2d_request *r, const uint8_t *buf, int len)
 	return H2D_OK;
 }
 
-static int h2d_request_process_headers(struct h2d_request *r)
+static int h2d_request_receive_headers(struct h2d_request *r)
+{
+	if (r->c->is_http2) {
+		return H2D_AGAIN;
+	}
+	return h2d_http1_request_headers(r);
+}
+
+static int h2d_request_receive_body(struct h2d_request *r)
+{
+	if (r->c->is_http2) {
+		return h2d_http2_request_body(r);
+	} else {
+		return h2d_http1_request_body(r);
+	}
+}
+
+static int h2d_request_locate_conf(struct h2d_request *r)
 {
 	/* locate host */
 	if (r->conf_host == NULL) {
@@ -344,7 +361,11 @@ static int h2d_request_process_headers(struct h2d_request *r)
 		}
 	}
 
-	/* begin process */
+	return H2D_OK;
+}
+
+static int h2d_request_process_headers(struct h2d_request *r)
+{
 	int ret = h2d_module_filter_process_headers(r);
 	if (ret != H2D_OK) {
 		return ret;
@@ -453,8 +474,7 @@ static int h2d_request_response_body(struct h2d_request *r)
 		return buf_len;
 	}
 
-	uint8_t *buffer = c->send_buf_pos;
-	uint8_t *buf_pos = buffer;
+	uint8_t *buf_pos = c->send_buffer + c->send_buf_len;
 
 	if (c->is_http2) {
 		h2d_http2_response_body_packfix(r, &buf_pos, &buf_len);
@@ -522,7 +542,7 @@ skip_generate:
 	}
 
 	r->resp.sent_length += body_len;
-	c->send_buf_pos += body_len;
+	c->send_buf_len += body_len;
 
 	return is_last ? H2D_OK : h2d_request_response_body(r);
 }
@@ -533,12 +553,19 @@ void h2d_request_run(struct h2d_request *r)
 		return;
 	}
 
-	h2d_request_log(r, H2D_LOG_DEBUG, "{{{ h2d_request_run %d %p %s", r->state, r, r->req.uri.raw);
+	h2d_request_log(r, H2D_LOG_DEBUG, "{{{ h2d_request_run %d", r->state);
 
 	int ret;
 	switch (r->state) {
-	case H2D_REQUEST_STATE_PARSE_HEADERS:
-		return;
+	case H2D_REQUEST_STATE_RECEIVE_HEADERS:
+		ret = h2d_request_receive_headers(r);
+		break;
+	case H2D_REQUEST_STATE_LOCATE_CONF:
+		ret = h2d_request_locate_conf(r);
+		break;
+	case H2D_REQUEST_STATE_RECEIVE_BODY:
+		ret = h2d_request_receive_body(r);
+		break;
 	case H2D_REQUEST_STATE_PROCESS_HEADERS:
 		ret = h2d_request_process_headers(r);
 		break;
@@ -564,7 +591,7 @@ void h2d_request_run(struct h2d_request *r)
 		abort();
 	}
 
-	h2d_request_log(r, H2D_LOG_DEBUG, "}}} %p: state:%d ret:%d", r, r->state, ret);
+	h2d_request_log(r, H2D_LOG_DEBUG, "}}} state:%d ret:%d", r->state, ret);
 
 	if (ret == H2D_AGAIN) {
 		return;
@@ -598,7 +625,7 @@ void h2d_request_run(struct h2d_request *r)
 void h2d_request_active(struct h2d_request *r, const char *from)
 {
 	struct h2d_connection *c = r->c;
-	if (h2d_connection_write_blocked(c)) {
+	if (!h2d_connection_is_write_ready(c)) {
 		h2d_request_log(r, H2D_LOG_DEBUG, "======== h2d_request_active not ready"); // XXX coredump if get here 4times
 		return;
 	}
@@ -667,7 +694,7 @@ int h2d_request_subr_flush_connection(struct h2d_connection *c)
 
 	/* drop response for detached subrequests */
 	if (father == H2D_REQUEST_DETACHED_SUBR_FATHER) {
-		c->send_buf_pos = c->send_buffer;
+		c->send_buf_len = 0;
 		return H2D_OK;
 	}
 

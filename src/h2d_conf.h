@@ -131,6 +131,7 @@ struct h2d_conf_listen {
 		int		connections;
 		int		send_timeout;
 		int		recv_timeout;
+		int		recv_buffer_size;
 		int		send_buffer_size;
 		int		defer_accept;
 		int		backlog;

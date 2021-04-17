@@ -36,13 +36,14 @@ static bool h2d_http2_hook_stream_header(http2_stream_t *h2s, const char *name_s
 	if (name_str == NULL) {
 
 		if (name_len != 0) { /* means end-of-stream */
+			r->req.body_finished = true;
 			if (r->req.content_length != H2D_CONTENT_LENGTH_INIT
 					&& r->req.content_length != 0) {
 				return false;
 			}
 		}
 
-		r->state = H2D_REQUEST_STATE_PROCESS_HEADERS;
+		r->state++; /* to H2D_REQUEST_STATE_LOCATE_HEADERS */
 		return true;
 	}
 
@@ -112,6 +113,11 @@ static void h2d_http2_hook_stream_close(http2_stream_t *h2s)
 	}
 }
 
+int h2d_http2_request_body(struct h2d_request *r)
+{
+	return r->req.body_finished ? H2D_OK : H2D_AGAIN;
+}
+
 int h2d_http2_response_headers(struct h2d_request *r)
 {
 	struct h2d_connection *c = r->c;
@@ -122,9 +128,9 @@ int h2d_http2_response_headers(struct h2d_request *r)
 		return buf_size;
 	}
 
-	uint8_t *pos_frame = c->send_buf_pos;
+	uint8_t *pos_frame = c->send_buffer + c->send_buf_len;
 	uint8_t *pos_payload = pos_frame + HTTP2_FRAME_HEADER_SIZE;
-	uint8_t *pos_end = c->send_buf_pos + buf_size;
+	uint8_t *pos_end = pos_frame + buf_size;
 	uint8_t *p = pos_payload;
 
 	int proc_len = http2_make_status_code(p, pos_end - p, r->resp.status_code);
@@ -144,7 +150,7 @@ int h2d_http2_response_headers(struct h2d_request *r)
 
 	http2_make_frame_headers(r->h2s, pos_frame, p - pos_payload, r->resp.content_length==0, true);
 
-	c->send_buf_pos += p - pos_frame;
+	c->send_buf_len += p - pos_frame;
 
 	_log(H2D_LOG_DEBUG, "response headers %ld", p - pos_frame);
 
@@ -166,12 +172,14 @@ int h2d_http2_response_body_pack(struct h2d_request *r, uint8_t *payload,
 
 static void h2d_http2_response_body_finish(struct h2d_request *r)
 {
-	if (h2d_connection_make_space(r->c, HTTP2_FRAME_HEADER_SIZE) < 0) {
+	struct h2d_connection *c = r->c;
+
+	if (h2d_connection_make_space(c, HTTP2_FRAME_HEADER_SIZE) < 0) {
 		return;
 	}
 
-	http2_make_frame_body(r->h2s, r->c->send_buf_pos, 0, true);
-	r->c->send_buf_pos += HTTP2_FRAME_HEADER_SIZE;
+	http2_make_frame_body(r->h2s, c->send_buffer + c->send_buf_len, 0, true);
+	c->send_buf_len += HTTP2_FRAME_HEADER_SIZE;
 }
 
 static bool h2d_http2_hook_stream_response(http2_stream_t *h2s)
@@ -179,7 +187,8 @@ static bool h2d_http2_hook_stream_response(http2_stream_t *h2s)
 	struct h2d_request *r = http2_stream_get_app_data(h2s);
 
 	h2d_request_run(r);
-	return !r->c->closed;
+
+	return h2d_connection_is_write_ready(r->c);
 }
 
 static bool h2d_http2_hook_control_frame(http2_connection_t *h2c, const uint8_t *buf, int len)
@@ -194,8 +203,8 @@ static bool h2d_http2_hook_control_frame(http2_connection_t *h2c, const uint8_t 
 		return false;
 	}
 
-	memcpy(c->send_buf_pos, buf, len);
-	c->send_buf_pos += len;
+	memcpy(c->send_buffer + c->send_buf_len, buf, len);
+	c->send_buf_len += len;
 	return true;
 }
 
@@ -235,26 +244,36 @@ void h2d_http2_init(void)
 
 /* connection event handlers */
 
-int h2d_http2_on_read(struct h2d_connection *c, void *data, int len)
+static void h2d_http2_set_state(struct h2d_connection *c)
 {
+	/* `enum http2_connection_state` happens to be compatible with
+	 * `enum h2d_connection_state` */
+	enum http2_connection_state state = http2_connection_state(c->u.h2c);
+	h2d_connection_set_state(c, (enum h2d_connection_state)state);
+}
+
+void h2d_http2_on_readable(struct h2d_connection *c)
+{
+	uint8_t *buf_pos = c->recv_buffer + c->recv_buf_pos;
+	int buf_len = c->recv_buf_end - c->recv_buf_pos;
+
 	http2_connection_t *h2c = c->u.h2c;
 
 	/* h2d_http2_hook_stream_header/_body/_close() are called inside here */
-	int proc_len = http2_process_input(h2c, data, len);
+	int proc_len = http2_process_input(h2c, buf_pos, buf_len);
 
-	_log_conn(H2D_LOG_DEBUG, "on_read %d, process=%d", len, proc_len);
+	_log_conn(H2D_LOG_DEBUG, "on_read %d, process=%d", buf_len, proc_len);
 	if (proc_len < 0) {
-		return H2D_ERROR;
+		h2d_connection_close(c);
+		return;
 	}
+
+	c->recv_buf_pos += proc_len;
 
 	/* h2d_http2_hook_stream_response() is called inside here */
 	http2_schedular(h2c);
 
-	if (!c->closed && http2_connection_in_reading(c->u.h2c)) {
-		h2d_connection_set_recv_timer(c);
-	}
-
-	return proc_len;
+	h2d_http2_set_state(c);
 }
 
 void h2d_http2_on_writable(struct h2d_connection *c)
@@ -263,6 +282,8 @@ void h2d_http2_on_writable(struct h2d_connection *c)
 
 	/* h2d_http2_hook_stream_response() is called inside here */
 	http2_schedular(c->u.h2c);
+
+	h2d_http2_set_state(c);
 }
 
 void h2d_http2_request_close(struct h2d_request *r)
@@ -273,9 +294,7 @@ void h2d_http2_request_close(struct h2d_request *r)
 
 	http2_stream_close(r->h2s);
 
-	if (http2_connection_in_idle(r->c->u.h2c)) {
-		h2d_connection_set_idle(r->c);
-	}
+	h2d_http2_set_state(r->c);
 }
 
 /* on the connection negotiated to HTTP/2, by ALPN or Upgrade */

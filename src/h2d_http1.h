@@ -3,8 +3,11 @@
 
 #include "h2d_connection.h"
 
-int h2d_http1_on_read(struct h2d_connection *c, void *data, int buf_len);
+void h2d_http1_on_readable(struct h2d_connection *c);
 void h2d_http1_on_writable(struct h2d_connection *c);
+
+int h2d_http1_request_headers(struct h2d_request *r);
+int h2d_http1_request_body(struct h2d_request *r);
 
 int h2d_http1_response_headers(struct h2d_request *r);
 

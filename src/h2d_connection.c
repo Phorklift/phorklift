@@ -18,10 +18,10 @@ static void h2d_connection_put_defer(struct h2d_connection *c)
 
 void h2d_connection_close(struct h2d_connection *c)
 {
-	if (c->closed) {
+	if (c->state == H2D_CONNECTION_STATE_CLOSED) {
 		return;
 	}
-	c->closed = true;
+	c->state = H2D_CONNECTION_STATE_CLOSED;
 
 	_log(H2D_LOG_DEBUG, "close");
 
@@ -34,10 +34,10 @@ void h2d_connection_close(struct h2d_connection *c)
 	atomic_fetch_sub(&c->conf_listen->stats->connections, 1);
 
 	if (c->send_buffer != NULL) {
-		loop_stream_write(c->loop_stream, c->send_buffer,
-				c->send_buf_pos - c->send_buffer);
+		loop_stream_write(c->loop_stream, c->send_buffer, c->send_buf_len);
 		free(c->send_buffer);
 	}
+	free(c->recv_buffer);
 	loop_stream_close(c->loop_stream);
 
 	loop_group_timer_delete(c->recv_timer);
@@ -46,28 +46,21 @@ void h2d_connection_close(struct h2d_connection *c)
 	h2d_connection_put_defer(c);
 }
 
-void h2d_connection_set_idle(struct h2d_connection *c)
+bool h2d_connection_is_write_ready(struct h2d_connection *c)
 {
-	if (c->closed) {
-		return;
+	if (c->state == H2D_CONNECTION_STATE_CLOSED) {
+		return false;
 	}
-
-	_log(H2D_LOG_DEBUG, "set idle");
-	loop_group_timer_set(c->is_http2 ? c->conf_listen->http2.idle_timer_group
-			: c->conf_listen->http1.keepalive_timer_group, c->recv_timer);
+	return !loop_stream_is_write_blocked(c->loop_stream);
 }
 
 static int h2d_connection_flush(struct h2d_connection *c)
 {
-	if (c->closed) {
+	if (c->state == H2D_CONNECTION_STATE_CLOSED) {
 		return H2D_ERROR;
 	}
 
-	if (c->send_buffer == NULL) {
-		return H2D_OK;
-	}
-	int buf_len = c->send_buf_pos - c->send_buffer;
-	if (buf_len == 0) {
+	if (c->send_buffer == NULL || c->send_buf_len == 0) {
 		return H2D_OK;
 	}
 
@@ -75,25 +68,21 @@ static int h2d_connection_flush(struct h2d_connection *c)
 		return h2d_request_subr_flush_connection(c);
 	}
 
-	int write_len = loop_stream_write(c->loop_stream, c->send_buffer, buf_len);
-	_log(H2D_LOG_DEBUG, "flush %d %d", buf_len, write_len);
+	int write_len = loop_stream_write(c->loop_stream, c->send_buffer, c->send_buf_len);
+	_log(H2D_LOG_DEBUG, "flush %d %d", c->send_buf_len, write_len);
 	if (write_len < 0) {
+		h2d_connection_close(c);
 		return H2D_ERROR;
 	}
 
-	if (write_len < buf_len) {
-		if (write_len > 0) {
-			memmove(c->send_buffer, c->send_buffer + write_len,
-					buf_len - write_len);
-			c->send_buf_pos -= write_len;
-		}
-
+	c->send_buf_len -= write_len;
+	if (c->send_buf_len > 0) {
+		memmove(c->send_buffer, c->send_buffer + write_len, c->send_buf_len);
 		loop_group_timer_set(c->conf_listen->network.send_timer_group, c->send_timer);
 		return H2D_AGAIN;
 	}
 
 	loop_group_timer_suspend(c->send_timer);
-	c->send_buf_pos = c->send_buffer;
 	return H2D_OK;
 }
 
@@ -101,12 +90,12 @@ static void h2d_connection_defer_routine(void *data)
 {
 	struct h2d_connection *c;
 	while (wuy_list_pop_type(&h2d_connection_defer_list, c, list_node)) {
-		if (c->closed) {
+		if (c->state == H2D_CONNECTION_STATE_CLOSED) {
 			free(c);
 		} else {
 			if (h2d_connection_flush(c) == H2D_OK) {
 				free(c->send_buffer);
-				c->send_buffer = c->send_buf_pos = NULL;
+				c->send_buffer = NULL;
 			}
 		}
 	}
@@ -114,7 +103,7 @@ static void h2d_connection_defer_routine(void *data)
 
 int h2d_connection_make_space(struct h2d_connection *c, int size)
 {
-	if (c->closed) {
+	if (c->state == H2D_CONNECTION_STATE_CLOSED) {
 		return H2D_ERROR;
 	}
 
@@ -124,7 +113,7 @@ int h2d_connection_make_space(struct h2d_connection *c, int size)
 	}
 
 	if (size > buf_size) {
-		_log(H2D_LOG_FATAL, "too small buf_size %d", buf_size);
+		_log(H2D_LOG_FATAL, "too small buf_size %d, %d", buf_size, size);
 		return H2D_ERROR;
 	}
 
@@ -134,36 +123,98 @@ int h2d_connection_make_space(struct h2d_connection *c, int size)
 	/* allocate buffer */
 	if (c->send_buffer == NULL) {
 		c->send_buffer = malloc(buf_size);
-		c->send_buf_pos = c->send_buffer;
+		c->send_buf_len = 0;
 		return c->send_buffer ? buf_size : H2D_ERROR;
 	}
 
 	/* use exist buffer */
-	int available = buf_size - (c->send_buf_pos - c->send_buffer);
+	int available = buf_size - c->send_buf_len;
 	if (available >= size) {
 		return available;
 	}
 
-	int ret = h2d_connection_flush(c);
-	if (ret != H2D_OK) {
-		return ret;
+	if (h2d_connection_flush(c) == H2D_ERROR) {
+		return H2D_ERROR;
 	}
 
-	return buf_size - (c->send_buf_pos - c->send_buffer);
+	available = buf_size - c->send_buf_len;
+	return available >= size ? available : H2D_AGAIN;
 }
 
-static int h2d_connection_on_read(loop_stream_t *s, void *data, int len)
+void h2d_connection_set_state(struct h2d_connection *c,
+		enum h2d_connection_state state)
+{
+	if (c->state == H2D_CONNECTION_STATE_CLOSED) {
+		return;
+	}
+	if (c->state == state) {
+		return;
+	}
+
+	_log(H2D_LOG_DEBUG, "state switch from %d to %d", c->state, state);
+
+	c->state = state;
+
+	switch (state) {
+	case H2D_CONNECTION_STATE_READING:
+		loop_group_timer_set(c->conf_listen->network.recv_timer_group, c->recv_timer);
+		break;
+	case H2D_CONNECTION_STATE_WRITING:
+		loop_group_timer_suspend(c->send_timer);
+		break;
+	case H2D_CONNECTION_STATE_IDLE:
+		loop_group_timer_set(c->is_http2 ? c->conf_listen->http2.idle_timer_group
+				: c->conf_listen->http1.keepalive_timer_group, c->recv_timer);
+		break;
+	default:
+		;
+	}
+}
+
+static void h2d_connection_on_readable(loop_stream_t *s)
 {
 	struct h2d_connection *c = loop_stream_get_app_data(s);
 
-	_log(H2D_LOG_DEBUG, "on_read %d", len);
+	_log(H2D_LOG_DEBUG, "on readable");
 
-	loop_group_timer_suspend(c->recv_timer);
+	int buf_size = c->conf_listen->network.recv_buffer_size;
+	if (c->recv_buffer == NULL) {
+		c->recv_buffer = malloc(buf_size);
+	}
 
-	if (c->is_http2) {
-		return h2d_http2_on_read(c, data, len);
-	} else {
-		return h2d_http1_on_read(c, data, len);
+	while (1) {
+		if (c->recv_buf_pos == c->recv_buf_end) {
+			c->recv_buf_pos = c->recv_buf_end = 0;
+		} else if (c->recv_buf_pos != 0) {
+			c->recv_buf_end -= c->recv_buf_pos;
+			memmove(c->recv_buffer, c->recv_buffer + c->recv_buf_pos, c->recv_buf_end);
+			c->recv_buf_pos = 0;
+		}
+
+		int read_len = loop_stream_read(s, c->recv_buffer + c->recv_buf_end,
+				buf_size - c->recv_buf_end);
+
+		_log(H2D_LOG_DEBUG, "read %d, %d %d", read_len, buf_size, c->recv_buf_end);
+		if (read_len < 0) {
+			h2d_connection_close(c);
+			return;
+		}
+		if (read_len == 0) {
+			break;
+		}
+
+		c->recv_buf_end += read_len;
+
+		if (c->is_http2) {
+			h2d_http2_on_readable(c);
+		} else {
+			h2d_http1_on_readable(c);
+		}
+	}
+
+	if (c->recv_buf_pos == c->recv_buf_end) {
+		free(c->recv_buffer);
+		c->recv_buffer = NULL;
 	}
 }
 
@@ -182,21 +233,6 @@ static void h2d_connection_on_writable(loop_stream_t *s)
 	} else {
 		h2d_http1_on_writable(c);
 	}
-}
-
-static void h2d_connection_on_close(loop_stream_t *s, enum loop_stream_close_reason reason)
-{
-	struct h2d_connection *c = loop_stream_get_app_data(s);
-
-	const char *errstr = "";
-	if (reason == LOOP_STREAM_READ_ERROR || reason == LOOP_STREAM_WRITE_ERROR) {
-		errstr = strerror(errno);
-	}
-
-	_log(H2D_LOG_DEBUG, "on_close %s %s, SSL %s", loop_stream_close_string(reason),
-			errstr, h2d_ssl_stream_error_string(s));
-
-	h2d_connection_close(c);
 }
 
 static bool h2d_connection_free_idle(struct h2d_conf_listen *conf_listen)
@@ -255,8 +291,7 @@ static loop_tcp_listen_ops_t h2d_connection_listen_ops = {
 	.on_accept = h2d_connection_on_accept,
 };
 static loop_stream_ops_t h2d_connection_stream_ops = {
-	.on_read = h2d_connection_on_read,
-	.on_close = h2d_connection_on_close,
+	.on_readable = h2d_connection_on_readable,
 	.on_writable = h2d_connection_on_writable,
 
 	H2D_SSL_LOOP_STREAM_UNDERLYINGS,
@@ -331,6 +366,12 @@ struct wuy_cflua_command h2d_conf_listen_network_commands[] = {
 		.offset = offsetof(struct h2d_conf_listen, network.send_timeout),
 		.default_value.n = 10,
 		.limits.n = WUY_CFLUA_LIMITS_POSITIVE,
+	},
+	{	.name = "recv_buffer_size",
+		.type = WUY_CFLUA_TYPE_INTEGER,
+		.offset = offsetof(struct h2d_conf_listen, network.recv_buffer_size),
+		.default_value.n = 16 * 1024,
+		.limits.n = WUY_CFLUA_LIMITS_LOWER(4 * 1024),
 	},
 	{	.name = "send_buffer_size",
 		.type = WUY_CFLUA_TYPE_INTEGER,

@@ -56,7 +56,9 @@ struct h2d_request {
 	} resp;
 
 	enum {
-		H2D_REQUEST_STATE_PARSE_HEADERS = 0,
+		H2D_REQUEST_STATE_RECEIVE_HEADERS = 0,
+		H2D_REQUEST_STATE_LOCATE_CONF,
+		H2D_REQUEST_STATE_RECEIVE_BODY,
 		H2D_REQUEST_STATE_PROCESS_HEADERS,
 		H2D_REQUEST_STATE_PROCESS_BODY,
 		H2D_REQUEST_STATE_RESPONSE_HEADERS_1,
@@ -110,7 +112,7 @@ void h2d_request_close(struct h2d_request *r);
 
 bool h2d_request_set_uri(struct h2d_request *r, const char *uri_str, int uri_len);
 bool h2d_request_set_host(struct h2d_request *r, const char *host_str, int host_len);
-int h2d_request_append_body(struct h2d_request *r, const uint8_t *buf, int len);
+int h2d_request_append_body(struct h2d_request *r, const void *buf, int len);
 
 void h2d_request_reset_response(struct h2d_request *r);
 
