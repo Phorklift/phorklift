@@ -92,28 +92,42 @@ int h2d_http1_request_body(struct h2d_request *r)
 
 	/* we assume all received data is body, not supporting pipeline */
 	struct h2d_connection *c = r->c;
-	uint8_t *buf_pos = c->recv_buffer + c->recv_buf_pos;
+	const uint8_t *buf_pos = c->recv_buffer + c->recv_buf_pos;
+	const uint8_t *buf_end = c->recv_buffer + c->recv_buf_end;
 	int buf_len = c->recv_buf_end - c->recv_buf_pos;
 	c->recv_buf_pos = c->recv_buf_end;
 
 	/* plain */
 	if (r->req.content_length != H2D_CONTENT_LENGTH_INIT) {
-		return h2d_request_append_body(r, buf_pos, buf_len);
+		int ret = h2d_request_append_body(r, buf_pos, buf_len);
+		if (ret != H2D_OK) {
+			return ret;
+		}
+		return r->req.body_finished ? H2D_OK : H2D_AGAIN;
 	}
 
 	/* chunked */
-	uint8_t out_buf[buf_len];
-	int proc_len = wuy_http_chunked_process(&r->req.chunked, // XXX change wuy_http_chunked_process to iter-mode TODO
-			buf_pos, buf_len, out_buf, &buf_len);
-	if (proc_len < 0) {
-		return WUY_HTTP_400;
+	while (buf_pos < buf_end) {
+		int data_len = wuy_http_chunked_decode(&r->req.chunked, &buf_pos, buf_end);
+		if (data_len < 0) {
+			h2d_request_log(r, H2D_LOG_DEBUG, "chunked error: %d", data_len);
+			return WUY_HTTP_400;
+		}
+		if (data_len == 0) {
+			break;
+		}
+		int ret = h2d_request_append_body(r, buf_pos, data_len);
+		if (ret != H2D_OK) {
+			return ret;
+		}
+		buf_pos += data_len;
 	}
 
 	if (wuy_http_chunked_is_finished(&r->req.chunked)) {
 		r->req.body_finished = true;
+		return H2D_OK;
 	}
-
-	return h2d_request_append_body(r, out_buf, buf_len);
+	return H2D_AGAIN;
 }
 
 static bool h2d_http1_response_is_chunked(struct h2d_request *r)
