@@ -33,9 +33,8 @@ bool h2d_conf_parse(const char *conf_file)
 	assert(luaL_dostring(L, h2d_conf_predefs_lua_str) == 0);
 
 	/* load conf-file */
-	int ret = luaL_dofile(L, conf_file);
-	if (ret != 0) {
-		h2d_conf_log(H2D_LOG_FATAL, "load conf-file fail: %d, %s", ret, lua_tostring(L, -1));
+	if (luaL_dofile(L, conf_file) != 0) {
+		h2d_conf_log(H2D_LOG_FATAL, "Fail to load conf-file: %s", lua_tostring(L, -1));
 		return false;
 	}
 
@@ -47,7 +46,7 @@ bool h2d_conf_parse(const char *conf_file)
 	struct h2d_conf_runtime *new_runtime;
 	const char *err = wuy_cflua_parse(L, &h2d_conf_runtime_table, &new_runtime, new_pool, NULL);
 	if (err != WUY_CFLUA_OK) {
-		h2d_conf_log(H2D_LOG_ERROR, "parse Runtime conf fail: %s", err);
+		h2d_conf_log(H2D_LOG_ERROR, "Fail to parse configuration: %s", err);
 		wuy_pool_destroy(new_pool);
 		lua_close(L);
 		return false;
@@ -75,7 +74,14 @@ bool h2d_conf_parse(const char *conf_file)
 	err = wuy_cflua_parse(L, &global, &new_listens, new_pool, NULL);
 	if (err != WUY_CFLUA_OK) {
 		h2d_conf_runtime = backup_runtime; /* rollback */
-		h2d_conf_log(H2D_LOG_ERROR, "parse Listen array fail: %s", err);
+		h2d_conf_log(H2D_LOG_ERROR, "Fail to parse configuration: %s", err);
+		wuy_pool_destroy(new_pool);
+		lua_close(L);
+		return false;
+	}
+	if (new_listens == NULL) {
+		h2d_conf_runtime = backup_runtime; /* rollback */
+		h2d_conf_log(H2D_LOG_ERROR, "No Listen is defined in configuration.");
 		wuy_pool_destroy(new_pool);
 		lua_close(L);
 		return false;
@@ -133,6 +139,10 @@ void h2d_conf_doc(void)
 	printf("+ DYNAMIC _(table)_\n\n");
 	printf("    Included by Path and UPSTREAM to enable dynamic configuration.\n\n");
 	wuy_cflua_dump_table_markdown(&h2d_dynamic_conf_table, 1);
+
+	printf("\n# Runtime scope\n\n");
+	printf("Global runtime configuration.\n\n");
+	wuy_cflua_dump_table_markdown(&h2d_conf_runtime_table, 0);
 
 	printf("\n# Listen scope\n\n");
 	printf("This is the top level scope. Accepts one or more addresses to listen on.\n\n");

@@ -39,8 +39,6 @@ static inline const char *h2d_log_strlevel(enum h2d_log_level level)
 struct h2d_log {
 	const char		*filename;
 	const char		*level_str;
-	int			filename_inherit_count;
-	int			level_inherit_count;
 	int			buf_size;
 	int			max_line;
 	bool			is_line_buffer;
@@ -49,23 +47,17 @@ struct h2d_log {
 	struct h2d_log_file	*file;
 };
 
-#define h2d_log_level_nocheck(log, level2, fmt, ...) \
-	h2d_log_file_write(log->file, log->max_line, \
-			"%s %d:" fmt, h2d_log_strlevel(level2), h2d_pid, ##__VA_ARGS__)
-
-// XXX add level
-#define h2d_log_level_v_nocheck(log, level2, fmt, ap) \
-	h2d_log_file_vwrite(log->file, log->max_line, fmt, ap)
-
 #define h2d_log_level(log, level2, fmt, ...) \
-	if (level2 >= log->level) h2d_log_level_nocheck(log, level2, fmt, ##__VA_ARGS__)
-
-#define h2d_log_level_v(log, level2, fmt, ap) \
-	if (level2 >= log->level) h2d_log_level_v_nocheck(log, level2, fmt, ap)
+	if (level2 >= log->level) { \
+		h2d_log_file_write(log->file, log->max_line, \
+				"%s %d:" fmt, h2d_log_strlevel(level2), \
+				h2d_pid, ##__VA_ARGS__); \
+	}
 
 #define h2d_assert(expr) if (!(expr)) h2d_log_fatal("assert fail: " #expr " at %s()", __FUNCTION__)
 
 extern struct wuy_cflua_table h2d_log_conf_table; 
+extern struct wuy_cflua_table h2d_log_omit_conf_table;
 
 void h2d_log_init(void);
 

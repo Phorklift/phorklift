@@ -14,8 +14,7 @@ enum _ups_nonuse {
 	H2D_UPSTREAM_LOADBALANCE_STATIC_NUMBER
 };
 
-#define H2D_UPSTREAM_LOADBALANCE_DYNAMIC_MAX	20
-#define H2D_UPSTREAM_LOADBALANCE_MAX		(H2D_MODULE_STATIC_NUMBER + H2D_MODULE_DYNAMIC_MAX)
+#define H2D_UPSTREAM_LOADBALANCE_MAX	(H2D_MODULE_STATIC_NUMBER + H2D_MODULE_DYNAMIC_MAX)
 
 struct h2d_upstream_stats {
 	atomic_long		pick_fail;
@@ -261,7 +260,7 @@ void h2d_upstream_stats(wuy_json_t *json);
 
 void h2d_upstream_init(void);
 
-void h2d_upstream_dynamic_add(struct h2d_upstream_loadbalance *m);
+void h2d_upstream_dynamic_module_fix(struct h2d_upstream_loadbalance *m, int i);
 
 extern struct wuy_cflua_table h2d_upstream_conf_table;
 

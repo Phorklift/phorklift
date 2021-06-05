@@ -273,7 +273,7 @@ static struct wuy_cflua_command h2d_static_conf_commands[] = {
 	{	.name = "log",
 		.type = WUY_CFLUA_TYPE_TABLE,
 		.offset = offsetof(struct h2d_static_conf, log),
-		.u.table = &h2d_log_conf_table,
+		.u.table = &h2d_log_omit_conf_table,
 	},
 	{ NULL }
 };
@@ -289,6 +289,7 @@ struct h2d_module h2d_static_module = {
 			.commands = h2d_static_conf_commands,
 			.size = sizeof(struct h2d_static_conf),
 			.post = h2d_static_conf_post,
+			.may_omit = true,
 		}
 	},
 

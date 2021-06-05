@@ -23,15 +23,13 @@ static const char *h2d_getopt(int argc, char *const *argv)
 		"Options:\n"
 		"    -p PREFIX   change directory\n"
 		"    -i FILE     set pid file [h2tpd.pid]\n"
-		"    -m MODULE   add dynamic module\n"
-		"    -M FILE     add dynamic module list file\n"
 		"    -f          run in foreground, but not daemon\n"
 		"    -r          show configration reference and quit\n"
 		"    -v          show version and quit\n"
 		"    -h          show this help and quit\n";
 
 	int opt;
-	while ((opt = getopt(argc, argv, "p:i:m:M:rfvh")) != -1) {
+	while ((opt = getopt(argc, argv, "p:i:rfvh")) != -1) {
 		switch (opt) {
 		case 'p':
 			if (chdir(optarg) != 0) {
@@ -41,12 +39,6 @@ static const char *h2d_getopt(int argc, char *const *argv)
 			break;
 		case 'i':
 			opt_pid_file = optarg;
-			break;
-		case 'm':
-			h2d_module_dynamic_add(optarg);
-			break;
-		case 'M':
-			h2d_module_dynamic_list_add(optarg);
 			break;
 		case 'f':
 			opt_daemon = false;
@@ -190,9 +182,10 @@ static int h2d_run(const char *conf_file)
 
 	h2d_lua_api_init();
 
-	h2d_module_master_post();
+	h2d_conf_log(H2D_LOG_INFO, "start!");
 
 	if (opt_daemon) {
+		fprintf(stderr, "go to daemon.\n");
 		opt_daemon = false;
 		assert(daemon(1, 0) == 0);
 		h2d_pid = getpid();
@@ -259,6 +252,7 @@ int main(int argc, char * const *argv)
 
 	int ret = h2d_run(conf_file);
 	if (ret != 0) {
+		fprintf(stderr, "FAIL TO START!!!\n");
 		return ret;
 	}
 

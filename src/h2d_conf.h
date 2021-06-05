@@ -39,6 +39,18 @@ struct h2d_conf_listen_stats {
 	atomic_long	total;
 };
 
+struct h2d_conf_access_log {
+	const char		*filename;
+	double			sampling_rate;
+	bool			replace_format;
+	wuy_cflua_function_t	format;
+	wuy_cflua_function_t	filter;
+	int			buf_size;
+	int			max_line;
+
+	struct h2d_log_file	*file;
+};
+
 struct h2d_conf_path {
 	const char		*name;
 
@@ -53,17 +65,7 @@ struct h2d_conf_path {
 
 	struct h2d_log		*error_log;
 
-	struct h2d_conf_access_log {
-		const char		*filename;
-		double			sampling_rate;
-		bool			replace_format;
-		wuy_cflua_function_t	format;
-		wuy_cflua_function_t	filter;
-		int			buf_size;
-		int			max_line;
-
-		struct h2d_log_file	*file;
-	} access_log;
+	struct h2d_conf_access_log	*access_log;
 
 	struct h2d_module		*content;
 	struct h2d_module_filters	*filters;
@@ -157,7 +159,10 @@ struct h2d_conf_runtime {
 		int		ai_family;
 	} resolver;
 
-	struct h2d_log		*log;
+	struct h2d_log		*error_log;
+
+	struct h2d_module_dynamic *dynamic_modules;
+	struct h2d_module_dynamic *dynamic_upstream_modules;
 };
 
 extern lua_State *h2d_L;
@@ -183,11 +188,17 @@ void h2d_conf_listen_stats(struct h2d_conf_listen *conf_listen, wuy_json_t *json
 
 void h2d_conf_doc(void);
 
-#define h2d_conf_log(level2, fmt, ...) \
+#define h2d_conf_log(level, fmt, ...) \
 	if (h2d_conf_runtime == NULL) \
 		fprintf(stderr, fmt"\n", ##__VA_ARGS__); \
-	else if (level2 >= h2d_conf_runtime->log->level) \
-		h2d_log_level_nocheck(h2d_conf_runtime->log, level2, fmt, ##__VA_ARGS__)
+	else \
+		h2d_log_level(h2d_conf_runtime->error_log, level, fmt, ##__VA_ARGS__)
+
+#define h2d_conf_log_at(_log, level, fmt, ...) \
+	if (_log != NULL) { \
+		h2d_log_level(_log, level, fmt, ##__VA_ARGS__); \
+	} else \
+		h2d_log_level(h2d_conf_runtime->error_log, level, fmt, ##__VA_ARGS__)
 
 /* internal */
 extern struct wuy_cflua_table h2d_conf_listen_table;

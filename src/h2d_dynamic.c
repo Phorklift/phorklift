@@ -1,8 +1,10 @@
+/* This file is for dynamic configration, but not dynamic module. */
+
 #include "h2d_main.h"
 
 #define _log(level, fmt, ...) h2d_request_log_at(r, dynamic->log, level, "dynamic: " fmt, ##__VA_ARGS__)
 
-#define _log_conf(level, fmt, ...) h2d_log_level(dynamic->log, level, "dynamic: " fmt, ##__VA_ARGS__)
+#define _log_conf(level, fmt, ...) h2d_conf_log_at(dynamic->log, level, "dynamic: " fmt, ##__VA_ARGS__)
 
 
 static atomic_int *h2d_dynamic_id;
@@ -325,7 +327,7 @@ static struct wuy_cflua_command h2d_dynamic_conf_commands[] = {
 	{	.name = "log",
 		.type = WUY_CFLUA_TYPE_TABLE,
 		.offset = offsetof(struct h2d_dynamic_conf, log),
-		.u.table = &h2d_log_conf_table,
+		.u.table = &h2d_log_omit_conf_table,
 	},
 
 	/* sub */

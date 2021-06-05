@@ -53,16 +53,19 @@ struct h2d_module {
 	void	(*ctx_free)(struct h2d_request *);
 
 	void	(*master_init)(void);
-	bool	(*master_post)(void);
 	void	(*worker_init)(void);
 };
 
-void h2d_module_dynamic_add(const char *filename);
-void h2d_module_dynamic_list_add(const char *filename);
+struct h2d_module_dynamic {
+	const char	*filename; /* at top for configration parsing */
+	void		*dl_handle;
+	void 		*sym;
+};
 
 void h2d_module_master_init(void);
-void h2d_module_master_post(void);
 void h2d_module_worker_init(void);
+
+struct h2d_module *h2d_module_next(struct h2d_module *m);
 
 struct wuy_cflua_command *h2d_module_next_listen_command(struct wuy_cflua_command *cmd);
 struct wuy_cflua_command *h2d_module_next_host_command(struct wuy_cflua_command *cmd);
@@ -74,7 +77,6 @@ void h2d_module_stats_listen(struct h2d_conf_listen *, wuy_json_t *json);
 void h2d_module_stats_host(struct h2d_conf_host *, wuy_json_t *json);
 void h2d_module_stats_path(struct h2d_conf_path *, wuy_json_t *json);
 
-struct h2d_module *h2d_module_content_is_enabled(int i, void *conf);
 void h2d_module_request_ctx_free(struct h2d_request *r);
 int h2d_module_filter_process_headers(struct h2d_request *r);
 int h2d_module_filter_process_body(struct h2d_request *r);
@@ -85,5 +87,7 @@ int h2d_module_filter_response_body(struct h2d_request *r, uint8_t *data,
 extern int h2d_module_number;
 
 extern struct wuy_cflua_table h2d_module_filters_conf_table;
+extern struct wuy_cflua_table h2d_module_dynamic_table;
+extern struct wuy_cflua_table h2d_module_dynamic_upstream_table;
 
 #endif

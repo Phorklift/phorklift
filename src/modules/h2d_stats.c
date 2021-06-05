@@ -24,9 +24,13 @@ static void h2d_stats_dump_host(struct h2d_conf_host *conf_host, wuy_json_t *jso
 	h2d_module_stats_host(conf_host, json);
 
 	wuy_json_object_array(json, "paths");
-	struct h2d_conf_path *conf_path;
-	for (int i = 0; (conf_path = conf_host->paths[i]) != NULL; i++) {
-		h2d_stats_dump_path(conf_path, json);
+	if (conf_host->paths != NULL) {
+		struct h2d_conf_path *conf_path;
+		for (int i = 0; (conf_path = conf_host->paths[i]) != NULL; i++) {
+			h2d_stats_dump_path(conf_path, json);
+		}
+	} else {
+		h2d_stats_dump_path(conf_host->default_path, json);
 	}
 	wuy_json_array_close(json);
 
@@ -40,9 +44,13 @@ static void h2d_stats_dump_listen(struct h2d_conf_listen *conf_listen, wuy_json_
 	h2d_module_stats_listen(conf_listen, json);
 
 	wuy_json_object_array(json, "hosts");
-	struct h2d_conf_host *conf_host;
-	for (int i = 0; (conf_host = conf_listen->hosts[i]) != NULL; i++) {
-		h2d_stats_dump_host(conf_host, json);
+	if (conf_listen->hosts != NULL) {
+		struct h2d_conf_host *conf_host;
+		for (int i = 0; (conf_host = conf_listen->hosts[i]) != NULL; i++) {
+			h2d_stats_dump_host(conf_host, json);
+		}
+	} else {
+		h2d_stats_dump_host(conf_listen->default_host, json);
 	}
 	wuy_json_array_close(json);
 

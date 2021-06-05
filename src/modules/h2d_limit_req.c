@@ -240,7 +240,7 @@ static struct wuy_cflua_command h2d_limit_req_conf_commands[] = {
 	{	.name = "log",
 		.type = WUY_CFLUA_TYPE_TABLE,
 		.offset = offsetof(struct h2d_limit_req_conf, log),
-		.u.table = &h2d_log_conf_table,
+		.u.table = &h2d_log_omit_conf_table,
 	},
 	{ NULL }
 };

@@ -176,7 +176,7 @@ void h2d_http1_response_body_packfix(struct h2d_request *r,
 		return;
 	}
 	*p_buf_pos += H2D_CHUNKED_PREFIX_LENGTH;
-	*p_buf_len -= H2D_CHUNKED_PREFIX_LENGTH + 5;
+	*p_buf_len -= H2D_CHUNKED_PREFIX_LENGTH + 7;
 }
 int h2d_http1_response_body_pack(struct h2d_request *r, uint8_t *payload,
 		int length, bool is_last)
@@ -189,8 +189,8 @@ int h2d_http1_response_body_pack(struct h2d_request *r, uint8_t *payload,
 	payload[-1] = '\n';
 
 	if (length != 0 && is_last) {
-		memcpy(payload + length, "\r\n0\r\n", 5);
-		return length + H2D_CHUNKED_PREFIX_LENGTH + 5;
+		memcpy(payload + length, "\r\n0\r\n\r\n", 7);
+		return length + H2D_CHUNKED_PREFIX_LENGTH + 7;
 	} else {
 		memcpy(payload + length, "\r\n", 2);
 		return length + H2D_CHUNKED_PREFIX_LENGTH + 2;
@@ -263,7 +263,7 @@ struct wuy_cflua_command h2d_conf_listen_http1_commands[] = {
 	{	.name = "log",
 		.type = WUY_CFLUA_TYPE_TABLE,
 		.offset = offsetof(struct h2d_conf_listen, http1.log),
-		.u.table = &h2d_log_conf_table,
+		.u.table = &h2d_log_omit_conf_table,
 	},
 	{ NULL }
 };

@@ -4,7 +4,7 @@
 #define _log(level, fmt, ...) h2d_request_log_at(r, \
 		r->c->conf_listen->http2.log, level, "http2: " fmt, ##__VA_ARGS__)
 
-#define _log_conn(level, fmt, ...) h2d_log_level(c->conf_listen->http2.log, \
+#define _log_conn(level, fmt, ...) h2d_conf_log_at(c->conf_listen->http2.log, \
 		level, "http2: " fmt, ##__VA_ARGS__)
 
 // move other where
@@ -214,10 +214,14 @@ static void h2d_http2_hook_log(http2_connection_t *h2c, const char *fmt, ...)
 		log = c->conf_listen->default_host->default_path->error_log;
 	}
 
+	char buffer[1024];
+
 	va_list ap;
 	va_start(ap, fmt);
-	h2d_log_level_v(log, H2D_LOG_DEBUG, fmt, ap);
+	vsprintf(buffer, fmt, ap);
 	va_end(ap);
+
+	h2d_log_level(log, H2D_LOG_DEBUG, "%s", buffer);
 }
 
 void h2d_http2_init(void)
@@ -229,7 +233,6 @@ void h2d_http2_init(void)
 		h2d_http2_hook_stream_close,
 		h2d_http2_hook_stream_response,
 		h2d_http2_hook_control_frame,
-		h2d_http2_hook_log,
 	};
 	http2_library_init(&hooks);
 }
@@ -304,7 +307,7 @@ void h2d_http2_connection_init(struct h2d_connection *c)
 		level = c->conf_listen->default_host->default_path->error_log->level;
 	}
 	if (level == H2D_LOG_DEBUG) {
-		http2_connection_enable_log(h2c);
+		http2_connection_enable_log(h2c, h2d_http2_hook_log);
 	}
 
 	c->is_http2 = true;
@@ -363,7 +366,7 @@ struct wuy_cflua_command h2d_conf_listen_http2_commands[] = {
 	{	.name = "log",
 		.type = WUY_CFLUA_TYPE_TABLE,
 		.offset = offsetof(struct h2d_conf_listen, http2.log),
-		.u.table = &h2d_log_conf_table,
+		.u.table = &h2d_log_omit_conf_table,
 	},
 	{ NULL }
 };

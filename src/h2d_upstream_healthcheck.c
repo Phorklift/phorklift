@@ -163,29 +163,38 @@ void h2d_upstream_healthcheck_stop(struct h2d_upstream_address *address)
 
 struct wuy_cflua_command h2d_upstream_healthcheck_commands[] = {
 	{	.name = "interval",
+		.description = "Set 0 to disable healthcheck.",
 		.type = WUY_CFLUA_TYPE_INTEGER,
 		.offset = offsetof(struct h2d_upstream_conf, healthcheck.interval),
 		.default_value.n = 0,
 		.limits.n = WUY_CFLUA_LIMITS_NON_NEGATIVE,
 	},
 	{	.name = "fails",
+		.description = "Mark an address as failure if it fails this times continuously.",
 		.type = WUY_CFLUA_TYPE_INTEGER,
 		.offset = offsetof(struct h2d_upstream_conf, healthcheck.fails),
 		.default_value.n = 1,
 		.limits.n = WUY_CFLUA_LIMITS_POSITIVE,
 	},
 	{	.name = "passes",
+		.description = "Recover an address if it responses well this times continuously.",
 		.type = WUY_CFLUA_TYPE_INTEGER,
 		.offset = offsetof(struct h2d_upstream_conf, healthcheck.passes),
 		.default_value.n = 3,
 		.limits.n = WUY_CFLUA_LIMITS_POSITIVE,
 	},
 	{	.name = "request",
+		.description = "Request string. If not set, connected is considered as success.",
 		.type = WUY_CFLUA_TYPE_STRING,
 		.offset = offsetof(struct h2d_upstream_conf, healthcheck.req_str),
 		.u.length_offset = offsetof(struct h2d_upstream_conf, healthcheck.req_len),
 	},
 	{	.name = "response",
+		.description = "Response string used for comparison check. "
+			"String `*` means accepting any response; "
+			"leading `=` means exactly comparison; "
+			"leading `~` means regex comparison in Lua's rule; "
+			"otherwise, means prefix comparison.",
 		.type = WUY_CFLUA_TYPE_STRING,
 		.offset = offsetof(struct h2d_upstream_conf, healthcheck.resp_str),
 		.u.length_offset = offsetof(struct h2d_upstream_conf, healthcheck.resp_len),

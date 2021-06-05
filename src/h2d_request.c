@@ -23,6 +23,7 @@ struct h2d_request *h2d_request_new(struct h2d_connection *c)
 	r->id = c->request_id++;
 	r->c = c;
 	r->pool = pool;
+	r->error_log = c->conf_listen->default_host->default_path->error_log;
 
 	h2d_request_log(r, H2D_LOG_DEBUG, "new request");
 
@@ -96,7 +97,7 @@ static void h2d_request_access_log(struct h2d_request *r)
 		return;
 	}
 
-	struct h2d_conf_access_log *log = &r->conf_path->access_log;
+	struct h2d_conf_access_log *log = r->conf_path->access_log;
 
 	if (log->sampling_rate == 0) {
 		return;
@@ -328,50 +329,63 @@ static int h2d_request_receive_body_sync(struct h2d_request *r)
 	return h2d_http1_request_body(r);
 }
 
-static int h2d_request_locate_conf(struct h2d_request *r)
+static int h2d_request_locate_conf_host(struct h2d_request *r)
 {
-	/* locate host */
+	if (r->conf_host != NULL) { /* subrequest's conf_host has been set */
+		return H2D_OK;
+	}
+
+	r->conf_host = h2d_conf_host_locate(r->c->conf_listen, r->req.host);
 	if (r->conf_host == NULL) {
-		r->conf_host = h2d_conf_host_locate(r->c->conf_listen, r->req.host);
-		if (r->conf_host == NULL) {
-			h2d_request_log(r, H2D_LOG_INFO, "no host matched: %s", r->req.host);
-			return H2D_ERROR;
-		}
-		if (r->c->ssl_sni_conf_host != NULL && r->conf_host != r->c->ssl_sni_conf_host) {
-			h2d_request_log(r, H2D_LOG_DEBUG, "wanring: ssl_sni_conf_host not match");
-		}
+		h2d_request_log(r, H2D_LOG_INFO, "no host matched: %s", r->req.host);
+		return H2D_ERROR;
 	}
 
-	/* locate path */
+	r->error_log = r->conf_host->default_path->error_log;
+
+	if (r->c->ssl_sni_conf_host != NULL && r->conf_host != r->c->ssl_sni_conf_host) {
+		h2d_request_log(r, H2D_LOG_DEBUG, "wanring: ssl_sni_conf_host not match");
+	}
+	return H2D_OK;
+}
+
+static int h2d_request_locate_conf_path(struct h2d_request *r)
+{
+	if (r->conf_path != NULL) {
+		goto dynamic_get;
+	}
+
+	const char *uri_path = r->named_path ? r->named_path : r->req.uri.path;
+	if (uri_path == NULL) {
+		h2d_request_log(r, H2D_LOG_INFO, "no request path");
+		return H2D_ERROR;
+	}
+	r->conf_path = h2d_conf_path_locate(r->conf_host, uri_path);
 	if (r->conf_path == NULL) {
-		const char *uri_path = r->named_path ? r->named_path : r->req.uri.path;
-		if (uri_path == NULL) {
-			h2d_request_log(r, H2D_LOG_INFO, "no request path");
-			return H2D_ERROR;
-		}
-		r->conf_path = h2d_conf_path_locate(r->conf_host, uri_path);
-		if (r->conf_path == NULL) {
-			r->conf_path = r->conf_host->default_path;
-			h2d_request_log(r, H2D_LOG_DEBUG, "no path matched: %s", uri_path);
-			return WUY_HTTP_404;
-		}
-		while (h2d_dynamic_is_enabled(&r->conf_path->dynamic)) {
-			h2d_request_log(r, H2D_LOG_DEBUG, "get dynamic sub_path");
-			struct h2d_conf_path *sub_path = h2d_dynamic_get(&r->conf_path->dynamic, r);
-			if (!H2D_PTR_IS_OK(sub_path)) {
-				return H2D_PTR2RET(sub_path);
-			}
-			r->conf_path = sub_path;
-		}
-
-		/* check some path-confs */
-		if (r->conf_path->req_body_max != 0
-				&& r->req.content_length != H2D_CONTENT_LENGTH_INIT
-				&& r->req.content_length > r->conf_path->req_body_max) {
-			return WUY_HTTP_413;
-		}
+		r->conf_path = r->conf_host->default_path;
+		h2d_request_log(r, H2D_LOG_DEBUG, "no path matched: %s", uri_path);
+		return WUY_HTTP_404;
 	}
 
+	r->error_log = r->conf_path->error_log;
+
+dynamic_get:
+	while (h2d_dynamic_is_enabled(&r->conf_path->dynamic)) {
+		h2d_request_log(r, H2D_LOG_DEBUG, "get dynamic sub_path");
+		struct h2d_conf_path *sub_path = h2d_dynamic_get(&r->conf_path->dynamic, r);
+		if (!H2D_PTR_IS_OK(sub_path)) {
+			return H2D_PTR2RET(sub_path);
+		}
+		r->conf_path = sub_path;
+		r->error_log = r->conf_path->error_log;
+	}
+
+	/* check some path-confs */
+	if (r->conf_path->req_body_max != 0
+			&& r->req.content_length != H2D_CONTENT_LENGTH_INIT
+			&& r->req.content_length > r->conf_path->req_body_max) {
+		return WUY_HTTP_413;
+	}
 	return H2D_OK;
 }
 
@@ -567,8 +581,11 @@ void h2d_request_run(struct h2d_request *r)
 	case H2D_REQUEST_STATE_RECEIVE_HEADERS:
 		ret = h2d_request_receive_headers(r);
 		break;
-	case H2D_REQUEST_STATE_LOCATE_CONF:
-		ret = h2d_request_locate_conf(r);
+	case H2D_REQUEST_STATE_LOCATE_CONF_HOST:
+		ret = h2d_request_locate_conf_host(r);
+		break;
+	case H2D_REQUEST_STATE_LOCATE_CONF_PATH:
+		ret = h2d_request_locate_conf_path(r);
 		break;
 	case H2D_REQUEST_STATE_RECEIVE_BODY_SYNC:
 		ret = h2d_request_receive_body_sync(r);
@@ -600,32 +617,29 @@ void h2d_request_run(struct h2d_request *r)
 
 	h2d_request_log(r, H2D_LOG_DEBUG, "}}} state:%d ret:%d", r->state, ret);
 
+	if (ret == H2D_OK || ret == H2D_BREAK) {
+		r->state++; /* next step */
+		return h2d_request_run(r);
+	}
+
 	if (ret == H2D_AGAIN) {
 		return;
 	}
-	if (ret == H2D_BREAK) {
-		ret = H2D_OK;
-	}
+
 	if (ret == H2D_ERROR) {
 		if (r->resp.status_code != 0) {
 			ret = r->resp.status_code;
 		} else if (r->state <= H2D_REQUEST_STATE_RESPONSE_HEADERS_1) {
-			h2d_request_log(r, H2D_LOG_ERROR, "should not be here");
 			ret = WUY_HTTP_500;
 		} else {
 			h2d_request_close(r);
 			return;
 		}
 	}
-
-	if (ret != H2D_OK) { /* returns status code and breaks the normal process */
-		r->is_broken = true;
-		r->resp.status_code = ret;
-		r->state = H2D_REQUEST_STATE_RESPONSE_HEADERS_1;
-	} else {
-		r->state++;
-	}
-
+	/* returns status code and breaks the normal process */
+	r->is_broken = true;
+	r->resp.status_code = ret;
+	r->state = H2D_REQUEST_STATE_RESPONSE_HEADERS_1;
 	return h2d_request_run(r);
 }
 

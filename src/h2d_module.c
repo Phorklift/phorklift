@@ -18,28 +18,47 @@ struct h2d_module_filters {
 };
 
 
-int h2d_module_number = H2D_MODULE_STATIC_NUMBER;
+/* only used in worker process */
+int h2d_module_number;
 
 #define X(m) extern struct h2d_module m;
 H2D_MODULE_X_LIST
 #undef X
-static struct h2d_module *h2d_modules[H2D_MODULE_MAX] =
+static struct h2d_module *h2d_module_statics[] =
 {
 	#define X(m) &m,
 	H2D_MODULE_X_LIST
 	#undef X
 };
 
-static struct wuy_cflua_command *h2d_module_next_command(struct wuy_cflua_command *cmd, unsigned offset)
+/* iteration on static and dynamic modules */
+struct h2d_module *h2d_module_next(struct h2d_module *m)
 {
-	int index = 0;
+	if (m == NULL) {
+		return h2d_module_statics[0];
+	}
+	int next = m->index + 1;
+	if (next < H2D_MODULE_STATIC_NUMBER) {
+		return h2d_module_statics[next];
+	}
+	if (h2d_conf_runtime == NULL || h2d_conf_runtime->dynamic_modules == NULL) {
+		return NULL;
+	}
+	return h2d_conf_runtime->dynamic_modules[next - H2D_MODULE_STATIC_NUMBER].sym;
+}
+
+#define H2D_MODULE_TO_MEMBER(m, offset) (void *)((char *)m + offset)
+#define H2D_MODULE_FROM_MEMBER(m, offset) (void *)((char *)m - offset)
+static struct wuy_cflua_command *h2d_module_next_command(
+		struct wuy_cflua_command *cmd, off_t offset)
+{
+	struct h2d_module *m = NULL;
 	if (cmd->type != WUY_CFLUA_TYPE_END || cmd->u.next == NULL) {
-		struct h2d_module *m = (struct h2d_module *)((char *)cmd - offset);
-		index = m->index + 1;
+		m = H2D_MODULE_FROM_MEMBER(cmd, offset);
 	}
 
-	for (; index < h2d_module_number; index++) {
-		struct wuy_cflua_command *next = (void *)(((char *)h2d_modules[index]) + offset);
+	while ((m = h2d_module_next(m)) != NULL) {
+		struct wuy_cflua_command *next = H2D_MODULE_TO_MEMBER(m, offset);
 		if (next->type != WUY_CFLUA_TYPE_END) {
 			return next;
 		}
@@ -59,140 +78,67 @@ struct wuy_cflua_command *h2d_module_next_path_command(struct wuy_cflua_command 
 	return h2d_module_next_command(cmd, offsetof(struct h2d_module, command_path));
 }
 
-void h2d_module_stats_listen(struct h2d_conf_listen *conf_listen, wuy_json_t *json)
+static void h2d_module_stats(void **confs, wuy_json_t *json, off_t offset)
 {
-	for (int i = 0; i < h2d_module_number; i++) {
-		struct h2d_module *m = h2d_modules[i];
-		if (m->stats_listen != NULL) {
-			m->stats_listen(conf_listen->module_confs[i], json);
+	struct h2d_module *m = NULL;
+	while ((m = h2d_module_next(m)) != NULL) {
+		void (*stats)(void *, wuy_json_t *) = *(void **)H2D_MODULE_TO_MEMBER(m, offset);
+		if (stats != NULL && confs[m->index] != NULL) {
+			stats(confs[m->index], json);
 		}
 	}
+}
+void h2d_module_stats_listen(struct h2d_conf_listen *conf_listen, wuy_json_t *json)
+{
+	h2d_module_stats(conf_listen->module_confs, json, offsetof(struct h2d_module, stats_listen));
 }
 void h2d_module_stats_host(struct h2d_conf_host *conf_host, wuy_json_t *json)
 {
-	for (int i = 0; i < h2d_module_number; i++) {
-		struct h2d_module *m = h2d_modules[i];
-		if (m->stats_host != NULL) {
-			m->stats_host(conf_host->module_confs[i], json);
-		}
-	}
+	h2d_module_stats(conf_host->module_confs, json, offsetof(struct h2d_module, stats_host));
 }
 void h2d_module_stats_path(struct h2d_conf_path *conf_path, wuy_json_t *json)
 {
-	for (int i = 0; i < h2d_module_number; i++) {
-		struct h2d_module *m = h2d_modules[i];
-		if (m->stats_path != NULL) {
-			m->stats_path(conf_path->module_confs[i], json);
-		}
-	}
+	h2d_module_stats(conf_path->module_confs, json, offsetof(struct h2d_module, stats_path));
 }
 
-void h2d_module_dynamic_add(const char *filename)
+static void h2d_module_fix(struct h2d_module *m, int i)
 {
-	if (h2d_module_number++ >= H2D_MODULE_MAX) {
-		fprintf(stderr, "excess dynamic module limit: %d\n", H2D_MODULE_DYNAMIC_MAX);
-		exit(H2D_EXIT_DYNAMIC);
-	}
+	m->index = i;
 
-	/* make the module name */
-	const char *p = strrchr(filename, '/');
-	if (p == NULL) {
-		p = filename;
-	} else {
-		p++;
-	}
+	off_t offset = sizeof(void *) * i;
+	m->command_listen.offset = offsetof(struct h2d_conf_listen, module_confs) + offset;
+	m->command_host.offset = offsetof(struct h2d_conf_host, module_confs) + offset;
+	m->command_path.offset = offsetof(struct h2d_conf_path, module_confs) + offset;
 
-	int len = strlen(p);
-	if (memcmp(p, "h2d_", 4) != 0 || memcmp(p + len - 3, ".so", 3) != 0) {
-		fprintf(stderr, "invalid dynamic module filename: %s\n", filename);
-		exit(H2D_EXIT_DYNAMIC);
-	}
-
-	char mod_name[len + sizeof("_module") - 3];
-	memcpy(mod_name, p, len - 3);
-	memcpy(mod_name + len - 3, "_module", 7);
-	mod_name[len + 7 - 3] = '\0';
-
-	/* load */
-	void *dyn = dlopen(filename, RTLD_NOW | RTLD_NODELETE);
-	if (dyn == NULL) {
-		fprintf(stderr, "fail in dlopen: %s\n", dlerror());
-		exit(H2D_EXIT_DYNAMIC);
-	}
-	void *m = dlsym(dyn, mod_name);
-	if (m == NULL) {
-		fprintf(stderr, "fail in dlsym: %s\n", dlerror());
-		exit(H2D_EXIT_DYNAMIC);
-	}
-	dlclose(dyn);
-
-	if (memcmp(mod_name, "h2d_upstream_", 13) == 0) {
-		h2d_upstream_dynamic_add(m);
-	} else {
-		h2d_modules[h2d_module_number++] = m;
-	}
-	printf("load module: %s\n", mod_name);
-}
-
-void h2d_module_dynamic_list_add(const char *filename)
-{
-	FILE *fp = fopen(filename, "r");
-	if (fp == NULL) {
-		fprintf(stderr, "error in open module list file: %s: %s\n",
-				filename, strerror(errno));
-		exit(H2D_EXIT_DYNAMIC);
-	}
-
-	char line[2000];
-	while (fgets(line, sizeof(line), fp) != NULL) {
-		if (line[0] == '#' || line[0] == '\0') {
-			continue;
-		}
-		char *p_end = line + strlen(line);
-		if (*p_end == '\n') {
-			*p_end = '\0';
-		}
-		h2d_module_dynamic_add(line);
-	}
+	m->command_path.inherit_count_offset = offsetof(struct h2d_conf_path, content_inherit_counts) + sizeof(int) * i;
 }
 
 void h2d_module_master_init(void)
 {
-	for (int i = 0; i < h2d_module_number; i++) {
-		struct h2d_module *m = h2d_modules[i];
-		m->index = i;
-
-		off_t offset = sizeof(void *) * i;
-		m->command_listen.offset = offsetof(struct h2d_conf_listen, module_confs) + offset;
-		m->command_host.offset = offsetof(struct h2d_conf_host, module_confs) + offset;
-		m->command_path.offset = offsetof(struct h2d_conf_path, module_confs) + offset;
-
-		m->command_path.inherit_count_offset = offsetof(struct h2d_conf_path, content_inherit_counts) + sizeof(int) * i;
-
+	/* init static modules only */
+	for (int i = 0; i < H2D_MODULE_STATIC_NUMBER; i++) {
+		struct h2d_module *m = h2d_module_statics[i];
+		h2d_module_fix(m, i);
 		if (m->master_init != NULL) {
 			m->master_init();
 		}
 	}
 }
 
-void h2d_module_master_post(void)
-{
-	int i;
-	for (i = 0; i < h2d_module_number; i++) {
-		struct h2d_module *m = h2d_modules[i];
-		if (m->master_post != NULL) {
-			if (!m->master_post()) {
-				exit(H2D_EXIT_MODULE_INIT);
-			}
-		}
-	}
-}
-
 void h2d_module_worker_init(void)
 {
-	int i;
-	for (i = 0; i < h2d_module_number; i++) {
-		struct h2d_module *m = h2d_modules[i];
+	h2d_module_number = 0; /* this can be used only after this function */
+
+	struct h2d_module *m = NULL;
+	while ((m = h2d_module_next(m)) != NULL) {
+		h2d_module_number++;
+
+		if (h2d_module_number > H2D_MODULE_STATIC_NUMBER) {
+			/* fix dynamic module again, because it may be changed
+			 * because of failure in reloading configuration */
+			h2d_module_fix(m, h2d_module_number - 1);
+		}
+
 		if (m->worker_init != NULL) {
 			m->worker_init();
 		}
@@ -248,29 +194,10 @@ bool h2d_module_command_is_set(struct wuy_cflua_command *cmd, void *conf)
 	}
 }
 
-struct h2d_module *h2d_module_content_is_enabled(int i, void *conf)
-{
-	struct h2d_module *m = h2d_modules[i];
-
-	if (m->content.response_headers == NULL) {
-		return NULL;
-	}
-
-	bool is_enabled;
-	if (m->content.is_enabled != NULL) {
-		is_enabled = m->content.is_enabled(conf);
-	} else {
-		is_enabled = h2d_module_command_is_set(&m->command_path, conf);
-	}
-
-	return is_enabled ? m : NULL;
-}
-
 void h2d_module_request_ctx_free(struct h2d_request *r)
 {
-	int i;
-	for (i = 0; i < h2d_module_number; i++) {
-		struct h2d_module *m = h2d_modules[i];
+	struct h2d_module *m = NULL;
+	while ((m = h2d_module_next(m)) != NULL) {
 		if (m->ctx_free != NULL && r->module_ctxs[m->index] != NULL) {
 			m->ctx_free(r);
 		}
@@ -364,9 +291,8 @@ static const char *h2d_module_filters_arbitrary(lua_State *L, void *data)
 	const char *name = lua_tostring(L, -2);
 
 	struct h2d_module *m = NULL;
-	for (int i = 0; i < h2d_module_number; i++) {
-		if (strcmp(h2d_modules[i]->name, name) == 0) {
-			m = h2d_modules[i];
+	while ((m = h2d_module_next(m)) != NULL) {
+		if (strcmp(m->name, name) == 0) {
 			break;
 		}
 	}
@@ -394,8 +320,10 @@ static void h2d_module_filters_init(void *data)
 	struct h2d_module_filters *conf = data;
 
 	for (int i = 0; i < H2D_MODULE_FILTER_NUM; i++) {
-		for (int j = 0; j < h2d_module_number; j++) {
-			conf->ranks[i][j] = NAN;
+		int j = 0;
+		struct h2d_module *m = NULL;
+		while ((m = h2d_module_next(m)) != NULL) {
+			conf->ranks[i][j++] = NAN;
 		}
 	}
 }
@@ -404,8 +332,8 @@ static const char *h2d_module_filters_post(void *data)
 	struct h2d_module_filters *conf = data;
 
 	int counts[H2D_MODULE_FILTER_NUM] = {0};
-	for (int i = 0; i < h2d_module_number; i++) {
-		struct h2d_module *m = h2d_modules[i];
+	struct h2d_module *m = NULL;
+	while ((m = h2d_module_next(m)) != NULL) {
 		if (m->filters.process_headers) {
 			int j = H2D_MODULE_FILTER_PROCESS_HEADERS;
 			conf->modules[j][counts[j]++] = m;
@@ -439,4 +367,117 @@ struct wuy_cflua_table h2d_module_filters_conf_table = {
 	.arbitrary = h2d_module_filters_arbitrary,
 	.init = h2d_module_filters_init,
 	.post = h2d_module_filters_post,
+};
+
+
+static const char *h2d_module_dynamic_load(struct h2d_module_dynamic *d)
+{
+	h2d_conf_log(H2D_LOG_INFO, "load dynamic module %s", d->filename);
+
+	/* make the module name */
+	const char *p = strrchr(d->filename, '/');
+	if (p == NULL) {
+		p = d->filename;
+	} else {
+		p++;
+	}
+
+	int len = strlen(p);
+	if (memcmp(p, "h2d_", 4) != 0 || memcmp(p + len - 3, ".so", 3) != 0) {
+		return "invalid dynamic module filename format; must be 'h2d_*.so'";
+	}
+
+	char mod_name[len + sizeof("_module") - 3];
+	memcpy(mod_name, p, len - 3);
+	memcpy(mod_name + len - 3, "_module", 7);
+	mod_name[len + 7 - 3] = '\0';
+
+	/* load */
+	d->dl_handle = dlopen(d->filename, RTLD_NOW);
+	if (d->dl_handle == NULL) {
+		return "fail in open dynamic module";
+	}
+	d->sym = dlsym(d->dl_handle, mod_name);
+	if (d->sym == NULL) {
+		return "fail in load dynamic module";
+	}
+
+	return WUY_CFLUA_OK;
+}
+
+static const char *h2d_module_dynamic_post(void *data)
+{
+	struct h2d_module_dynamic *modules = *(struct h2d_module_dynamic **)data;
+	if (modules == NULL) {
+		return WUY_CFLUA_OK;
+	}
+
+	for (struct h2d_module_dynamic *d = modules; d->filename != NULL; d++) {
+		const char *err = h2d_module_dynamic_load(d);
+		if (err != WUY_CFLUA_OK) {
+			wuy_cflua_post_arg = d->filename;
+			return err;
+		}
+
+		struct h2d_module *m = d->sym;
+		h2d_module_fix(m, H2D_MODULE_STATIC_NUMBER + (d - modules));
+
+		if (m->master_init != NULL) {
+			m->master_init();
+			m->master_init = NULL;
+		}
+	}
+
+	return WUY_CFLUA_OK;
+}
+
+static const char *h2d_module_dynamic_upstream_post(void *data)
+{
+	struct h2d_module_dynamic *modules = *(struct h2d_module_dynamic **)data;
+	if (modules == NULL) {
+		return WUY_CFLUA_OK;
+	}
+
+	for (struct h2d_module_dynamic *d = modules; d->filename != NULL; d++) {
+		const char *err = h2d_module_dynamic_load(d);
+		if (err != WUY_CFLUA_OK) {
+			wuy_cflua_post_arg = d->filename;
+			return err;
+		}
+
+		h2d_upstream_dynamic_module_fix(d->sym, d - modules);
+	}
+
+	return WUY_CFLUA_OK;
+}
+
+static void h2d_module_dynamic_free(void *data)
+{
+	struct h2d_module_dynamic *modules = *(struct h2d_module_dynamic **)data;
+	if (modules == NULL) {
+		return;
+	}
+
+	for (struct h2d_module_dynamic *d = modules; d->filename != NULL; d++) {
+		dlclose(d->dl_handle);
+	}
+}
+
+static struct wuy_cflua_command h2d_module_dynamic_commands[] = {
+	{	.type = WUY_CFLUA_TYPE_STRING,
+		.offset = 0,
+		.array_member_size = sizeof(struct h2d_module_dynamic),
+	},
+	{ NULL }
+};
+struct wuy_cflua_table h2d_module_dynamic_table = {
+	.commands = h2d_module_dynamic_commands,
+	.post = h2d_module_dynamic_post,
+	.free = h2d_module_dynamic_free,
+};
+
+struct wuy_cflua_table h2d_module_dynamic_upstream_table = {
+	.commands = h2d_module_dynamic_commands,
+	.post = h2d_module_dynamic_upstream_post,
+	.free = h2d_module_dynamic_free,
 };

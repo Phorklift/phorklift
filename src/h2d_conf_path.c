@@ -108,15 +108,21 @@ static const char *h2d_conf_path_post(void *data)
 	}
 
 	/* there is one and only one content module is enabled */
+	int i = 0;
 	struct h2d_module *same_level_mod = NULL;
-	for (int i = 0; i < h2d_module_number; i++) {
-		void *mod_conf = conf_path->module_confs[i];
+	struct h2d_module *m = NULL;
+	while ((m = h2d_module_next(m)) != NULL) {
+		void *mod_conf = conf_path->module_confs[i++];
 		if (mod_conf == NULL) {
 			continue;
 		}
+		if (m->content.response_headers == NULL) {
+			continue;
+		}
 
-		struct h2d_module *m = h2d_module_content_is_enabled(i, mod_conf);
-		if (m == NULL) {
+		bool enabled = (m->content.is_enabled != NULL) ? m->content.is_enabled(mod_conf)
+				: h2d_module_command_is_set(&m->command_path, mod_conf);
+		if (!enabled) {
 			continue;
 		}
 
@@ -126,7 +132,7 @@ static const char *h2d_conf_path_post(void *data)
 		}
 
 		/* compare inherit_count, pick the smaller */
-		int inherit_count_new = conf_path->content_inherit_counts[i];
+		int inherit_count_new = conf_path->content_inherit_counts[i-1];
 		int inherit_count_old = conf_path->content_inherit_counts[conf_path->content->index];
 		if (inherit_count_new == inherit_count_old) {
 			same_level_mod = m;
@@ -153,60 +159,75 @@ static const char *h2d_conf_path_post(void *data)
 		conf_path->name = conf_path->pathnames ? conf_path->pathnames[0] : "_default";
 	}
 
-	/* access log */
-	struct h2d_conf_access_log *log = &conf_path->access_log;
+	conf_path->stats = wuy_shmpool_alloc(sizeof(struct h2d_conf_path_stats));
+
+	return WUY_CFLUA_OK;
+}
+
+static const char *h2d_conf_path_access_log_post(void *data)
+{
+	struct h2d_conf_access_log *log = data;
+
 	if (log->max_line > log->buf_size) {
-		return "access_log asks for max_line <= buffer_size";
+		return "expect max_line <= buffer_size";
 	}
 	if (log->filename == NULL) {
 		log->filename = "access.log";
 	}
 	log->file = h2d_log_file_open(log->filename, log->buf_size);
 	if (log->file == NULL) {
-		return "fail in open access_log file";
+		wuy_cflua_post_arg = log->filename;
+		return "fail in open file";
 	}
-
-	conf_path->stats = wuy_shmpool_alloc(sizeof(struct h2d_conf_path_stats));
-
 	return WUY_CFLUA_OK;
 }
 
 static struct wuy_cflua_command h2d_conf_path_access_log_commands[] = {
 	{	.type = WUY_CFLUA_TYPE_STRING,
 		.is_single_array = true,
-		.offset = offsetof(struct h2d_conf_path, access_log.filename),
+		.offset = offsetof(struct h2d_conf_access_log, filename),
 	},
 	{	.name = "sampling_rate",
 		.type = WUY_CFLUA_TYPE_DOUBLE,
-		.offset = offsetof(struct h2d_conf_path, access_log.sampling_rate),
+		.offset = offsetof(struct h2d_conf_access_log, sampling_rate),
 		.limits.d = WUY_CFLUA_LIMITS(0, 1),
 		.default_value.d = 1,
 	},
-	{	.name = "replace_format",
-		.type = WUY_CFLUA_TYPE_BOOLEAN,
-		.offset = offsetof(struct h2d_conf_path, access_log.replace_format),
-	},
 	{	.name = "format",
+		.description = "Log more fields.",
 		.type = WUY_CFLUA_TYPE_FUNCTION,
-		.offset = offsetof(struct h2d_conf_path, access_log.format),
+		.offset = offsetof(struct h2d_conf_access_log, format),
+	},
+	{	.name = "replace_format",
+		.description = "If set, log `format` only; otherwise append `format` after default fields.",
+		.type = WUY_CFLUA_TYPE_BOOLEAN,
+		.offset = offsetof(struct h2d_conf_access_log, replace_format),
 	},
 	{	.name = "filter",
+		.description = "Log requests only if this function returns true.",
 		.type = WUY_CFLUA_TYPE_FUNCTION,
-		.offset = offsetof(struct h2d_conf_path, access_log.filter),
+		.offset = offsetof(struct h2d_conf_access_log, filter),
 	},
 	{	.name = "buffer_size",
 		.type = WUY_CFLUA_TYPE_INTEGER,
-		.offset = offsetof(struct h2d_conf_path, access_log.buf_size),
+		.offset = offsetof(struct h2d_conf_access_log, buf_size),
 		.limits.n = WUY_CFLUA_LIMITS_LOWER(4 * 1024),
 		.default_value.n = 16 * 1024,
 	},
 	{	.name = "max_line",
 		.type = WUY_CFLUA_TYPE_INTEGER,
-		.offset = offsetof(struct h2d_conf_path, access_log.max_line),
+		.offset = offsetof(struct h2d_conf_access_log, max_line),
 		.default_value.n = 2 * 1024,
 	},
 	{ NULL },
 };
+
+struct wuy_cflua_table h2d_conf_path_access_log_table = {
+	.commands = h2d_conf_path_access_log_commands,
+	.size = sizeof(struct h2d_conf_access_log),
+	.post = h2d_conf_path_access_log_post,
+};
+
 static struct wuy_cflua_command h2d_conf_path_commands[] = {
 	{	.name = "_pathnames",
 		.type = WUY_CFLUA_TYPE_TABLE,
@@ -228,11 +249,15 @@ static struct wuy_cflua_command h2d_conf_path_commands[] = {
 		.u.table = &h2d_module_filters_conf_table,
 	},
 	{	.name = "req_body_sync",
+		.description = "If set, process the request only after receiving request body complete. "
+			"For example if you want to accept a big-file uploading to the server, "
+			"set this to false to write the request body to file in stream mode.",
 		.type = WUY_CFLUA_TYPE_BOOLEAN,
 		.offset = offsetof(struct h2d_conf_path, req_body_sync),
 		.default_value.b = true,
 	},
 	{	.name = "req_body_max",
+		.description = "Max memory buffer for request body.",
 		.type = WUY_CFLUA_TYPE_INTEGER,
 		.offset = offsetof(struct h2d_conf_path, req_body_max),
 		.default_value.n = 16 * 1024,
@@ -245,7 +270,8 @@ static struct wuy_cflua_command h2d_conf_path_commands[] = {
 	},
 	{	.name = "access_log",
 		.type = WUY_CFLUA_TYPE_TABLE,
-		.u.table = &(struct wuy_cflua_table) { h2d_conf_path_access_log_commands },
+		.offset = offsetof(struct h2d_conf_path, access_log),
+		.u.table = &h2d_conf_path_access_log_table,
 	},
 	{	.type = WUY_CFLUA_TYPE_END,
 		.u.next = h2d_module_next_path_command,

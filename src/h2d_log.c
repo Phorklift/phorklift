@@ -118,7 +118,7 @@ static const char *h2d_log_conf_post(void *data)
 	struct h2d_log *log = data;
 
 	log->level = h2d_log_parse_level(log->level_str);
-	if (log->level < 0) {
+	if (log->level == -1) {
 		return "invalid log level";
 	}
 	if (log->buf_size == 0) {
@@ -129,7 +129,7 @@ static const char *h2d_log_conf_post(void *data)
 	}
 
 	if (log->filename == NULL) {
-		log->filename = "error.log";
+		log->filename = (h2d_conf_runtime != NULL) ? h2d_conf_runtime->error_log->filename : "error.log";
 	}
 	log->file = h2d_log_file_open(log->filename, log->buf_size);
 	if (log->file == NULL) {
@@ -152,7 +152,6 @@ static struct wuy_cflua_command h2d_log_conf_commands[] = {
 	{	.type = WUY_CFLUA_TYPE_STRING,
 		.is_single_array = true,
 		.offset = offsetof(struct h2d_log, filename),
-		.meta_level_offset = offsetof(struct h2d_log, filename_meta_level),
 	},
 	{	.name = "buffer_size",
 		.type = WUY_CFLUA_TYPE_INTEGER,
@@ -169,7 +168,6 @@ static struct wuy_cflua_command h2d_log_conf_commands[] = {
 	{	.name = "level",
 		.type = WUY_CFLUA_TYPE_STRING,
 		.offset = offsetof(struct h2d_log, level_str),
-		.meta_level_offset = offsetof(struct h2d_log, level_meta_level),
 		.default_value.s = "error",
 	},
 	{ NULL },
@@ -177,6 +175,14 @@ static struct wuy_cflua_command h2d_log_conf_commands[] = {
 struct wuy_cflua_table h2d_log_conf_table = {
 	.commands = h2d_log_conf_commands,
 	.refer_name = "LOG",
+	.size = sizeof(struct h2d_log),
+	.post = h2d_log_conf_post,
+	.free = h2d_log_conf_free,
+};
+struct wuy_cflua_table h2d_log_omit_conf_table = {
+	.commands = h2d_log_conf_commands,
+	.refer_name = "LOG",
+	.may_omit = true,
 	.size = sizeof(struct h2d_log),
 	.post = h2d_log_conf_post,
 	.free = h2d_log_conf_free,

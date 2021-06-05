@@ -1,8 +1,8 @@
 #include "h2d_main.h"
 #include <pthread.h>
 
-#define _log(level, fmt, ...) h2d_log_level(upstream->log, level, "upstream: %s " fmt, \
-		upstream->name, ##__VA_ARGS__)
+#define _log(level, fmt, ...) h2d_conf_log_at(upstream->log, level, \
+		"upstream: %s " fmt, upstream->name, ##__VA_ARGS__)
 
 
 static void h2d_upstream_address_defer_free(struct h2d_upstream_conf *upstream)

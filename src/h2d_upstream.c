@@ -3,7 +3,7 @@
 #define X(lb) extern struct h2d_upstream_loadbalance lb;
 H2D_UPSTREAM_LOADBALANCE_X_LIST
 #undef X
-static struct h2d_upstream_loadbalance *h2d_upstream_loadbalances[H2D_UPSTREAM_LOADBALANCE_MAX] =
+static struct h2d_upstream_loadbalance *h2d_upstream_loadbalance_statics[] =
 {
 	#define X(lb) &lb,
 	H2D_UPSTREAM_LOADBALANCE_X_LIST
@@ -11,8 +11,6 @@ static struct h2d_upstream_loadbalance *h2d_upstream_loadbalances[H2D_UPSTREAM_L
 };
 
 static WUY_LIST(h2d_upstream_list);
-
-static int h2d_upstream_loadbalance_number = H2D_UPSTREAM_LOADBALANCE_STATIC_NUMBER;
 
 #define _log(level, fmt, ...) h2d_request_log_at(r, \
 		upstream->log, level, "upstream: " fmt, ##__VA_ARGS__)
@@ -323,23 +321,40 @@ int h2d_upstream_connection_write(struct h2d_upstream_connection *upc,
 	return H2D_OK;
 }
 
-void h2d_upstream_dynamic_add(struct h2d_upstream_loadbalance *m)
+static void h2d_upstream_loadbalance_module_fix(struct h2d_upstream_loadbalance *lb, int i)
 {
-	if (h2d_upstream_loadbalance_number >= H2D_UPSTREAM_LOADBALANCE_MAX) {
-		fprintf(stderr, "excess dynamic upstream module limit: %d\n",
-				H2D_UPSTREAM_LOADBALANCE_MAX);
-		exit(H2D_EXIT_DYNAMIC);
-	}
-	h2d_upstream_loadbalances[h2d_upstream_loadbalance_number++] = m;
+	lb->index = i;
+	lb->command.offset = offsetof(struct h2d_upstream_conf, lb_confs) + sizeof(void *) * i;
+}
+
+void h2d_upstream_dynamic_module_fix(struct h2d_upstream_loadbalance *m, int i)
+{
+	h2d_upstream_loadbalance_module_fix(m, H2D_UPSTREAM_LOADBALANCE_STATIC_NUMBER + i);
 }
 
 void h2d_upstream_init(void)
 {
-	for (int i = 0; i < h2d_upstream_loadbalance_number; i++) {
-		struct h2d_upstream_loadbalance *lb = h2d_upstream_loadbalances[i];
-		lb->index = i;
-		lb->command.offset = offsetof(struct h2d_upstream_conf, lb_confs) + sizeof(void *) * i;
+	/* static modules only here */
+	for (int i = 0; i < H2D_UPSTREAM_LOADBALANCE_STATIC_NUMBER; i++) {
+		struct h2d_upstream_loadbalance *lb = h2d_upstream_loadbalance_statics[i];
+		h2d_upstream_loadbalance_module_fix(lb, i);
 	}
+}
+
+/* iteration on static and dynamic modules */
+struct h2d_upstream_loadbalance *h2d_upstream_loadbalance_next(struct h2d_upstream_loadbalance *lb)
+{
+	if (lb == NULL) {
+		return h2d_upstream_loadbalance_statics[0];
+	}
+	int next = lb->index + 1;
+	if (next < H2D_UPSTREAM_LOADBALANCE_STATIC_NUMBER) {
+		return h2d_upstream_loadbalance_statics[next];
+	}
+	if (h2d_conf_runtime == NULL || h2d_conf_runtime->dynamic_upstream_modules == NULL) {
+		return NULL;
+	}
+	return h2d_conf_runtime->dynamic_upstream_modules[next - H2D_UPSTREAM_LOADBALANCE_STATIC_NUMBER].sym;
 }
 
 bool h2d_upstream_address_is_pickable(struct h2d_upstream_address *address,
@@ -369,9 +384,11 @@ bool h2d_upstream_address_is_pickable(struct h2d_upstream_address *address,
 
 static const char *h2d_upstream_conf_loadbalance_select(struct h2d_upstream_conf *conf)
 {
-	for (int i = 1; i < h2d_upstream_loadbalance_number; i++) {
-		struct h2d_upstream_loadbalance *lb = h2d_upstream_loadbalances[i];
-		if (h2d_module_command_is_set(&lb->command, conf->lb_confs[i])) {
+	/* skip the LB:random with index=0 */
+	int i = 1;
+	struct h2d_upstream_loadbalance *lb = h2d_upstream_loadbalance_statics[0];
+	while ((lb = h2d_upstream_loadbalance_next(lb)) != NULL) {
+		if (h2d_module_command_is_set(&lb->command, conf->lb_confs[i++])) {
 			if (conf->loadbalance != NULL) {
 				return "duplicate loadbalance";
 			}
@@ -381,7 +398,7 @@ static const char *h2d_upstream_conf_loadbalance_select(struct h2d_upstream_conf
 
 	/* default is LB:random with index=0 */
 	if (conf->loadbalance == NULL) {
-		conf->loadbalance = h2d_upstream_loadbalances[0];
+		conf->loadbalance = h2d_upstream_loadbalance_statics[0];
 	}
 
 	conf->lb_ctx = conf->loadbalance->ctx_new();
@@ -391,15 +408,13 @@ static const char *h2d_upstream_conf_loadbalance_select(struct h2d_upstream_conf
 
 static struct wuy_cflua_command *h2d_upstream_next_command(struct wuy_cflua_command *cmd)
 {
-	int index = 0;
+	struct h2d_upstream_loadbalance *lb = NULL;
 	if (cmd->type != WUY_CFLUA_TYPE_END || cmd->u.next == NULL) {
-		struct h2d_upstream_loadbalance *lb = wuy_containerof(cmd,
-				struct h2d_upstream_loadbalance, command);
-		index = lb->index + 1;
+		lb = wuy_containerof(cmd, struct h2d_upstream_loadbalance, command);
 	}
 
-	for (; index < h2d_upstream_loadbalance_number; index++) {
-		struct wuy_cflua_command *next = &h2d_upstream_loadbalances[index]->command;
+	while ((lb = h2d_upstream_loadbalance_next(lb)) != NULL) {
+		struct wuy_cflua_command *next = &lb->command;
 		if (next->type != WUY_CFLUA_TYPE_END) {
 			return next;
 		}
@@ -537,24 +552,28 @@ void h2d_upstream_stats(wuy_json_t *json)
 
 static struct wuy_cflua_command h2d_upstream_failure_commands[] = {
 	{	.name = "fails",
+		.description = "Mark an address as failure if it fails this times continuously.",
 		.type = WUY_CFLUA_TYPE_INTEGER,
 		.offset = offsetof(struct h2d_upstream_conf, failure.fails),
 		.default_value.n = 1,
 		.limits.n = WUY_CFLUA_LIMITS_NON_NEGATIVE,
 	},
 	{	.name = "passes",
+		.description = "Recover an address if it responses well this times continuously.",
 		.type = WUY_CFLUA_TYPE_INTEGER,
 		.offset = offsetof(struct h2d_upstream_conf, failure.passes),
 		.default_value.n = 3,
 		.limits.n = WUY_CFLUA_LIMITS_POSITIVE,
 	},
 	{	.name = "timeout",
+		.description = "Try to use a failure address after this time.",
 		.type = WUY_CFLUA_TYPE_INTEGER,
 		.offset = offsetof(struct h2d_upstream_conf, failure.timeout),
 		.default_value.n = 60,
 		.limits.n = WUY_CFLUA_LIMITS_POSITIVE,
 	},
 	{	.name = "filter",
+		.description = "Do not try a failure address on current request if this function returns false.",
 		.type = WUY_CFLUA_TYPE_FUNCTION,
 		.offset = offsetof(struct h2d_upstream_conf, failure.filter),
 	},
@@ -563,28 +582,33 @@ static struct wuy_cflua_command h2d_upstream_failure_commands[] = {
 
 static struct wuy_cflua_command h2d_upstream_conf_commands[] = {
 	{	.type = WUY_CFLUA_TYPE_STRING,
-		.description = "Hostnames list.",
+		.description = "Hostnames list. Delimiter '#' defines weight, e.g. `127.0.0.1:8080#0.2`.",
 		.offset = offsetof(struct h2d_upstream_conf, hostnames_str),
 		.array_number_offset = offsetof(struct h2d_upstream_conf, hostname_num),
 	},
 	{	.name = "dynamic",
+		.description = "Do not use the static-defined hostnames; "
+			"while dynamicly according to request. See `dynamic` for details.",
 		.type = WUY_CFLUA_TYPE_TABLE,
 		.offset = offsetof(struct h2d_upstream_conf, dynamic),
 		.u.table = &h2d_dynamic_conf_table,
 	},
 	{	.name = "idle_max",
+		.description = "Max idle connections.",
 		.type = WUY_CFLUA_TYPE_INTEGER,
 		.offset = offsetof(struct h2d_upstream_conf, idle_max),
 		.default_value.n = 100,
 		.limits.n = WUY_CFLUA_LIMITS_NON_NEGATIVE,
 	},
 	{	.name = "max_retries",
+		.description = "Max retry count if connecting failure or some status-codes.",
 		.type = WUY_CFLUA_TYPE_INTEGER,
 		.offset = offsetof(struct h2d_upstream_conf, max_retries),
 		.default_value.n = 1,
 		.limits.n = WUY_CFLUA_LIMITS_NON_NEGATIVE,
 	},
 	{	.name = "retry_status_codes",
+		.description = "Retry if getting these status-codes.",
 		.type = WUY_CFLUA_TYPE_TABLE,
 		.offset = offsetof(struct h2d_upstream_conf, retry_status_codes),
 		.u.table = WUY_CFLUA_ARRAY_INTEGER_TABLE,
@@ -613,6 +637,7 @@ static struct wuy_cflua_command h2d_upstream_conf_commands[] = {
 		.limits.n = WUY_CFLUA_LIMITS_NON_NEGATIVE,
 	},
 	{	.name = "resolve_interval",
+		.description = "Interval of resolving hostnames. Set 0 to disable.",
 		.type = WUY_CFLUA_TYPE_INTEGER,
 		.offset = offsetof(struct h2d_upstream_conf, resolve_interval),
 		.default_value.n = 60,
@@ -629,17 +654,19 @@ static struct wuy_cflua_command h2d_upstream_conf_commands[] = {
 		.offset = offsetof(struct h2d_upstream_conf, ssl_enable),
 	},
 	{	.name = "failure",
+		.description = "Passive healthcheck",
 		.type = WUY_CFLUA_TYPE_TABLE,
 		.u.table = &(struct wuy_cflua_table) { h2d_upstream_failure_commands },
 	},
 	{	.name = "healthcheck",
+		.description = "Active healthcheck",
 		.type = WUY_CFLUA_TYPE_TABLE,
 		.u.table = &(struct wuy_cflua_table) { h2d_upstream_healthcheck_commands },
 	},
 	{	.name = "log",
 		.type = WUY_CFLUA_TYPE_TABLE,
 		.offset = offsetof(struct h2d_upstream_conf, log),
-		.u.table = &h2d_log_conf_table,
+		.u.table = &h2d_log_omit_conf_table,
 	},
 	{	.type = WUY_CFLUA_TYPE_END,
 		.u.next = h2d_upstream_next_command,
@@ -649,7 +676,7 @@ static struct wuy_cflua_command h2d_upstream_conf_commands[] = {
 struct wuy_cflua_table h2d_upstream_conf_table = {
 	.commands = h2d_upstream_conf_commands,
 	.refer_name = "UPSTREAM",
-	.is_omit = true,
+	.may_omit = true,
 	.size = sizeof(struct h2d_upstream_conf),
 	.post = h2d_upstream_conf_post,
 	.free = h2d_upstream_conf_free,

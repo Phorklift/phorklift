@@ -57,7 +57,8 @@ struct h2d_request {
 
 	enum {
 		H2D_REQUEST_STATE_RECEIVE_HEADERS = 0,
-		H2D_REQUEST_STATE_LOCATE_CONF,
+		H2D_REQUEST_STATE_LOCATE_CONF_HOST,
+		H2D_REQUEST_STATE_LOCATE_CONF_PATH,
 		H2D_REQUEST_STATE_RECEIVE_BODY_SYNC,
 		H2D_REQUEST_STATE_PROCESS_HEADERS,
 		H2D_REQUEST_STATE_PROCESS_BODY,
@@ -89,6 +90,8 @@ struct h2d_request {
 	lua_State		*L;
 
 	struct h2d_request	*father; /* only for subreq */
+
+	struct h2d_log		*error_log;
 
 	wuy_list_node_t		list_node;
 
@@ -131,38 +134,19 @@ void h2d_request_subr_close(struct h2d_request *subr);
 
 int h2d_request_subr_flush_connection(struct h2d_connection *c);
 
-/* used only for h2d_request_log and h2d_request_log_at */
-static inline struct h2d_log *h2d_request_get_log(struct h2d_request *r)
-{
-	if (r->conf_path != NULL) {
-		return r->conf_path->error_log;
-	}
-	if (r->conf_host != NULL) {
-		return r->conf_host->default_path->error_log;
-	}
-	return r->c->conf_listen->default_host->default_path->error_log;
-}
-
 #define h2d_request_do_log(r, log, level, fmt, ...) \
-	if (level >= H2D_LOG_ERROR && r->req.uri.raw) { \
-		h2d_log_level_nocheck(log, level, "%lu:%u %s " fmt, r->c->id, r->id, r->req.uri.raw, ##__VA_ARGS__); \
-	} else { \
-		h2d_log_level_nocheck(log, level, "%lu:%u " fmt, r->c->id, r->id, ##__VA_ARGS__); \
-	}
-
-#define h2d_request_log_at(r, log, level2, fmt, ...) \
 	do { \
-		struct h2d_log *_log = h2d_request_get_log(r); \
-		if (level2 < (log->level_inherit_count >= 0 ? log->level : _log->level)) break; \
-		if (log->filename_inherit_count >= 0) _log = log; \
-		h2d_request_do_log(r, _log, level2, fmt, ##__VA_ARGS__); \
+		const char *_uri = (level >= H2D_LOG_ERROR) ? r->req.uri.raw : "-"; \
+		h2d_log_level(log, level, "%lu:%u %s " fmt, r->c->id, r->id, _uri, ##__VA_ARGS__); \
 	} while(0)
 
-#define h2d_request_log(r, level2, fmt, ...) \
+#define h2d_request_log(r, level, fmt, ...) \
+	h2d_request_do_log(r, r->error_log, level, fmt, ##__VA_ARGS__)
+
+#define h2d_request_log_at(r, log, level, fmt, ...) \
 	do { \
-		struct h2d_log *_log = h2d_request_get_log(r); \
-		if (level2 < _log->level) break; \
-		h2d_request_do_log(r, _log, level2, fmt, ##__VA_ARGS__); \
+		struct h2d_log *_log = log ? log : r->error_log; \
+		h2d_request_do_log(r, _log, level, fmt, ##__VA_ARGS__); \
 	} while(0)
 
 #endif
