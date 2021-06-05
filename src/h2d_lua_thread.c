@@ -7,7 +7,7 @@
 #define _log(level, fmt, ...) h2d_request_log(r, level, "lua: " fmt, ##__VA_ARGS__)
 
 static int h2d_lua_thread_start(struct h2d_request *r,
-		wuy_cflua_function_t entry, const char *argf, ...)
+		wuy_cflua_function_t entry, const char *argf, va_list ap)
 {
 	_log(H2D_LOG_DEBUG, "start");
 	atomic_fetch_add(&r->conf_path->stats->lua_new, 1);
@@ -28,8 +28,6 @@ static int h2d_lua_thread_start(struct h2d_request *r,
 		return 0;
 	}
 
-	va_list ap;
-	va_start(ap, argf);
 	for (const char *p = argf; *p != '\0'; p++) {
 		switch (*p) {
 		case 'b':
@@ -48,7 +46,6 @@ static int h2d_lua_thread_start(struct h2d_request *r,
 			abort();
 		}
 	}
-	va_end(ap);
 	return strlen(argf);
 }
 
@@ -87,7 +84,10 @@ lua_State *h2d_lua_thread_run(struct h2d_request *r,
 
 	int argn = 0;
 	if (r->L == NULL) {
-		argn = h2d_lua_thread_start(r, entry, argf);
+		va_list ap;
+		va_start(ap, argf);
+		argn = h2d_lua_thread_start(r, entry, argf, ap);
+		va_end(ap);
 
 	} else if (lua_gettop(r->L) > 0) {
 		lua_CFunction resume_handler = lua_tocfunction(r->L, 1);

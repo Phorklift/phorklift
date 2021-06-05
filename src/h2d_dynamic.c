@@ -140,7 +140,12 @@ static struct h2d_dynamic_conf *h2d_dynamic_parse_sub_dyn(lua_State *L,
 	/* parse */
 	wuy_pool_t *pool = wuy_pool_new(1024);
 	void *container = NULL;
-	const char *err = wuy_cflua_parse(h2d_L, dynamic->sub_table, &container, pool);
+	const void *father_container = h2d_dynamic_to_container(dynamic);
+	wuy_cflua_function_t tmp_get_name = dynamic->get_name;
+	dynamic->get_name = 0; /* clear father_container->dynamic.get_name temporarily to avoid inherited */
+	const char *err = wuy_cflua_parse(h2d_L, dynamic->sub_table, &container,
+			pool, &father_container);
+	dynamic->get_name = tmp_get_name; /* recover */
 	if (err != WUY_CFLUA_OK) {
 		_log(H2D_LOG_ERROR, "parse sub %s error: %s", name, err);
 		return H2D_PTR_ERROR;
@@ -249,30 +254,18 @@ void h2d_dynamic_init(void)
 	atexit(wuy_shmpool_cleanup);
 }
 
-static struct wuy_cflua_command *h2d_dynamic_get_cmd(struct wuy_cflua_table *table)
-{
-	for (struct wuy_cflua_command *cmd = table->commands; cmd->type != WUY_CFLUA_TYPE_END; cmd++) {
-		if (cmd->name != NULL && strcmp(cmd->name, "dynamic") == 0) {
-			return cmd;
-		}
-	}
-	return NULL;
-}
 void h2d_dynamic_set_container(struct h2d_dynamic_conf *dynamic,
 		struct wuy_cflua_table *conf_table)
 {
-	/* get the offset */
-	struct wuy_cflua_command *cmd = h2d_dynamic_get_cmd(conf_table);
+	struct wuy_cflua_command *cmd;
+	for (cmd = conf_table->commands; cmd->type != WUY_CFLUA_TYPE_END; cmd++) {
+		if (cmd->name != NULL && strcmp(cmd->name, "dynamic") == 0) {
+			break;
+		}
+	}
 	dynamic->container_offset = cmd->offset;
 
-	/* duplicate a wuy_cflua_table from @conf_table, and copy default
-	 * values from the container */
-	dynamic->sub_table = wuy_cflua_copy_table_default(conf_table,
-			h2d_dynamic_to_container(dynamic));
-
-	/* find and clear dynamic->get_name */
-	cmd = h2d_dynamic_get_cmd(dynamic->sub_table);
-	cmd->u.table->commands[0].default_value.f = 0;
+	dynamic->sub_table = conf_table;
 }
 
 static const char *h2d_dynamic_conf_post(void *data)
@@ -312,7 +305,6 @@ static struct wuy_cflua_command h2d_dynamic_conf_commands[] = {
 	{	.name = "get_name",
 		.type = WUY_CFLUA_TYPE_FUNCTION,
 		.offset = offsetof(struct h2d_dynamic_conf, get_name),
-		.meta_level_offset = offsetof(struct h2d_dynamic_conf, get_name_meta_level),
 	},
 	{	.name = "get_conf",
 		.type = WUY_CFLUA_TYPE_FUNCTION,

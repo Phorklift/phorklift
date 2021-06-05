@@ -10,7 +10,6 @@ struct h2d_dynamic_conf {
 	int			idle_timeout;
 	int			error_expire;
 	int			sub_max;
-	int			get_name_meta_level;
 	struct h2d_log		*log;
 
 	/* runtime: father only */

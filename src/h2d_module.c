@@ -167,7 +167,7 @@ void h2d_module_master_init(void)
 		m->command_host.offset = offsetof(struct h2d_conf_host, module_confs) + offset;
 		m->command_path.offset = offsetof(struct h2d_conf_path, module_confs) + offset;
 
-		m->command_path.meta_level_offset = offsetof(struct h2d_conf_path, content_meta_levels) + sizeof(int) * i;
+		m->command_path.inherit_count_offset = offsetof(struct h2d_conf_path, content_inherit_counts) + sizeof(int) * i;
 
 		if (m->master_init != NULL) {
 			m->master_init();

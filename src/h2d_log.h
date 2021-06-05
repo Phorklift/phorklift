@@ -39,8 +39,8 @@ static inline const char *h2d_log_strlevel(enum h2d_log_level level)
 struct h2d_log {
 	const char		*filename;
 	const char		*level_str;
-	int			filename_meta_level;
-	int			level_meta_level;
+	int			filename_inherit_count;
+	int			level_inherit_count;
 	int			buf_size;
 	int			max_line;
 	bool			is_line_buffer;

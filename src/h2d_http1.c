@@ -203,8 +203,7 @@ static void h2d_http1_set_state(struct h2d_connection *c)
 	struct h2d_request *r = c->u.request;
 	if (r == NULL) {
 		state = H2D_CONNECTION_STATE_IDLE;
-	}
-	if (r->state < H2D_REQUEST_STATE_RESPONSE_HEADERS_1) {
+	} else if (r->state < H2D_REQUEST_STATE_RESPONSE_HEADERS_1) {
 		state = H2D_CONNECTION_STATE_READING;
 	} else {
 		state = H2D_CONNECTION_STATE_WRITING;

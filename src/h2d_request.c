@@ -441,7 +441,7 @@ static int h2d_request_response_headers_1(struct h2d_request *r)
 	if (!r->is_broken) {
 		ret = r->conf_path->content->content.response_headers(r);
 
-	} else if (wuy_slist_empty(&r->resp.headers)) {
+	} else if (r->resp.break_body_len == 0 && r->resp.break_body_func == NULL) {
 		r->resp.content_length = h2d_request_simple_response_body(r->resp.status_code, NULL, 0);
 	}
 

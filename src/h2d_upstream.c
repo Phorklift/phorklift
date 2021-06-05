@@ -610,7 +610,6 @@ static struct wuy_cflua_command h2d_upstream_conf_commands[] = {
 	{	.name = "default_port",
 		.type = WUY_CFLUA_TYPE_INTEGER,
 		.offset = offsetof(struct h2d_upstream_conf, default_port),
-		.default_value.n = 80,
 		.limits.n = WUY_CFLUA_LIMITS_NON_NEGATIVE,
 	},
 	{	.name = "resolve_interval",
@@ -650,6 +649,7 @@ static struct wuy_cflua_command h2d_upstream_conf_commands[] = {
 struct wuy_cflua_table h2d_upstream_conf_table = {
 	.commands = h2d_upstream_conf_commands,
 	.refer_name = "UPSTREAM",
+	.is_omit = true,
 	.size = sizeof(struct h2d_upstream_conf),
 	.post = h2d_upstream_conf_post,
 	.free = h2d_upstream_conf_free,

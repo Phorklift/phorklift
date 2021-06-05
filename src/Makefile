@@ -6,11 +6,11 @@ LDLIBS += -lluajit-5.1 # use `-llua5.1` for original Lua
 LDLIBS += -lssl -lcrypto
 LDLIBS += -lz
 
-all: h2d_conf_parse_lua.h h2tpd
+all: h2d_conf_predefs_lua.h h2tpd
 
-h2d_conf_parse_lua.h: h2d_conf_parse.lua
-	echo '/* read file h2d_conf_parse.lua into string */' > $@
-	@echo 'static const char *h2d_conf_parse_lua_str = " \\n\\' >> $@
+h2d_conf_predefs_lua.h: h2d_conf_predefs.lua
+	echo '/* read file h2d_conf_predefs.lua into string */' > $@
+	@echo 'static const char *h2d_conf_predefs_lua_str = " \\n\\' >> $@
 	@sed 's/"/\\"/g' $^ | awk '{print $$0" \\n\\"}' >> $@
 	@echo '";' >> $@
 

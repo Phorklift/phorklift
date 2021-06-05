@@ -125,12 +125,12 @@ static const char *h2d_conf_path_post(void *data)
 			continue;
 		}
 
-		/* compare meta_level, pick the smaller */
-		int meta_level_new = conf_path->content_meta_levels[i];
-		int meta_level_old = conf_path->content_meta_levels[conf_path->content->index];
-		if (meta_level_new == meta_level_old) {
+		/* compare inherit_count, pick the smaller */
+		int inherit_count_new = conf_path->content_inherit_counts[i];
+		int inherit_count_old = conf_path->content_inherit_counts[conf_path->content->index];
+		if (inherit_count_new == inherit_count_old) {
 			same_level_mod = m;
-		} else if (meta_level_new < meta_level_old) {
+		} else if (inherit_count_new < inherit_count_old) {
 			conf_path->content = m;
 			same_level_mod = NULL;
 		}

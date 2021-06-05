@@ -1,3 +1,3 @@
-h2d_conf_parse_lua.h
+h2d_conf_predefs_lua.h
 *.o
 h2tpd
