@@ -115,7 +115,7 @@ local function get_vip_level(user_id)
     local info = cjson.decode(r.body)
     return tonumber(info.vip_level)
 end
-    ```
+```
 
 `h2d.subrequest()` creates a h2tpd sub-request, and returns after it
 finishes. But h2tpd switches to process other events during this time.
