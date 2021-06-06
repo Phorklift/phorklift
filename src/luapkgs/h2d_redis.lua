@@ -1,4 +1,6 @@
-local _M = {}
+local _M = {
+	Null = {}, -- Null Bulk String, for non-existence value
+}
 
 local mt = { __index = _M }
 
@@ -33,7 +35,7 @@ local function parse_line(resp)
 	if first == '$' then -- Bulk Strings
 		local len = tonumber(string.sub(resp, 2, tail))
 		if len == -1 then
-			return "NULL", next_line
+			return _M.Null, next_line
 		end
 
 		local ret = string.sub(resp, next_line, next_line + len - 1)
@@ -78,7 +80,7 @@ end
 function _M.query_once(server, line)
 	local c = h2d.ups.getc(server)
 	if not c then
-		return nil
+		return nil, "connect fail"
 	end
 
 	local ok = c:send(line .. '\r\n')
