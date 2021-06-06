@@ -141,12 +141,12 @@ static int h2d_stream_recv(lua_State *L)
 	return lua_yield(L, 2);
 }
 
-static const struct h2d_lua_api_reg h2d_stream_functions[] = {
-	{ "connect", .u.f=h2d_stream_connect },
-	{ "send", .u.f=h2d_stream_send },
-	{ "recv", .u.f=h2d_stream_recv },
-	{ "close", .u.f=h2d_stream_send },
-	{ "keepalive", .u.f=h2d_stream_send },
+static const struct h2d_lua_api_reg_func h2d_stream_functions[] = {
+	{ "connect", h2d_stream_connect },
+	{ "send", h2d_stream_send },
+	{ "recv", h2d_stream_recv },
+	{ "close", h2d_stream_send },
+	{ "keepalive", h2d_stream_send },
 	{ NULL }  /* sentinel */
 };
 

@@ -8,7 +8,11 @@
 lua_State *h2d_lua_thread_run(struct h2d_request *r,
 		wuy_cflua_function_t entry, const char *argf, ...);
 
-bool h2d_lua_thread_in_running(struct h2d_request *r);
+static inline bool h2d_lua_thread_in_running(struct h2d_request *r,
+		wuy_cflua_function_t entry)
+{
+	return r->L != NULL && r->current_entry == entry;
+}
 
 void h2d_lua_thread_kill(struct h2d_request *r);
 

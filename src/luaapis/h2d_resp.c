@@ -84,13 +84,13 @@ static int h2d_resp_mm_index(lua_State *L)
 	return 1;
 }
 
-static const struct h2d_lua_api_reg h2d_resp_functions[] = {
-	{ "get_header", .u.f=h2d_resp_get_header },
-	{ "add_header", .u.f=h2d_resp_add_header },
-	{ "delete_header", .u.f=h2d_resp_delete_header },
-	{ "set_header", .u.f=h2d_resp_set_header },
+static const struct h2d_lua_api_reg_func h2d_resp_functions[] = {
+	{ "get_header", h2d_resp_get_header },
+	{ "add_header", h2d_resp_add_header },
+	{ "delete_header", h2d_resp_delete_header },
+	{ "set_header", h2d_resp_set_header },
 
-	{ "__index", .u.f=h2d_resp_mm_index },
+	{ "__index", h2d_resp_mm_index },
 	{ NULL }  /* sentinel */
 };
 

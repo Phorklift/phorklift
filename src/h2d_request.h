@@ -7,7 +7,6 @@ struct h2d_request;
 #include "h2d_header.h"
 #include "h2d_conf.h"
 #include "h2d_connection.h"
-#include "h2d_lua_thread.h"
 
 #define H2D_CONTENT_LENGTH_INIT		SIZE_MAX
 
@@ -88,6 +87,7 @@ struct h2d_request {
 	struct h2d_dynamic_ctx	*dynamic_ctx;
 
 	lua_State		*L;
+	wuy_cflua_function_t	current_entry;
 
 	struct h2d_request	*father; /* only for subreq */
 

@@ -10,13 +10,17 @@ struct h2d_request *h2d_lua_api_current;
 
 /* top constants and functions */
 
-static const struct h2d_lua_api_reg h2d_lua_api_const_ints[] = {
+static const struct h2d_lua_api_reg_int h2d_lua_api_const_ints[] = {
 
-#define X(m) { .name=#m, .u.n=WUY_HTTP_##m },
+#define X(m) { "HTTP_"#m, WUY_HTTP_##m },
 	WUY_HTTP_METHOD_TABLE
 #undef X
 
-#define X(c, l) { .name=#c, .u.n=H2D_LOG_##c },
+#define X(c, d) { "HTTP_"#c, WUY_HTTP_##c },
+	WUY_HTTP_STATUS_CODE_TABLE
+#undef X
+
+#define X(c, l) { #c, H2D_LOG_##c },
 	H2D_LOG_LEVEL_TABLE
 #undef X
 	{ NULL },
@@ -247,30 +251,30 @@ static int h2d_lua_api_exit(lua_State *L)
 	return lua_error(L);
 }
 
-static const struct h2d_lua_api_reg h2d_lua_api_functions[] = {
-	{ "sleep", .u.f=h2d_lua_api_sleep },
-	{ "subrequest", .u.f=h2d_lua_api_subrequest },
-	{ "log", .u.f=h2d_lua_api_log },
-	{ "echo", .u.f=h2d_lua_api_echo },
-	{ "exit", .u.f=h2d_lua_api_exit },
+static const struct h2d_lua_api_reg_func h2d_lua_api_functions[] = {
+	{ "sleep", h2d_lua_api_sleep },
+	{ "subrequest", h2d_lua_api_subrequest },
+	{ "log", h2d_lua_api_log },
+	{ "echo", h2d_lua_api_echo },
+	{ "exit", h2d_lua_api_exit },
 	{ NULL }  /* sentinel */
 };
 
 
 /* register */
 
-static void h2d_lua_api_add_const_ints(const struct h2d_lua_api_reg *list)
+static void h2d_lua_api_add_const_ints(const struct h2d_lua_api_reg_int *list)
 {
-	for (const struct h2d_lua_api_reg *r = list; r->name != NULL; r++) {
-		lua_pushinteger(h2d_L, r->u.n);
+	for (const struct h2d_lua_api_reg_int *r = list; r->name != NULL; r++) {
+		lua_pushinteger(h2d_L, r->n);
 		lua_setfield(h2d_L, -2, r->name);
 	}
 }
 
-static void h2d_lua_api_add_functions(const struct h2d_lua_api_reg *list)
+static void h2d_lua_api_add_functions(const struct h2d_lua_api_reg_func *list)
 {
-	for (const struct h2d_lua_api_reg *r = list; r->name != NULL; r++) {
-		lua_pushcfunction(h2d_L, r->u.f);
+	for (const struct h2d_lua_api_reg_func *r = list; r->name != NULL; r++) {
+		lua_pushcfunction(h2d_L, r->f);
 		lua_setfield(h2d_L, -2, r->name);
 	}
 }

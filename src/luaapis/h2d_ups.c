@@ -43,7 +43,7 @@ static struct h2d_upstream_conf *h2d_ups_get_upstream_string(lua_State *L)
 
 	struct h2d_upstream_conf *upstream;
 	const char *err = wuy_cflua_parse(L, &h2d_upstream_conf_table,
-			&upstream, h2d_ups_pool);
+			&upstream, h2d_ups_pool, NULL);
 	if (err != WUY_CFLUA_OK) {
 		luaL_error(L, "parse error %s", err);
 		return NULL;
@@ -69,7 +69,7 @@ static struct h2d_upstream_conf *h2d_ups_get_upstream_table(lua_State *L)
 
 	struct h2d_upstream_conf *upstream;
 	const char *err = wuy_cflua_parse(L, &h2d_upstream_conf_table,
-			&upstream, h2d_ups_pool);
+			&upstream, h2d_ups_pool, NULL);
 	if (err != WUY_CFLUA_OK) {
 		luaL_error(L, "parse error %s", err);
 		return NULL;
@@ -225,14 +225,14 @@ static int h2d_ups_keepalive(lua_State *L)
 	return 0;
 }
 
-static const struct h2d_lua_api_reg h2d_ups_functions[] = {
-	{ "getc", .u.f=h2d_ups_get_connection },
-	{ "send", .u.f=h2d_ups_send },
-	{ "recv_size", .u.f=h2d_ups_recv_size },
-	{ "keepalive", .u.f=h2d_ups_keepalive },
-	{ "close", .u.f=h2d_ups_close },
+static const struct h2d_lua_api_reg_func h2d_ups_functions[] = {
+	{ "getc", h2d_ups_get_connection },
+	{ "send", h2d_ups_send },
+	{ "recv_size", h2d_ups_recv_size },
+	{ "keepalive", h2d_ups_keepalive },
+	{ "close", h2d_ups_close },
 
-	{ "__gc", .u.f=h2d_ups_close },
+	{ "__gc", h2d_ups_close },
 	{ NULL }  /* sentinel */
 };
 

@@ -83,7 +83,9 @@ lua_State *h2d_lua_thread_run(struct h2d_request *r,
 	h2d_lua_api_current = r;
 
 	int argn = 0;
-	if (r->L == NULL) {
+	if (r->L == NULL || r->current_entry != entry) {
+		r->current_entry = entry;
+
 		va_list ap;
 		va_start(ap, argf);
 		argn = h2d_lua_thread_start(r, entry, argf, ap);
@@ -124,9 +126,4 @@ lua_State *h2d_lua_thread_run(struct h2d_request *r,
 	lua_State *L = r->L;
 	h2d_lua_thread_close(r);
 	return L;
-}
-
-bool h2d_lua_thread_in_running(struct h2d_request *r)
-{
-	return r->L != NULL;
 }

@@ -21,6 +21,11 @@ static int h2d_conf_name(void *data, char *buf, int size)
 	return 0;
 }
 
+static int h2d_conf_lua_panic(lua_State *L)
+{
+	abort();
+}
+
 #include "h2d_conf_predefs_lua.h" /* defines h2d_conf_predefs_lua_str */
 bool h2d_conf_parse(const char *conf_file)
 {
@@ -28,6 +33,7 @@ bool h2d_conf_parse(const char *conf_file)
 
 	lua_State *L = lua_open();
 	luaL_openlibs(L);
+	lua_atpanic(L, h2d_conf_lua_panic);
 
 	/* load pre-defined functions */
 	assert(luaL_dostring(L, h2d_conf_predefs_lua_str) == 0);

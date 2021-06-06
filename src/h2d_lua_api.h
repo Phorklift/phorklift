@@ -3,20 +3,22 @@
 
 #include "h2d_request.h"
 
-struct h2d_lua_api_reg {
-	const char		*name;
-	union {
-		int		n; /* const int */
-		lua_CFunction	f;
-	} u;
+struct h2d_lua_api_reg_int {
+	const char	*name;
+	int		n;
+};
+
+struct h2d_lua_api_reg_func {
+	const char	*name;
+	lua_CFunction	f;
 };
 
 struct h2d_lua_api_package {
 	const char		*name;
 	int			*ref;
 	void			(*init)(void);
-	const struct h2d_lua_api_reg	*const_ints;
-	const struct h2d_lua_api_reg	*funcs;
+	const struct h2d_lua_api_reg_int	*const_ints;
+	const struct h2d_lua_api_reg_func	*funcs;
 };
 
 extern struct h2d_request *h2d_lua_api_current;

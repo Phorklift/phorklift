@@ -8,7 +8,7 @@ struct h2d_dynamic_conf {
 	wuy_cflua_function_t	check_filter;
 	int			check_interval;
 	int			idle_timeout;
-	int			error_expire;
+	int			error_timeout;
 	int			sub_max;
 	struct h2d_log		*log;
 
@@ -20,13 +20,12 @@ struct h2d_dynamic_conf {
 
 	/* runtime: sub only */
 	struct h2d_dynamic_conf	*father;
-	time_t			modify_time;
 	time_t			check_time;
 	loop_timer_t		*timer;
 	int			error_ret;
 	bool			is_just_holder;
-	bool			in_check_conf;
 	const char		*name;
+	uint64_t		tag;
 	wuy_list_t		holder_wait_head;
 	wuy_dict_node_t		dict_node;
 	wuy_shmpool_t		*shmpool;
