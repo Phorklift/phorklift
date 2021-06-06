@@ -20,7 +20,6 @@ comparison still gives some information.
 
 This table shows lines of source code of nginx and h2tpd for each part.
 
-    ```
     ----------+-------------------------+----------------------------
               |            nginx-1.14.0 | h2tpd-git-xxxxxxxx
     ==========+=========================+============================
@@ -39,7 +38,6 @@ This table shows lines of source code of nginx and h2tpd for each part.
     ----------+-------------------------+----------------------------
     TOTAL     |          106638 + 37259 | 21416
     -----------------------------------------------------------------
-    ```
 
 
 # Some better points than nginx

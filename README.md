@@ -32,18 +32,18 @@ complex. However usually you may not need that, and then Lua behaves like
 other configurations.
 Here is a simple example:
 
-    ```lua
-    Listen "443" {
-        ssl = {
-            certificate = "certs/cert.pem",
-            private_key = "certs/priv.pem",
-        },
-        network = {
-            send_timeout = 10,
-        },
-        static = "html/",  -- provide static file service
-    }
-    ```
+```lua
+Listen "443" {
+    ssl = {
+        certificate = "certs/cert.pem",
+        private_key = "certs/priv.pem",
+    },
+    network = {
+        send_timeout = 10,
+    },
+    static = "html/",  -- provide static file service
+}
+```
 
 See the [tutorial](doc/3.conf_tutorial.md) for more infomation and examples.
 
@@ -56,65 +56,65 @@ from OpenResty, but we are more comprehensive. Lua is no longer just a module.
 Here is a configuration example to log requests only status-code >= 400
 or reacting slower than 1 second:
 
-    ```lua
-    access_log = {
-        filter = function()
-            return h2d.resp.status_code >= 400 or h2d.resp.react_ms > 1000
-        end,
-    }
-    ```
+```lua
+access_log = {
+    filter = function()
+        return h2d.resp.status_code >= 400 or h2d.resp.react_ms > 1000
+    end,
+}
+```
 
 Another example on the request rate limit key. If the request is from a
 login user then use the user-id as a key, or use the client IP.
 
-    ```lua
-    limit_req = {
-        key = function()
-            local user_id = h2d.req.header_get_cookie("id")
-            return user_id and user_id or h2d.get_client_ip()
-        end
-    }
-    ```
+```lua
+limit_req = {
+    key = function()
+        local user_id = h2d.req.header_get_cookie("id")
+        return user_id and user_id or h2d.get_client_ip()
+    end
+}
+```
 
 Going further, different weight can be set for each request:
 
-    ```lua
-    limit_req = {
-        weight = function()
-            local weight = 1 -- default value
+```lua
+limit_req = {
+    weight = function()
+        local weight = 1 -- default value
 
-            -- bigger `limit` argument means bigger weight
-            local limit = h2d.req.get_uri_query("limit")
-            if limit then
-                limit = tonumber(limit)
-                weight = (limit > 100) and limit/100 or 1
-            end
+        -- bigger `limit` argument means bigger weight
+        local limit = h2d.req.get_uri_query("limit")
+        if limit then
+            limit = tonumber(limit)
+            weight = (limit > 100) and limit/100 or 1
+        end
 
-            -- higher VIP level has higher limit
-            local user_id = h2d.req.header_get_cookie("id")
-            local vip = get_vip_level(user_id)
-            if vip then
-                weight = weight / vip
-            end
+        -- higher VIP level has higher limit
+        local user_id = h2d.req.header_get_cookie("id")
+        local vip = get_vip_level(user_id)
+        if vip then
+            weight = weight / vip
+        end
 
-            return weight
-        end,
-    }
-    ```
+        return weight
+    end,
+}
+```
 
 Thanks to Lua's light-weight coroutine, the script can be written like
 blocking mode. Let's see the `get_vip_level()` in last example:
 
-    ```lua
-    local function get_vip_level(user_id)
-        local r = h2d.subrequest("@get_user_info", {args={user_id=user_id}})
-        if r.status_code ~= 200 then
-            return nil
-        end
-
-        local info = cjson.decode(r.body)
-        return tonumber(info.vip_level)
+```lua
+local function get_vip_level(user_id)
+    local r = h2d.subrequest("@get_user_info", {args={user_id=user_id}})
+    if r.status_code ~= 200 then
+        return nil
     end
+
+    local info = cjson.decode(r.body)
+    return tonumber(info.vip_level)
+end
     ```
 
 `h2d.subrequest()` creates a h2tpd sub-request, and returns after it
@@ -141,25 +141,25 @@ Let's take the forward proxy as example which uses upstream.
 Usually one upstream defines a group of static hostname or IP addresses,
 so it's suitable for reverse proxy:
 
-    ```lua
-    local upstream_origin = {
-        "origin1.example.com",
-        "origin2.example.com",
-    }
-    ```
+```lua
+local upstream_origin = {
+    "origin1.example.com",
+    "origin2.example.com",
+}
+```
 
 However for forward proxy, the addresses are not static but decided by the
 request's Host header. You can not write the addresses into configuration
 file, but can only know them on receiving requests. So here is the dynamic:
 
-    ```lua
-    local upstream_hello_dynamic = {
-        dynamic = {
-            get_name = function() return h2d.req.host end,
-            get_conf = function(name) return { name } end,
-        }
+```lua
+local upstream_hello_dynamic = {
+    dynamic = {
+        get_name = function() return h2d.req.host end,
+        get_conf = function(name) return { name } end,
     }
-    ```
+}
+```
 
 There is no static addresses in this upstream, but a `dynamic` member which
 contains 2 functions: `get_name()` returns a string as the name of sub-upstream
@@ -178,32 +178,32 @@ functions can be achieved through more complex `get_name()` and `get_conf()`.
 
 Here is another example of dynamic upstream for service discovery:
 
-    ```lua
-    local redis = require "luapkgs/h2d_redis"
-    local upstream_service_discovery = {
-        dynamic = {
-            idle_timeout = 3600,
-            check_interval = 60,
+```lua
+local redis = require "luapkgs/h2d_redis"
+local upstream_service_discovery = {
+    dynamic = {
+        idle_timeout = 3600,
+        check_interval = 60,
 
-            get_name = function()
-                return string.match(h2d.req.uri_path, '/(%w+)/')
-            end,
+        get_name = function()
+            return string.match(h2d.req.uri_path, '/(%w+)/')
+        end,
 
-            get_conf = function(name)
-                local conf = redis.query_once("127.0.0.1:6379", "get "..name)
-                if not conf then  -- query failure
-                    return h2d.HTTP_500
-                end
+        get_conf = function(name)
+            local conf = redis.query_once("127.0.0.1:6379", "get "..name)
+            if not conf then  -- query failure
+                return h2d.HTTP_500
+            end
 
-                if conf == redis.Null then  -- miss or deleted
-                    return h2d.HTTP_404
-                end
+            if conf == redis.Null then  -- miss or deleted
+                return h2d.HTTP_404
+            end
 
-                return h2d.HTTP_200, conf
-            end,
-        }
+            return h2d.HTTP_200, conf
+        end,
     }
-    ```
+}
+```
 
 For example, for a request with URL "/img/big/123.jpg", `get_name()` returns
 "img"; and `get_conf()` queries the upstream's configuration for "img" from
