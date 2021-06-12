@@ -1,6 +1,7 @@
 h2d_conf_predefs_lua.h
 h2d_luapkg_list.h
 h2d_module_list.h
+h2d_loadbalance_list.h
 *.o
 *.log
 h2tpd

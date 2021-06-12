@@ -5,6 +5,8 @@
 #include <netinet/in.h>
 #include <sys/un.h>
 
+#include "h2d_loadbalance_list.h"
+
 /* calculate H2D_UPSTREAM_LOADBALANCE_STATIC_NUMBER in preprocess */
 enum _ups_nonuse {
 	#define X(m) h2d_upstream_index_##m,

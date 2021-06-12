@@ -133,11 +133,11 @@ static struct wuy_cflua_command h2d_upstream_hash_commands[] = {
 	{ NULL }
 };
 
-struct h2d_upstream_loadbalance h2d_upstream_hash_module = {
+struct h2d_upstream_loadbalance h2d_upstream_hash_loadbalance = {
 	.name = "hash",
 	.command = {
 		.name = "hash",
-		.description = "Hash upstream loadbalance module. " \
+		.description = "Hash upstream loadbalance. " \
 				"Consistent hash is used. Weight is supported.",
 		.type = WUY_CFLUA_TYPE_TABLE,
 		.offset = 0, /* reset later */
