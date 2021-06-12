@@ -309,8 +309,6 @@ static void h2d_lua_api_register(const struct h2d_lua_api_package *p)
 }
 
 
-#include "h2d_luapkg_list.h"
-
 #define X(p) extern const struct h2d_lua_api_package p;
 H2D_LUAAPI_X_LIST
 #undef X
