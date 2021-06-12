@@ -3,7 +3,7 @@
 
 #include <stdbool.h>
 
-#include "h2d_module.list.h"
+#include "h2d_module_list.h"
 
 /* calculate H2D_MODULE_STATIC_NUMBER in preprocess */
 enum _nonuse {

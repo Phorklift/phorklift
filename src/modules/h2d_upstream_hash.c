@@ -133,7 +133,7 @@ static struct wuy_cflua_command h2d_upstream_hash_commands[] = {
 	{ NULL }
 };
 
-struct h2d_upstream_loadbalance h2d_upstream_hash = {
+struct h2d_upstream_loadbalance h2d_upstream_hash_module = {
 	.name = "hash",
 	.command = {
 		.name = "hash",

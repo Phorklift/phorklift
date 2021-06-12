@@ -8,8 +8,3 @@ all: $(OBJECTS)
 
 clean:
 	rm -f *.o
-
-depends:
-	$(CC) $(CFLAGS) -MM *.c > depends
-
-include depends

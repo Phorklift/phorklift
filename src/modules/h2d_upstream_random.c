@@ -158,7 +158,7 @@ retry:
 	goto retry;
 }
 
-struct h2d_upstream_loadbalance h2d_upstream_random = {
+struct h2d_upstream_loadbalance h2d_upstream_random_module = {
 	.name = "random",
 	.ctx_new = h2d_upstream_random_ctx_new,
 	.ctx_free = h2d_upstream_random_ctx_free,

@@ -308,10 +308,12 @@ static void h2d_lua_api_register(const struct h2d_lua_api_package *p)
 	lua_setfield(h2d_L, -2, p->name);
 }
 
-extern const struct h2d_lua_api_package h2d_req_package;
-extern const struct h2d_lua_api_package h2d_resp_package;
-extern const struct h2d_lua_api_package h2d_stream_package;
-extern const struct h2d_lua_api_package h2d_ups_package;
+
+#include "h2d_luapkg_list.h"
+
+#define X(p) extern const struct h2d_lua_api_package p;
+H2D_LUAAPI_X_LIST
+#undef X
 
 void h2d_lua_api_init(void)
 {
@@ -320,10 +322,9 @@ void h2d_lua_api_init(void)
 	h2d_lua_api_add_const_ints(h2d_lua_api_const_ints);
 	h2d_lua_api_add_functions(h2d_lua_api_functions);
 
-	h2d_lua_api_register(&h2d_req_package);
-	h2d_lua_api_register(&h2d_resp_package);
-	h2d_lua_api_register(&h2d_stream_package);
-	h2d_lua_api_register(&h2d_ups_package);
+	#define X(p) h2d_lua_api_register(&p);
+	H2D_LUAAPI_X_LIST
+	#undef X
 
 	lua_setglobal(h2d_L, "h2d");
 }

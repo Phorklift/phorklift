@@ -384,21 +384,21 @@ bool h2d_upstream_address_is_pickable(struct h2d_upstream_address *address,
 
 static const char *h2d_upstream_conf_loadbalance_select(struct h2d_upstream_conf *conf)
 {
-	/* skip the LB:random with index=0 */
-	int i = 1;
-	struct h2d_upstream_loadbalance *lb = h2d_upstream_loadbalance_statics[0];
+	int i = 0;
+	struct h2d_upstream_loadbalance *random_lb = NULL, *lb = NULL;
 	while ((lb = h2d_upstream_loadbalance_next(lb)) != NULL) {
 		if (h2d_module_command_is_set(&lb->command, conf->lb_confs[i++])) {
 			if (conf->loadbalance != NULL) {
 				return "duplicate loadbalance";
 			}
 			conf->loadbalance = lb;
+		} else if (strcmp(lb->name, "random") == 0) {
+			random_lb = lb;
 		}
 	}
 
-	/* default is LB:random with index=0 */
-	if (conf->loadbalance == NULL) {
-		conf->loadbalance = h2d_upstream_loadbalance_statics[0];
+	if (conf->loadbalance == NULL) { /* use random as default */
+		conf->loadbalance = random_lb;
 	}
 
 	conf->lb_ctx = conf->loadbalance->ctx_new();
