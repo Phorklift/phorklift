@@ -1,0 +1,10 @@
+CFLAGS = -g -Wall -O2 -fPIC
+CFLAGS += -I../ -I/usr/include/lua5.1
+
+all: h2d_testdyn.so
+
+h2d_testdyn.so: h2d_testdyn.o
+	$(CC) -shared -o $@ $^
+
+clean:
+	rm -f *.o *.so

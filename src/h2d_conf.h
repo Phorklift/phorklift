@@ -190,7 +190,7 @@ void h2d_conf_doc(void);
 
 #define h2d_conf_log(level, fmt, ...) \
 	if (h2d_conf_runtime == NULL) \
-		fprintf(stderr, fmt"\n", ##__VA_ARGS__); \
+		fprintf(level < H2D_LOG_ERROR ? stdout : stderr, fmt"\n", ##__VA_ARGS__); \
 	else \
 		h2d_log_level(h2d_conf_runtime->error_log, level, fmt, ##__VA_ARGS__)
 

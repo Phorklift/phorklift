@@ -14,27 +14,23 @@ h2d_conf_predefs_lua.h: h2d_conf_predefs.lua
 	@sed 's/"/\\"/g' $^ | awk '{print $$0" \\n\\"}' >> $@
 	@echo '";' >> $@
 
-MODULES = modules/h2d_static.o modules/h2d_proxy.o modules/h2d_lua.o modules/h2d_acl.o \
-	  modules/h2d_stats.o modules/h2d_file_cache.o \
-	  modules/h2d_auth_basic.o modules/h2d_redis.o modules/h2d_rewrite.o \
-	  modules/h2d_echo.o modules/h2d_limit_req.o modules/h2d_gzip.o \
-	  modules/h2d_auth_request.o modules/h2d_save_to.o modules/h2d_jump_if.o \
-	  modules/h2d_upstream_random.o modules/h2d_upstream_hash.o
+SOURCES = $(wildcard *.c)
+OBJECTS = $(patsubst %.c,%.o,$(SOURCES))
 
-LUAAPIS = luaapis/h2d_req.o luaapis/h2d_resp.o luaapis/h2d_stream.o luaapis/h2d_ups.o
+MOD_SRCS = $(wildcard modules/*.c luaapis/*.c)
+MOD_OBJS = $(patsubst %.c,%.o,$(MOD_SRCS))
 
-h2tpd: h2d_main.o h2d_conf.o h2d_conf_listen.o h2d_conf_host.o h2d_conf_path.o \
-		h2d_conf_runtime.o \
-		h2d_ssl.o h2d_module.o h2d_http2.o h2d_http1.o h2d_connection.o \
-		h2d_request.o h2d_resolver.o h2d_log.o h2d_dynamic.o \
-		h2d_upstream.o h2d_upstream_resolve.o h2d_upstream_healthcheck.o \
-		h2d_upstream_content.o \
-		h2d_lua_api.o h2d_lua_thread.o h2d_lua_call.o
+h2tpd: $(OBJECTS)
 	make -C modules
 	make -C luaapis
-	$(CC) -o $@ $^ $(MODULES) $(LUAAPIS) $(LDFLAGS) $(LDLIBS)
+	$(CC) -o $@ $^ $(MOD_OBJS) $(LDFLAGS) $(LDLIBS)
 
 clean:
 	make -C modules clean
 	make -C luaapis clean
-	rm -f *.o h2d_conf_parse_lua.h h2tpd
+	rm -f *.o h2d_conf_parse_lua.h h2tpd depends
+
+depends:
+	$(CC) -MM *.c > depends
+
+include depends

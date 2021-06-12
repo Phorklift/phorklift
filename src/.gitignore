@@ -1,3 +1,5 @@
 h2d_conf_predefs_lua.h
 *.o
+*.log
 h2tpd
+depends

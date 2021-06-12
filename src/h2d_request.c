@@ -23,7 +23,9 @@ struct h2d_request *h2d_request_new(struct h2d_connection *c)
 	r->id = c->request_id++;
 	r->c = c;
 	r->pool = pool;
-	r->error_log = c->conf_listen->default_host->default_path->error_log;
+
+	r->conf_host = r->c->conf_listen->default_host;
+	r->conf_path = r->conf_host->default_path;
 
 	h2d_request_log(r, H2D_LOG_DEBUG, "new request");
 
@@ -331,7 +333,8 @@ static int h2d_request_receive_body_sync(struct h2d_request *r)
 
 static int h2d_request_locate_conf_host(struct h2d_request *r)
 {
-	if (r->conf_host != NULL) { /* subrequest's conf_host has been set */
+	if (r->conf_host != r->c->conf_listen->default_host) {
+		/* subrequests and redirected requests' conf_host has been set */
 		return H2D_OK;
 	}
 
@@ -341,7 +344,7 @@ static int h2d_request_locate_conf_host(struct h2d_request *r)
 		return H2D_ERROR;
 	}
 
-	r->error_log = r->conf_host->default_path->error_log;
+	r->conf_path = r->conf_host->default_path;
 
 	if (r->c->ssl_sni_conf_host != NULL && r->conf_host != r->c->ssl_sni_conf_host) {
 		h2d_request_log(r, H2D_LOG_DEBUG, "wanring: ssl_sni_conf_host not match");
@@ -351,7 +354,7 @@ static int h2d_request_locate_conf_host(struct h2d_request *r)
 
 static int h2d_request_locate_conf_path(struct h2d_request *r)
 {
-	if (r->conf_path != NULL) {
+	if (r->conf_path != r->conf_host->default_path) {
 		goto dynamic_get;
 	}
 
@@ -367,8 +370,6 @@ static int h2d_request_locate_conf_path(struct h2d_request *r)
 		return WUY_HTTP_404;
 	}
 
-	r->error_log = r->conf_path->error_log;
-
 dynamic_get:
 	while (h2d_dynamic_is_enabled(&r->conf_path->dynamic)) {
 		h2d_request_log(r, H2D_LOG_DEBUG, "get dynamic sub_path");
@@ -377,7 +378,6 @@ dynamic_get:
 			return H2D_PTR2RET(sub_path);
 		}
 		r->conf_path = sub_path;
-		r->error_log = r->conf_path->error_log;
 	}
 
 	/* check some path-confs */
@@ -636,6 +636,7 @@ void h2d_request_run(struct h2d_request *r)
 			return;
 		}
 	}
+
 	/* returns status code and breaks the normal process */
 	r->is_broken = true;
 	r->resp.status_code = ret;

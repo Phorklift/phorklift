@@ -57,8 +57,9 @@ int h2d_http1_request_headers(struct h2d_request *r)
 
 		/* handle some */
 		if (memcmp(name_str, "Content-Length", 14) == 0) {
-			r->req.content_length = atoi(value_str);
-			if (r->req.content_length == 0) {
+			char *end;
+			r->req.content_length = strtol(value_str, &end, 10);
+			if (end - value_str != value_len) {
 				return WUY_HTTP_400;
 			}
 			continue;

@@ -91,8 +91,6 @@ struct h2d_request {
 
 	struct h2d_request	*father; /* only for subreq */
 
-	struct h2d_log		*error_log;
-
 	wuy_list_node_t		list_node;
 
 	http2_stream_t		*h2s;
@@ -141,11 +139,11 @@ int h2d_request_subr_flush_connection(struct h2d_connection *c);
 	} while(0)
 
 #define h2d_request_log(r, level, fmt, ...) \
-	h2d_request_do_log(r, r->error_log, level, fmt, ##__VA_ARGS__)
+	h2d_request_do_log(r, r->conf_path->error_log, level, fmt, ##__VA_ARGS__)
 
 #define h2d_request_log_at(r, log, level, fmt, ...) \
 	do { \
-		struct h2d_log *_log = log ? log : r->error_log; \
+		struct h2d_log *_log = log ? log : r->conf_path->error_log; \
 		h2d_request_do_log(r, _log, level, fmt, ##__VA_ARGS__); \
 	} while(0)
 

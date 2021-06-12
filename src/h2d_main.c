@@ -185,7 +185,7 @@ static int h2d_run(const char *conf_file)
 	h2d_conf_log(H2D_LOG_INFO, "start!");
 
 	if (opt_daemon) {
-		fprintf(stderr, "go to daemon.\n");
+		fprintf(stdout, "go to daemon.\n");
 		opt_daemon = false;
 		assert(daemon(1, 0) == 0);
 		h2d_pid = getpid();

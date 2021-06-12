@@ -69,8 +69,9 @@ static bool h2d_http2_hook_stream_header(http2_stream_t *h2s, const char *name_s
 		}
 	} else {
 		if (h2d_litestr_equal(name_str, name_len, "content-length")) {
-			r->req.content_length = atoi(value_str);
-			if (r->req.content_length == 0) {
+			char *end;
+			r->req.content_length = strtol(value_str, &end, 10);
+			if (end - value_str != value_len) {
 				return WUY_HTTP_400;
 			}
 			return true;

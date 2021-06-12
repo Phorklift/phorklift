@@ -1,0 +1,2 @@
+love:
+	make -C src
