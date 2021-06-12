@@ -1,4 +1,4 @@
-`h2tpd` is an HTTP daemon, supporting clear, powerful and dynamic configuration.
+`h2tpd` is an HTTP server and proxy daemon, with clear, powerful and dynamic configuration.
 
 
 # Common Features
@@ -45,7 +45,7 @@ Here is a simple example:
   }
   ```
 
-See the [tutorial](doc/3.conf_tutorial.md) for more infomation and examples.
+Here are a [tutorial](doc/3.conf_tutorial.md) and more [examples](example/).
 
 
 ## Feature: Lua Embed.
@@ -230,7 +230,8 @@ the `limit_req` in the above example. It's much more powerful.
 
 ## Feature: Clean Code.
 
-We try our best to keep it clean.
+Probably all programers will think their codes are clean.
+But I really try my best to keep h2tpd's code clean.
 
 In addition, h2tpd is written from the ground-up so there is no "legacy code" by now.
 
@@ -242,7 +243,7 @@ You will find that it's much easier to develop with h2tpd than nginx.
 
 It meets most of the monitoring needs. No need to analyze logs anymore.
 
-See `stats` command in [reference](doc/4.conf_reference.md) for more detail.
+See `stats` command in [reference](doc/4.conf_reference.md) for more detail. [TODO]
 
 
 # Disadvantages
