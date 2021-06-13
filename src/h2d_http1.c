@@ -218,7 +218,7 @@ void h2d_http1_on_readable(struct h2d_connection *c)
 	if (c->u.request == NULL) {
 		c->u.request = h2d_request_new(c);
 	}
-	h2d_request_run(c->u.request);
+	h2d_request_run(c->u.request, "http1 readable");
 
 	h2d_http1_set_state(c);
 }
@@ -229,7 +229,7 @@ void h2d_http1_on_writable(struct h2d_connection *c)
 	if (r == NULL) {
 		return;
 	}
-	h2d_request_run(r);
+	h2d_request_run(r, "http1 writable");
 
 	h2d_http1_set_state(c);
 }

@@ -30,7 +30,11 @@ static void h2d_dynamic_delete(struct h2d_dynamic_conf *sub_dyn)
 		if (sub_dyn->error_ret == 0) {
 			sub_dyn->error_ret = WUY_HTTP_500;
 		}
-		h2d_request_active_list(&sub_dyn->holder_wait_head, "dynamic holder");
+
+		struct h2d_request *r;
+		while (wuy_list_pop_type(&sub_dyn->holder_wait_head, r, list_node)) {
+			h2d_request_run(r, "dynamic holder");
+		}
 	}
 
 	if (sub_dyn->sub_dict != NULL && wuy_dict_count(sub_dyn->sub_dict) != 0) {

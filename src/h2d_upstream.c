@@ -45,7 +45,7 @@ static void h2d_upstream_on_active(loop_stream_t *s)
 
 	struct h2d_upstream_connection *upc = loop_stream_get_app_data(s);
 	if (upc->request != NULL) {
-		h2d_request_active(upc->request, "upstream ready");
+		h2d_request_run(upc->request, "upstream active");
 	} else { /* idle */
 		h2d_upstream_connection_close(upc);
 	}

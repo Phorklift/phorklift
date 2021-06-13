@@ -89,7 +89,8 @@ struct h2d_request {
 	lua_State		*L;
 	wuy_cflua_function_t	current_entry;
 
-	struct h2d_request	*father; /* only for subreq */
+	struct h2d_request	*father; /* of subrequest */
+	wuy_list_t		subr_head;
 
 	wuy_list_node_t		list_node;
 
@@ -119,10 +120,7 @@ void h2d_request_reset_response(struct h2d_request *r);
 
 int h2d_request_redirect(struct h2d_request *r, const char *path);
 
-void h2d_request_run(struct h2d_request *r);
-
-void h2d_request_active(struct h2d_request *r, const char *from);
-void h2d_request_active_list(wuy_list_t *list, const char *from);
+void h2d_request_run(struct h2d_request *r, const char *from);
 
 void h2d_request_init(void);
 

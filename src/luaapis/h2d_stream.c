@@ -9,7 +9,7 @@
 
 static void h2d_stream_on_active(loop_stream_t *s)
 {
-	h2d_request_run(loop_stream_get_app_data(s));
+	h2d_request_run(loop_stream_get_app_data(s), "lua h2d.stream active");
 }
 
 static loop_stream_ops_t h2d_stream_ops = {

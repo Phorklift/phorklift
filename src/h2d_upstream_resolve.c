@@ -173,7 +173,11 @@ static void h2d_upstream_resolve_hostname(struct h2d_upstream_conf *upstream)
 	upstream->loadbalance->update(upstream);
 	upstream->resolve_updated = false;
 
-	h2d_request_active_list(&upstream->wait_head, "dynamic upstream resolved");
+	/* wake up requests that blocks, only in dynamic upstream case */
+	struct h2d_request *r;
+	while (wuy_list_pop_type(&upstream->wait_head, r, list_node)) {
+		h2d_request_run(r, "upstream hostname resolved");
+	}
 }
 
 static int h2d_upstream_resolve_on_read(loop_stream_t *s, void *data, int len)

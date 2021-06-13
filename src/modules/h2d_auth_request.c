@@ -50,12 +50,6 @@ static int h2d_auth_request_process_headers(struct h2d_request *r)
 
 /* configuration */
 
-static void h2d_auth_request_ctx_free(struct h2d_request *r)
-{
-	struct h2d_request *subr = r->module_ctxs[h2d_auth_request_module.index];
-	h2d_request_subr_close(subr);
-}
-
 static const char *h2d_auth_request_conf_post(void *data)
 {
 	struct h2d_auth_request_conf *conf = data;
@@ -96,6 +90,4 @@ struct h2d_module h2d_auth_request_module = {
 	.filters = {
 		.process_headers = h2d_auth_request_process_headers,
 	},
-
-	.ctx_free = h2d_auth_request_ctx_free,
 };

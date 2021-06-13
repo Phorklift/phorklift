@@ -179,7 +179,7 @@ static bool h2d_http2_hook_stream_response(http2_stream_t *h2s)
 {
 	struct h2d_request *r = http2_stream_get_app_data(h2s);
 
-	h2d_request_run(r);
+	h2d_request_run(r, "http2 response hook");
 
 	return h2d_connection_is_write_ready(r->c);
 }

@@ -29,7 +29,7 @@ static const struct h2d_lua_api_reg_int h2d_lua_api_const_ints[] = {
 
 static int64_t h2d_lua_api_sleep_timeout(int64_t at, void *data)
 {
-	h2d_request_active(h2d_lua_api_current, "lua sleep");
+	h2d_request_run(h2d_lua_api_current, "lua sleep");
 	return 0;
 }
 static int h2d_lua_api_sleep_resume(lua_State *L)

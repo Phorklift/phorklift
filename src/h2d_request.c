@@ -1,6 +1,6 @@
 #include "h2d_main.h"
 
-static WUY_LIST(h2d_request_defer_run_list);
+static WUY_LIST(h2d_request_defer_list);
 
 static struct h2d_request *H2D_REQUEST_DETACHED_SUBR_FATHER = (struct h2d_request *)(-1L);
 
@@ -16,6 +16,7 @@ struct h2d_request *h2d_request_new(struct h2d_connection *c)
 
 	r->create_time = wuy_time_ms();
 
+	wuy_list_init(&r->subr_head);
 	wuy_slist_init(&r->req.headers);
 	wuy_slist_init(&r->resp.headers);
 	r->resp.content_length = H2D_CONTENT_LENGTH_INIT;
@@ -142,21 +143,23 @@ static void h2d_request_access_log(struct h2d_request *r)
 			format);
 }
 
-void h2d_request_close(struct h2d_request *r)
+static void h2d_request_do_close(struct h2d_request *r)
 {
-	/* detached subrequest: just close it */
-	if (r->father == H2D_REQUEST_DETACHED_SUBR_FATHER) {
-		h2d_request_log(r, H2D_LOG_DEBUG, "close detached subr: %p", r);
-		h2d_request_subr_close(r);
-		return;
-	}
-	/* normal subrequest: wake up father, and should be closed by father later */
-	if (r->father != NULL) {
-		h2d_request_log(r, H2D_LOG_DEBUG, "subr wake up father: %p -> %p", r, r->father);
-		h2d_request_active(r->father, "finished subrequest");
-		return;
+	h2d_request_access_log(r);
+	h2d_request_stats(r);
+
+	struct h2d_request *subr;
+	while (wuy_list_pop_type(&r->subr_head, subr, list_node)) {
+		h2d_request_subr_close(subr);
 	}
 
+	h2d_request_clear_stuff(r);
+
+	wuy_list_append(&h2d_request_defer_list, &r->list_node);
+}
+
+void h2d_request_close(struct h2d_request *r)
+{
 	if (r->closed) {
 		return;
 	}
@@ -164,8 +167,14 @@ void h2d_request_close(struct h2d_request *r)
 
 	h2d_request_log(r, H2D_LOG_DEBUG, "request done: %s", r->req.uri.raw);
 
-	h2d_request_access_log(r);
-	h2d_request_stats(r);
+	if (r->father != NULL) { /* subrequest */
+		if (r->father == H2D_REQUEST_DETACHED_SUBR_FATHER) {
+			h2d_request_subr_close(r);
+		} else { /* wake up father, and should be closed by father later */
+			h2d_request_run(r->father, "subrequest done");
+		}
+		return;
+	}
 
 	if (r->h2s != NULL) { /* HTTP/2 */
 		h2d_http2_request_close(r);
@@ -173,8 +182,7 @@ void h2d_request_close(struct h2d_request *r)
 		h2d_http1_request_close(r);
 	}
 
-	h2d_request_clear_stuff(r);
-	wuy_pool_destroy(r->pool); // TODO use defer
+	h2d_request_do_close(r);
 }
 
 void h2d_request_subr_close(struct h2d_request *r)
@@ -186,8 +194,7 @@ void h2d_request_subr_close(struct h2d_request *r)
 	free(c->send_buffer);
 	free(c);
 
-	h2d_request_clear_stuff(r);
-	wuy_pool_destroy(r->pool);
+	h2d_request_do_close(r);
 }
 
 int h2d_request_redirect(struct h2d_request *r, const char *path)
@@ -568,13 +575,26 @@ skip_generate:
 	return is_last ? H2D_OK : h2d_request_response_body(r);
 }
 
-void h2d_request_run(struct h2d_request *r)
+static void h2d_request_run_post(struct h2d_request *r)
+{
+	struct h2d_request *subr, *safe;
+	wuy_list_iter_safe_type(&r->subr_head, subr, safe, list_node) {
+		if (subr->state != H2D_REQUEST_STATE_LOCATE_CONF_HOST) {
+			break;
+		}
+		wuy_list_delete(&subr->list_node);
+		wuy_list_append(&r->subr_head, &subr->list_node);
+		h2d_request_run(subr, "run subrequest");
+	}
+}
+
+void h2d_request_run(struct h2d_request *r, const char *from)
 {
 	if (r->closed) {
 		return;
 	}
 
-	h2d_request_log(r, H2D_LOG_DEBUG, "{{{ h2d_request_run %d", r->state);
+	h2d_request_log(r, H2D_LOG_DEBUG, "{{{ h2d_request_run %d, from %s", r->state, from);
 
 	int ret;
 	switch (r->state) {
@@ -619,10 +639,11 @@ void h2d_request_run(struct h2d_request *r)
 
 	if (ret == H2D_OK || ret == H2D_BREAK) {
 		r->state++; /* next step */
-		return h2d_request_run(r);
+		return h2d_request_run(r, "again");
 	}
 
 	if (ret == H2D_AGAIN) {
+		h2d_request_run_post(r);
 		return;
 	}
 
@@ -641,43 +662,23 @@ void h2d_request_run(struct h2d_request *r)
 	r->is_broken = true;
 	r->resp.status_code = ret;
 	r->state = H2D_REQUEST_STATE_RESPONSE_HEADERS_1;
-	return h2d_request_run(r);
-}
-
-void h2d_request_active(struct h2d_request *r, const char *from)
-{
-	struct h2d_connection *c = r->c;
-	if (!h2d_connection_is_write_ready(c)) {
-		h2d_request_log(r, H2D_LOG_DEBUG, "======== h2d_request_active not ready"); // XXX coredump if get here 4times
-		return;
-	}
-
-	// XXX timer -> epoll-block -> idle, so pending subrs will not run
-	h2d_request_log(r, H2D_LOG_DEBUG, "active %s from %s", r->req.uri.raw, from);
-
-	// TODO change to:   if (not linked) append;
-	wuy_list_del_if(&r->list_node); // TODO need delete?
-	wuy_list_append(&h2d_request_defer_run_list, &r->list_node);
-}
-
-void h2d_request_active_list(wuy_list_t *list, const char *from)
-{
-	struct h2d_request *r;
-	while (wuy_list_pop_type(list, r, list_node)) {
-		h2d_request_active(r, from);
-	}
+	return h2d_request_run(r, "break");
 }
 
 struct h2d_request *h2d_request_subr_new(struct h2d_request *father, const char *uri)
 {
+	h2d_request_log(father, H2D_LOG_DEBUG, "new subrequest");
+
 	struct h2d_connection *c = calloc(1, sizeof(struct h2d_connection));
 	c->conf_listen = father->c->conf_listen;
 
 	struct h2d_request *subr = h2d_request_new(c);
 	subr->req.host = wuy_pool_strdup(subr->pool, father->req.host);
 	subr->conf_host = father->conf_host;
-	subr->state = H2D_REQUEST_STATE_PROCESS_HEADERS;
+	subr->conf_path = subr->conf_host->default_path;
+	subr->state = H2D_REQUEST_STATE_LOCATE_CONF_HOST;
 	subr->father = father;
+	wuy_list_insert(&father->subr_head, &subr->list_node);
 
 	c->u.request = subr; /* HTTP/1 only */
 
@@ -698,9 +699,6 @@ struct h2d_request *h2d_request_subr_new(struct h2d_request *father, const char 
 		return NULL;
 	}
 
-	h2d_request_log(father, H2D_LOG_DEBUG, "new subr %p -> %p", father, subr);
-
-	h2d_request_active(subr, "new subrequest");
 	return subr;
 }
 
@@ -720,19 +718,19 @@ int h2d_request_subr_flush_connection(struct h2d_connection *c)
 		return H2D_OK;
 	}
 
-	h2d_request_active(father, "subr response");
+	h2d_request_run(father, "subrequest flush");
 	return H2D_AGAIN;
 }
 
-static void h2d_request_defer_run(void *data)
+static void h2d_request_defer_free(void *data)
 {
 	struct h2d_request *r;
-	while (wuy_list_pop_type(&h2d_request_defer_run_list, r, list_node)) {
-		h2d_request_run(r);
+	while (wuy_list_pop_type(&h2d_request_defer_list, r, list_node)) {
+		wuy_pool_destroy(r->pool);
 	}
 }
 
 void h2d_request_init(void)
 {
-	loop_defer_add(h2d_loop, h2d_request_defer_run, NULL);
+	loop_defer_add(h2d_loop, h2d_request_defer_free, NULL);
 }
