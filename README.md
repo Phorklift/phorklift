@@ -24,7 +24,7 @@ It's a very natural choice when [Lua](https://lua.org) is embed.
 
 Lua is simple and powerful. Correspondingly, h2tpd's configuration is
 always short and clear for most cases, while it can also provide powerful
-description capabilities for some pecific cases.
+description capabilities for some specific cases.
 
 In order to highlight h2tpd configuration's feature, the examples in the
 following sections mainly show the usage of Lua's function and look a bit
