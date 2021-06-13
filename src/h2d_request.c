@@ -1,8 +1,8 @@
 #include "h2d_main.h"
 
-static WUY_LIST(h2d_request_defer_list);
+#define H2D_REQUEST_DETACHED_SUBR_FATHER (struct h2d_request *)(-1L)
 
-static struct h2d_request *H2D_REQUEST_DETACHED_SUBR_FATHER = (struct h2d_request *)(-1L);
+static WUY_LIST(h2d_request_defer_list);
 
 struct h2d_request *h2d_request_new(struct h2d_connection *c)
 {
@@ -96,13 +96,12 @@ static void h2d_request_stats(struct h2d_request *r)
 
 static void h2d_request_access_log(struct h2d_request *r)
 {
-	if (r->conf_path == NULL) {
-		return;
-	}
-
 	struct h2d_conf_access_log *log = r->conf_path->access_log;
 
 	if (log->sampling_rate == 0) {
+		return;
+	}
+	if (!log->enable_subrequest && r->father != NULL) {
 		return;
 	}
 

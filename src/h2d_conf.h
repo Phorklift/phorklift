@@ -43,6 +43,7 @@ struct h2d_conf_access_log {
 	const char		*filename;
 	double			sampling_rate;
 	bool			replace_format;
+	bool			enable_subrequest;
 	wuy_cflua_function_t	format;
 	wuy_cflua_function_t	filter;
 	int			buf_size;
