@@ -100,8 +100,6 @@ struct h2d_conf_listen {
 	int			*fds;
 	int			*reuse_magics;
 
-	SSL_CTX			*ssl_ctx;
-
 	struct h2d_conf_host	**hosts;
 	struct h2d_conf_host	*default_host;
 

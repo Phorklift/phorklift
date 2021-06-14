@@ -44,6 +44,60 @@ static int h2d_conf_listen_reuse_fd(const char *address)
 	return -1;
 }
 
+/* If there is no Host defined in Listen, while some Paths are defined directly,
+ * then `wuy_cflua` will still create Host (without hostnames) and parse the Path
+ * as Host->default_path.
+ * This function check this firstly. If yes, then move all the default_paths to
+ * the conf_listen->default_host->paths and remove all the Hosts.
+ * This is a little tricky. You must know how wuy_cflua works well. */
+static const char *h2d_conf_listen_fix_bare_paths(struct h2d_conf_listen *conf_listen)
+{
+	/* check first */
+	int host_num = 0;
+	bool any_def_host = false, any_def_path = false;
+	struct h2d_conf_host *conf_host;
+	for (int i = 0; (conf_host = conf_listen->hosts[i]) != NULL; i++) {
+		host_num++;
+		bool def_host = conf_host->hostnames != NULL;
+		bool def_path = conf_host->default_path->pathnames != NULL;
+		assert(def_host != def_path);
+		if (def_host) {
+			any_def_host = true;
+		} else {
+			any_def_path = true;
+
+			/* Since wuy_cflua treats the Path as Host, the Host commonds
+			 * are considered valid. So we check it here manually.
+			 * We assume the configurations bewteen `ssl` and `stats`. */
+			if (memcmp(&conf_host->ssl, &conf_listen->default_host->ssl,
+					offsetof(struct h2d_conf_host, stats) - offsetof(struct h2d_conf_host, ssl)) != 0) {
+				return "Host command can not in bare Path";
+			}
+		}
+	}
+
+	if (!any_def_path) {
+		return WUY_CFLUA_OK;
+	}
+	if (any_def_host) {
+		return "can not mix Host and Path";
+	}
+
+	/* move the default_paths */
+	struct h2d_conf_host *default_host = conf_listen->default_host;
+
+	default_host->paths = wuy_pool_alloc(wuy_cflua_pool,
+			sizeof(struct h2d_conf_path *) * (host_num + 1));
+
+	for (int i = 0; (conf_host = conf_listen->hosts[i]) != NULL; i++) {
+		default_host->paths[i] = conf_host->default_path;
+	}
+
+	conf_listen->hosts = NULL; /* clean it */
+
+	return h2d_conf_host_table.post(default_host);
+}
+
 static const char *h2d_conf_listen_post(void *data)
 {
 	struct h2d_conf_listen *conf_listen = data;
@@ -100,14 +154,17 @@ static const char *h2d_conf_listen_post(void *data)
 		if (default_host->default_path->content == NULL) {
 			return "no Host defined in Listen";
 		}
-		if (default_host->ssl->ctx != NULL) {
-			conf_listen->ssl_ctx = default_host->ssl->ctx;
-		}
 		return WUY_CFLUA_OK;
 	}
 
+	/* if Path() is set in Listen() directly */
+	const char *err = h2d_conf_listen_fix_bare_paths(conf_listen);
+	if (err != WUY_CFLUA_OK || conf_listen->hosts == NULL) { /* error or fixed(no Host any more) */
+		return err;
+	}
+
 	/* register Host() */
-	const char *err = h2d_conf_host_register(conf_listen);
+	err = h2d_conf_host_register(conf_listen);
 	if (err != WUY_CFLUA_OK) {
 		return err;
 	}
@@ -116,7 +173,7 @@ static const char *h2d_conf_listen_post(void *data)
 	bool is_ssl = false, is_plain = false;
 	struct h2d_conf_host *conf_host;
 	for (int i = 0; (conf_host = conf_listen->hosts[i]) != NULL; i++) {
-		if (conf_host->ssl->ctx != NULL) {
+		if (conf_host->ssl != NULL) {
 			is_ssl = true;
 		} else {
 			is_plain = true;
@@ -124,15 +181,10 @@ static const char *h2d_conf_listen_post(void *data)
 	}
 	if (is_ssl) {
 		if (is_plain) {
-			return "use ssl or not consistent amount Host() under one Listen()";
+			return "can not mix SSL and plain amount Host() under one Listen()";
 		}
-
-		if (conf_listen->default_host->ssl->ctx != NULL) {
-			conf_listen->ssl_ctx = conf_listen->default_host->ssl->ctx;
-		} else if (conf_listen->host_wildcard != NULL) {
-			conf_listen->ssl_ctx = conf_listen->host_wildcard->ssl->ctx;
-		} else {
-			conf_listen->ssl_ctx = h2d_ssl_ctx_empty_server();
+		if (conf_listen->default_host->ssl == NULL) {
+			conf_listen->default_host->ssl = conf_listen->hosts[0]->ssl;
 		}
 	}
 

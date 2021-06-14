@@ -278,8 +278,8 @@ static bool h2d_connection_on_accept(loop_tcp_listen_t *loop_listen,
 	loop_stream_set_app_data(s, c);
 
 	/* set ssl */
-	if (conf_listen->ssl_ctx != NULL) {
-		h2d_ssl_stream_set(s, conf_listen->ssl_ctx, true);
+	if (conf_listen->default_host->ssl != NULL) {
+		h2d_ssl_stream_set(s, conf_listen->default_host->ssl->ctx, true);
 	}
 
 	_log(H2D_LOG_DEBUG, "new at %s", conf_listen->name);

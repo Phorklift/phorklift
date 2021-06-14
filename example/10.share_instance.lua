@@ -73,23 +73,21 @@ local origin_upstream = {
     "127.0.0.1:11181",
 }
 Listen "8081" {
-    Host "*" {
-        Path "=/stats" {
-            stats = true,
-        },
-        Path "=/ping" {
-            echo = "pong\n",
-        },
+    Path "=/stats" {
+        stats = true,
+    },
+    Path "=/ping" {
+        echo = "pong\n",
+    },
 
-        -- The following Paths share the upstream, so the share
-        -- the healthcheck, connection pool, statistics, etc.
-        Path "/img" {
-            proxy = { origin_upstream,
-                x_forwarded_for = false,
-            },
+    -- The following Paths share the upstream, so the share
+    -- the healthcheck, connection pool, statistics, etc.
+    Path "/img" {
+        proxy = { origin_upstream,
+            x_forwarded_for = false,
         },
-        Path "/" {
-            proxy = { origin_upstream },
-        },
-    }
+    },
+    Path "/" {
+        proxy = { origin_upstream },
+    },
 }

@@ -183,10 +183,6 @@ static const char *h2d_conf_host_post(void *data)
 		return "no Path defined in Host";
 	}
 
-	if (conf_host->default_path->pathnames != NULL) {
-		return "Path() is allowed in Host() scope only, but not in Listen() scope";
-	}
-
 	if (conf_host->name == NULL) {
 		conf_host->name = conf_host->hostnames ? conf_host->hostnames[0] : "_default";
 	}

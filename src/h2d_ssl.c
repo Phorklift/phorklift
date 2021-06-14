@@ -66,7 +66,7 @@ static int h2d_ssl_sni_callback(SSL *ssl, int *ad, void *arg)
 	}
 
 	atomic_fetch_add(&stats->sni_ok, 1);
-	if (c->ssl_sni_conf_host->ssl->ctx != c->conf_listen->ssl_ctx) {
+	if (c->ssl_sni_conf_host->ssl->ctx != c->conf_listen->default_host->ssl->ctx) {
 		// SSL_set_ssl_ctx(ssl, c->ssl_sni_conf_host->ssl.ctx);
 	}
 
@@ -236,14 +236,8 @@ static const char *h2d_ssl_conf_post(void *data)
 {
 	struct h2d_ssl_conf *conf = data;
 
-	if (conf->certificate == NULL) {
-		if (conf->private_key != NULL) {
-			return "certificate miss";
-		}
-		return WUY_CFLUA_OK;
-	}
-	if (conf->private_key == NULL) {
-		return "private_key miss";
+	if (conf->certificate == NULL || conf->private_key == NULL) {
+		return "miss certificate or private_key";
 	}
 
 	conf->ctx = h2d_ssl_new_empty_server_ctx();
@@ -338,6 +332,7 @@ static struct wuy_cflua_command h2d_ssl_conf_commands[] = {
 
 struct wuy_cflua_table h2d_ssl_conf_table = {
 	.commands = h2d_ssl_conf_commands,
+	.may_omit = true,
 	.size = sizeof(struct h2d_ssl_conf),
 	.post = h2d_ssl_conf_post,
 	.free = h2d_ssl_conf_free,

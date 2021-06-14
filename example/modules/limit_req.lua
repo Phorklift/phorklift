@@ -50,20 +50,18 @@ Runtime = {
 }
 
 Listen "8080" {
-    Host "*" {
-        echo = "hello, world!\n",
-        limit_req = 1, -- 1 r/s, default for all Path()
+    echo = "hello, world!\n",
+    limit_req = 1, -- 1 r/s, default for all Path()
 
-        Path "/1" {
-        },
-        Path "/burst2" {
-            limit_req = { burst = 2 }
-        },
-        Path "/punish2" {
-            limit_req = { punish = 2 }
-        },
-        Path "/key" {
-            limit_req = { key = function() return h2d.req.get_uri_query("id") end }
-        },
-    }
+    Path "/1" {
+    },
+    Path "/burst2" {
+        limit_req = { burst = 2 }
+    },
+    Path "/punish2" {
+        limit_req = { punish = 2 }
+    },
+    Path "/key" {
+        limit_req = { key = function() return h2d.req.get_uri_query("id") end }
+    },
 }

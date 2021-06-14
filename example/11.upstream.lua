@@ -42,20 +42,18 @@ local hash_upstream = {
 }
 
 Listen "8080" {
-    Host "*" {
-        Path "/down" {
-            proxy = { down_upstream },
-        },
-        Path "/status503" {
-            proxy = { status503_upstream },
-        },
-        Path "/retry_status503" {
-            proxy = { retry_status503_upstream },
-        },
-        Path "/hash" {
-            proxy = { hash_upstream },
-        },
-    }
+    Path "/down" {
+        proxy = { down_upstream },
+    },
+    Path "/status503" {
+        proxy = { status503_upstream },
+    },
+    Path "/retry_status503" {
+        proxy = { retry_status503_upstream },
+    },
+    Path "/hash" {
+        proxy = { hash_upstream },
+    },
 }
 
 -- backend
