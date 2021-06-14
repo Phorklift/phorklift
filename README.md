@@ -269,8 +269,8 @@ h2tpd is still under development and not stable yet.
 The main functions and frames have been realized. At least the functions
 and configuration mentioned in this document have been realized.
 
-We will keep to add more modules, improve some details, fix bugs to
-make the program more stable, write test cases, and write more documents.
+I publish it now (June 2021) mainly to collect opinions and suggestions.
+If you are interested, please try it and feedback. Thanks!
 
 
 # Next Reading
