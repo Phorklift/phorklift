@@ -13,45 +13,38 @@ struct h2d_lua_conf {
 	wuy_cflua_function_t	resp_body;
 };
 
-struct h2d_lua_ctx {
-	uint8_t 		*body_buf;
-	size_t			body_len;
-};
-
 struct h2d_module h2d_lua_module;
 
 static int h2d_lua_generate_response_headers(struct h2d_request *r)
 {
 	struct h2d_lua_conf *conf = r->conf_path->module_confs[h2d_lua_module.index];
-	struct h2d_lua_ctx *ctx = r->module_ctxs[h2d_lua_module.index];
-
-	if (ctx == NULL) {
-		ctx = wuy_pool_alloc(r->pool, sizeof(struct h2d_lua_ctx));
-		r->module_ctxs[h2d_lua_module.index] = ctx;
-	}
 
 	lua_State *L = h2d_lua_thread_run(r, conf->content, NULL);
 	if (!H2D_PTR_IS_OK(L)) {
 		return H2D_PTR2RET(L);
 	}
 
-	const char *data = lua_tolstring(L, -1, &ctx->body_len);
-	if (data == NULL) {
+	int status_code = WUY_HTTP_200;
+	if (lua_type(L, 1) == LUA_TNUMBER) {
+		status_code = lua_tointeger(L, 1);
+		if (status_code <= WUY_HTTP_200 || status_code >= WUY_HTTP_504) {
+			status_code = WUY_HTTP_500;
+		}
+	}
+
+	size_t len;
+	const char *body = lua_tolstring(L, -1, &len);
+	if (body == NULL) {
 		h2d_request_log(r, H2D_LOG_ERROR, "content fail");
 		return WUY_HTTP_500;
 	}
 
-	ctx->body_buf = wuy_pool_strndup(r->pool, data, ctx->body_len);
+	r->resp.easy_str_len = len;
+	r->resp.easy_string = wuy_pool_strndup(r->pool, body, len);
 
-	r->resp.status_code = WUY_HTTP_200;
-	r->resp.content_length = ctx->body_len;
+	r->resp.status_code = status_code;
+	r->resp.content_length = r->resp.easy_str_len;
 	return H2D_OK;
-}
-static int h2d_lua_generate_response_body(struct h2d_request *r, uint8_t *buf, int len)
-{
-	struct h2d_lua_ctx *ctx = r->module_ctxs[h2d_lua_module.index];
-	memcpy(buf, ctx->body_buf, ctx->body_len);
-	return ctx->body_len;
 }
 
 /* configuration */
@@ -96,6 +89,5 @@ struct h2d_module h2d_lua_module = {
 
 	.content = {
 		.response_headers = h2d_lua_generate_response_headers,
-		.response_body = h2d_lua_generate_response_body,
 	},
 };

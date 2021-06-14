@@ -49,7 +49,7 @@ struct h2d_request {
 
 		size_t			sent_length; /* only for log and stats */
 
-		char			*easy_string;
+		const char		*easy_string;
 		int			easy_str_len;
 		int			easy_fd;
 	} resp;
