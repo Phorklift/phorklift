@@ -60,6 +60,10 @@ static int h2d_static_dir_headers(struct h2d_request *r, struct stat *st_buf)
 
 	r->resp.status_code = WUY_HTTP_200;
 	r->resp.content_length = ctx->list_dir_len;
+
+	r->resp.easy_string = ctx->list_dir_buf;
+	r->resp.easy_str_len = ctx->list_dir_len;
+
 	return H2D_OK;
 }
 
@@ -170,6 +174,8 @@ skip_open:;
 		return WUY_HTTP_403;
 	}
 
+	r->resp.easy_fd = ctx->fd;
+
 	h2d_header_add_lite(&r->resp.headers, "Last-Modified",
 			wuy_http_date_make(st_buf.st_mtime),
 			WUY_HTTP_DATE_LENGTH, r->pool);
@@ -194,34 +200,6 @@ skip_open:;
 	ctx->left = st_buf.st_size;
 
 	return H2D_OK;
-}
-
-static int h2d_static_generate_response_body(struct h2d_request *r, uint8_t *buf, int size)
-{
-	struct h2d_static_conf *conf = r->conf_path->module_confs[h2d_static_module.index];
-	struct h2d_static_ctx *ctx = r->module_ctxs[h2d_static_module.index];
-
-	if (ctx->list_dir_buf != NULL) {
-		memcpy(buf, ctx->list_dir_buf, ctx->list_dir_len);
-		return ctx->list_dir_len;
-	}
-
-	if (size > ctx->left) {
-		size = ctx->left;
-	}
-
-	int ret = read(ctx->fd, buf, size);
-	if (ret < 0) {
-		h2d_request_log_at(r, conf->log, H2D_LOG_ERROR, "read fail %s", strerror(errno));
-		return -1;
-	}
-	if (ret < size) {
-		// TODO
-		h2d_request_log_at(r, conf->log, H2D_LOG_ERROR, "read not complete");
-	}
-	ctx->left -= ret;
-	h2d_request_log_at(r, conf->log, H2D_LOG_DEBUG, "read file %ld", ret);
-	return ret;
 }
 
 static void h2d_static_ctx_free(struct h2d_request *r)
@@ -296,7 +274,6 @@ struct h2d_module h2d_static_module = {
 	.content = {
 		.process_headers = h2d_static_process_request_headers,
 		.response_headers = h2d_static_generate_response_headers,
-		.response_body = h2d_static_generate_response_body,
 	},
 
 	.ctx_free = h2d_static_ctx_free,

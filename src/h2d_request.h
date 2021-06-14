@@ -49,9 +49,9 @@ struct h2d_request {
 
 		size_t			sent_length; /* only for log and stats */
 
-		int			break_body_len;
-		uint8_t			*break_body_buf;
-		int			(*break_body_func)(struct h2d_request *, uint8_t *buf, int len);
+		char			*easy_string;
+		int			easy_str_len;
+		int			easy_fd;
 	} resp;
 
 	enum {

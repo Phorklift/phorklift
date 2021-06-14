@@ -233,8 +233,8 @@ static int h2d_lua_api_echo(lua_State *L)
 	}
 
 	struct h2d_request *r = h2d_lua_api_current;
-	r->resp.break_body_len = len;
-	r->resp.break_body_buf = wuy_pool_strndup(r->pool, s, len);
+	r->resp.easy_string = wuy_pool_strndup(r->pool, s, len);
+	r->resp.easy_str_len = len;
 	return 0;
 }
 

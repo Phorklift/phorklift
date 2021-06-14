@@ -217,19 +217,6 @@ static void h2d_file_cache_abort(struct h2d_request *r)
 	r->module_ctxs[h2d_file_cache_module.index] = NULL;
 }
 
-static int h2d_file_cache_generate_response_body(struct h2d_request *r, uint8_t *buf, int size)
-{
-	struct h2d_file_cache_conf *conf = r->conf_path->module_confs[h2d_file_cache_module.index];
-	struct h2d_file_cache_ctx *ctx = r->module_ctxs[h2d_file_cache_module.index];
-
-	int ret = read(ctx->fd, buf, size);
-	if (ret < 0) {
-		_log(H2D_LOG_ERROR, "read body %s", strerror(errno));
-		return H2D_ERROR;
-	}
-	return ret;
-}
-
 static int h2d_file_cache_filter_process_headers(struct h2d_request *r)
 {
 	struct h2d_file_cache_conf *conf = r->conf_path->module_confs[h2d_file_cache_module.index];
@@ -337,9 +324,7 @@ cache_miss:
 	}
 
 	r->resp.content_length = ctx->item.content_length;
-
-	/* set response body handler */
-	r->resp.break_body_func = h2d_file_cache_generate_response_body;
+	r->resp.easy_fd = ctx->fd;
 
 	return ctx->item.status_code;
 }
