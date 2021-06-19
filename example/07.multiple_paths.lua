@@ -3,7 +3,7 @@
 -- A pathname must starts with `/`, `=` or `~`, indicate prefix,
 -- exactly, and Lua regex matching respectively.
 --
--- For each requests, h2tpd locates Path by comparing the pathnames
+-- For each requests, Phorklift locates Path by comparing the pathnames
 -- one by one in the order that Path appears in Host.
 -- This is different to locate Host in Listen.
 --

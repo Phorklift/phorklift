@@ -1,7 +1,7 @@
 #!/bin/bash
 
-if [ ! -f ../src/h2tpd ]; then
-	echo 'ERROR: "../src/h2tpd" does not exist! Please go to make it first.'
+if [ ! -f ../src/phorklift ]; then
+	echo 'ERROR: "../src/phorklift" does not exist! Please go to make it first.'
 	exit 1
 fi
 
@@ -10,10 +10,10 @@ for conf in `ls invalid_confs/*.lua`
 do
 	echo "check $conf"
 	err=`grep "ERROR:" $conf | cut -d':' -f2-`
-	if ! ../src/h2tpd $conf 2>&1 | grep -Fq "$err" ; then
+	if ! ../src/phorklift $conf 2>&1 | grep -Fq "$err" ; then
 		echo "FAIL!!!"
 		echo "expect error: $err; while got:"
-		../src/h2tpd $conf
+		../src/phorklift $conf
 		exit 1
 	fi
 done
@@ -22,7 +22,7 @@ done
 for conf in `ls good_confs/*.lua good_confs/modules/*.lua`
 do
 	echo "check $conf"
-	if ! ../src/h2tpd $conf > /dev/null ; then
+	if ! ../src/phorklift $conf > /dev/null ; then
 		echo "FAIL!!! canot start."
 		exit 2
 	fi
@@ -41,7 +41,7 @@ do
 		read -r sep
 	done
 
-	kill -QUIT `cat h2tpd.pid`
+	kill -QUIT `cat phorklift.pid`
 done
 
 # done

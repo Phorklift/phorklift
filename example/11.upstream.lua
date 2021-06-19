@@ -38,7 +38,7 @@ local hash_upstream = {
     "127.0.0.1:8081",
     "127.0.0.1:8082",
     "127.0.0.1:8083",
-    hash = function() return h2d.req.get_uri_query("id") end,
+    hash = function() return phl.req.get_uri_query("id") end,
 }
 
 Listen "8080" {

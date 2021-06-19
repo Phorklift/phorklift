@@ -10,11 +10,11 @@
 Listen "8080" {
     Path "/auth" {
         script = function()
-            local token = h2d.req.get_header("Token")
+            local token = phl.req.get_header("Token")
             if token == "twgdh" then
                 return "yes"
             else
-                return h2d.HTTP_401, "no"
+                return phl.HTTP_401, "no"
             end
         end,
     },

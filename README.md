@@ -59,7 +59,7 @@ or reacting slower than 1 second:
   ```lua
   access_log = {
       filter = function()
-          return h2d.resp.status_code >= 400 or h2d.resp.react_ms > 1000
+          return phl.resp.status_code >= 400 or phl.resp.react_ms > 1000
       end,
   }
   ```
@@ -70,8 +70,8 @@ login user then use the user-id as a key, or use the client IP.
   ```lua
   limit_req = {
       key = function()
-          local user_id = h2d.req.header_get_cookie("id")
-          return user_id and user_id or h2d.get_client_ip()
+          local user_id = phl.req.header_get_cookie("id")
+          return user_id and user_id or phl.get_client_ip()
       end
   }
   ```
@@ -84,14 +84,14 @@ Going further, different weight can be set for each request:
           local weight = 1 -- default value
 
           -- bigger `limit` argument means bigger weight
-          local limit = h2d.req.get_uri_query("limit")
+          local limit = phl.req.get_uri_query("limit")
           if limit then
               limit = tonumber(limit)
               weight = (limit > 100) and limit/100 or 1
           end
 
           -- higher VIP level has higher limit
-          local user_id = h2d.req.header_get_cookie("id")
+          local user_id = phl.req.header_get_cookie("id")
           local vip = get_vip_level(user_id)
           if vip then
               weight = weight / vip
@@ -107,7 +107,7 @@ blocking mode. Let's see the `get_vip_level()` in last example:
 
   ```lua
   local function get_vip_level(user_id)
-      local r = h2d.subrequest("@get_user_info", {args={user_id=user_id}})
+      local r = phl.subrequest("@get_user_info", {args={user_id=user_id}})
       if r.status_code ~= 200 then
           return nil
       end
@@ -117,7 +117,7 @@ blocking mode. Let's see the `get_vip_level()` in last example:
   end
   ```
 
-`h2d.subrequest()` creates a Phorklift sub-request, and returns after it
+`phl.subrequest()` creates a Phorklift sub-request, and returns after it
 finishes. But Phorklift switches to process other events during this time.
 So the script looks like blocking but the underlying is asynchronous.
 
@@ -155,7 +155,7 @@ file, but can only know them on receiving requests. So here is the dynamic:
   ```lua
   local upstream_hello_dynamic = {
       dynamic = {
-          get_name = function() return h2d.req.host end,
+          get_name = function() return phl.req.host end,
           get_conf = function(name) return { name } end,
       }
   }
@@ -185,21 +185,21 @@ Here is another example of dynamic upstream for service discovery:
           check_interval = 60,
 
           get_name = function()
-              return string.match(h2d.req.uri_path, '/(%w+)/')
+              return string.match(phl.req.uri_path, '/(%w+)/')
           end,
 
           get_conf = function(name)
-              local redis = require "luapkgs/h2d_redis"
+              local redis = require "luapkgs/phl_redis"
               local conf = redis.query_once("127.0.0.1:6379", "get "..name)
               if not conf then  -- query failure
-                  return h2d.HTTP_500
+                  return phl.HTTP_500
               end
 
               if conf == redis.Null then  -- miss or deleted
-                  return h2d.HTTP_404
+                  return phl.HTTP_404
               end
 
-              return h2d.HTTP_200, conf
+              return phl.HTTP_200, conf
           end,
       }
   }

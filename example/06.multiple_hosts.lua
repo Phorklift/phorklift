@@ -6,7 +6,7 @@
 --
 -- The string "*" is used to match everything.
 --
--- For each request, h2tpd locates Host using longest match. Specifically
+-- For each request, Phorklift locates Host using longest match. Specifically
 -- in the following order:
 --
 --   * exactly match (no `*`),

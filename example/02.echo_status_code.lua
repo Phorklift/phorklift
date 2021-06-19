@@ -6,7 +6,7 @@
 -- status code.
 --
 -- In [last example](01.hello_world.lua), `echo` was set to a string value.
--- This is a h2tpd configuration's grammar sugur, which is
+-- This is a Phorklift configuration's grammar sugur, which is
 -- you can omit the table constructor and set a member directly, if
 --
 --   * the value table accepts array members (either single or multiple),

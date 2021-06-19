@@ -11,7 +11,7 @@
 -- EXPECT: 200 OK
 
 local forward_proxy_dynamic = {
-    get_name = function() return h2d.req.host end,
+    get_name = function() return phl.req.host end,
     get_conf = function(host) return { host } end,
 }
 

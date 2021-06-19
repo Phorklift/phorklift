@@ -3,10 +3,10 @@
 -- REQUEST: curl -v 127.0.0.1:8080/hi?name=hacker
 -- EXPECT: 403 Forbidden
 --
--- REQUEST: curl -v 127.0.0.1:8080/hi?name=h2tpd
--- EXPECT: hello, h2tpd
+-- REQUEST: curl -v 127.0.0.1:8080/hi?name=phorklift
+-- EXPECT: hello, phorklift
 --
--- REQUEST: curl -v 127.0.0.1:8080/hi?name=h2tpd
+-- REQUEST: curl -v 127.0.0.1:8080/hi?name=phorklift
 -- EXPECT: X-tag: haha
 
 Listen "8080" {
@@ -14,20 +14,20 @@ Listen "8080" {
     script = {
         -- process headers filter
         request_headers = function()
-            local name = h2d.req.get_uri_query("name")
+            local name = phl.req.get_uri_query("name")
             if name == 'hacker' then
-                return h2d.HTTP_403
+                return phl.HTTP_403
             end
         end,
 
         -- content
         function()
-            return "hello, " .. h2d.req.get_uri_query("name")
+            return "hello, " .. phl.req.get_uri_query("name")
         end,
 
         -- reponse headers filter
         response_headers = function()
-            h2d.resp.add_header("X-tag", "haha")
+            phl.resp.add_header("X-tag", "haha")
         end,
     }
 }

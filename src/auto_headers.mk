@@ -1,12 +1,12 @@
-auto_headers: h2d_conf_predefs_lua.h h2d_module_list.h
+auto_headers: phl_conf_predefs_lua.h phl_module_list.h
 
-h2d_conf_predefs_lua.h: h2d_conf_predefs.lua
-	echo '/* read file h2d_conf_predefs.lua into string */' > $@
-	@echo 'static const char *h2d_conf_predefs_lua_str = " \\n\\' >> $@
+phl_conf_predefs_lua.h: phl_conf_predefs.lua
+	echo '/* read file phl_conf_predefs.lua into string */' > $@
+	@echo 'static const char *phl_conf_predefs_lua_str = " \\n\\' >> $@
 	@sed 's/"/\\"/g' $^ | awk '{print $$0" \\n\\"}' >> $@
 	@echo '";' >> $@
 
-h2d_module_list.h: $(MOD_SRCS)
+phl_module_list.h: $(MOD_SRCS)
 	echo '#define H2D_MODULE_X_LIST \\' > $@
 	@ls modules/*.c | sed 's@modules/@\tX(@' | sed 's/.c$$/_module) \\/' >> $@
 	@echo >> $@
@@ -18,4 +18,4 @@ h2d_module_list.h: $(MOD_SRCS)
 	@echo >> $@
 
 clean_auto_headers:
-	rm -f h2d_conf_predefs_lua.h h2d_module_list.h
+	rm -f phl_conf_predefs_lua.h phl_module_list.h
