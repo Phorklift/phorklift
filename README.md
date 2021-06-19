@@ -73,7 +73,7 @@ login user then use the user-id as a key, or use the client IP.
   limit_req = {
       key = function()
           local user_id = phl.req.get_cookie("id")
-          return user_id and user_id or phl.get_client_ip()
+          return user_id and user_id or phl.conn.client_ip
       end
   }
   ```
