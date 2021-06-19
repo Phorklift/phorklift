@@ -400,5 +400,6 @@ struct wuy_cflua_command phl_conf_listen_network_commands[] = {
 
 void phl_connection_init(void)
 {
-	loop_defer_add(phl_loop, phl_connection_defer_routine, NULL);
+	/* set rank=-10.0 to be run first for phl_connection_flush() */
+	loop_defer_add4(phl_loop, phl_connection_defer_routine, NULL, -10.0);
 }

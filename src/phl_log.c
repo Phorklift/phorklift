@@ -100,7 +100,7 @@ static void phl_log_routine(void *data)
 
 void phl_log_init(void)
 {
-	loop_defer_add(phl_loop, phl_log_routine, NULL);
+	loop_defer_add4(phl_loop, phl_log_routine, NULL, 10.0); /* rank=10.0 to be run later */
 }
 
 /* error log */
