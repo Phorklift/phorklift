@@ -1,5 +1,5 @@
-#ifndef H2D_CONF_H
-#define H2D_CONF_H
+#ifndef PHL_CONF_H
+#define PHL_CONF_H
 
 #include <stdbool.h>
 #include <lua5.1/lua.h>
@@ -70,8 +70,8 @@ struct phl_conf_path {
 	struct phl_module		*content;
 	struct phl_module_filters	*filters;
 
-	void				*module_confs[H2D_MODULE_MAX];
-	int				content_inherit_counts[H2D_MODULE_MAX];
+	void				*module_confs[PHL_MODULE_MAX];
+	int				content_inherit_counts[PHL_MODULE_MAX];
 
 	struct phl_conf_path_stats	*stats;
 };
@@ -86,7 +86,7 @@ struct phl_conf_host {
 
 	struct phl_ssl_conf	*ssl;
 
-	void			*module_confs[H2D_MODULE_MAX];
+	void			*module_confs[PHL_MODULE_MAX];
 
 	struct phl_conf_host_stats	*stats;
 };
@@ -142,7 +142,7 @@ struct phl_conf_listen {
 		loop_group_timer_head_t	*recv_timer_group;
 	} network;
 
-	void			*module_confs[H2D_MODULE_MAX];
+	void			*module_confs[PHL_MODULE_MAX];
 
 	struct phl_conf_listen_stats	*stats;
 };
@@ -190,7 +190,7 @@ void phl_conf_doc(void);
 
 #define phl_conf_log(level, fmt, ...) \
 	if (phl_conf_runtime == NULL) \
-		fprintf(level < H2D_LOG_ERROR ? stdout : stderr, fmt"\n", ##__VA_ARGS__); \
+		fprintf(level < PHL_LOG_ERROR ? stdout : stderr, fmt"\n", ##__VA_ARGS__); \
 	else \
 		phl_log_level(phl_conf_runtime->error_log, level, fmt, ##__VA_ARGS__)
 

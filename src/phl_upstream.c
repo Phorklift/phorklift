@@ -1,12 +1,12 @@
 #include "phl_main.h"
 
 #define X(lb) extern struct phl_upstream_loadbalance lb;
-H2D_UPSTREAM_LOADBALANCE_X_LIST
+PHL_UPSTREAM_LOADBALANCE_X_LIST
 #undef X
 static struct phl_upstream_loadbalance *phl_upstream_loadbalance_statics[] =
 {
 	#define X(lb) &lb,
-	H2D_UPSTREAM_LOADBALANCE_X_LIST
+	PHL_UPSTREAM_LOADBALANCE_X_LIST
 	#undef X
 };
 
@@ -38,8 +38,8 @@ static void phl_upstream_on_active(loop_stream_t *s)
 	 * routine will call SSL_read/SSL_write to do the handshake.
 	 * We handshake here just to avoid calling the following
 	 * routine during handshake for performence. So we handle
-	 * H2D_AGAIN only, but not H2D_ERROR. */
-	if (phl_ssl_stream_handshake(s) == H2D_AGAIN) {
+	 * PHL_AGAIN only, but not PHL_ERROR. */
+	if (phl_ssl_stream_handshake(s) == PHL_AGAIN) {
 		return;
 	}
 
@@ -60,7 +60,7 @@ static loop_stream_ops_t phl_upstream_ops = {
 	.on_readable = phl_upstream_on_active,
 	.on_writable = phl_upstream_on_active,
 	.on_close = phl_upstream_on_close,
-	H2D_SSL_LOOP_STREAM_UNDERLYINGS,
+	PHL_SSL_LOOP_STREAM_UNDERLYINGS,
 };
 
 struct phl_upstream_connection *
@@ -68,31 +68,31 @@ phl_upstream_get_connection(struct phl_upstream_conf *upstream, struct phl_reque
 {
 	/* check if dynamic */
 	while (phl_dynamic_is_enabled(&upstream->dynamic)) {
-		phl_request_log(r, H2D_LOG_DEBUG, "dynamic get");
+		phl_request_log(r, PHL_LOG_DEBUG, "dynamic get");
 		upstream = phl_dynamic_get(&upstream->dynamic, r);
-		if (!H2D_PTR_IS_OK(upstream)) {
+		if (!PHL_PTR_IS_OK(upstream)) {
 			return (void *)upstream;
 		}
 	}
 
 	if (upstream->address_num == 0) { /* only if dynamic upstream */
 		if (!wuy_list_node_linked(&r->list_node)) {
-			_log(H2D_LOG_DEBUG, "dynamic wait for resolving");
+			_log(PHL_LOG_DEBUG, "dynamic wait for resolving");
 			wuy_list_append(&upstream->wait_head, &r->list_node);
 		}
-		return H2D_PTR_AGAIN;
+		return PHL_PTR_AGAIN;
 	}
 
 	/* pick an address */
 	struct phl_upstream_address *address = upstream->loadbalance->pick(upstream, r);
 	if (address == NULL) {
-		_log(H2D_LOG_ERROR, "pick fail");
+		_log(PHL_LOG_ERROR, "pick fail");
 		atomic_fetch_add(&upstream->stats->pick_fail, 1);
-		return H2D_PTR_ERROR;
+		return PHL_PTR_ERROR;
 	}
 
 	if (!phl_upstream_address_is_pickable(address, r)) {
-		_log(H2D_LOG_ERROR, "all down");
+		_log(PHL_LOG_ERROR, "all down");
 
 		struct phl_upstream_address *iaddr;
 		wuy_list_iter_type(&upstream->address_head, iaddr, upstream_node) {
@@ -105,7 +105,7 @@ phl_upstream_get_connection(struct phl_upstream_conf *upstream, struct phl_reque
 	/* try to reuse an idle one */
 	struct phl_upstream_connection *upc;
 	if (wuy_list_pop_type(&address->idle_head, upc, list_node)) {
-		_log(H2D_LOG_DEBUG, "reuse %s", address->name);
+		_log(PHL_LOG_DEBUG, "reuse %s", address->name);
 		wuy_list_append(&address->active_head, &upc->list_node);
 		address->idle_num--;
 		atomic_fetch_add(&address->stats->reuse, 1);
@@ -113,14 +113,14 @@ phl_upstream_get_connection(struct phl_upstream_conf *upstream, struct phl_reque
 		return upc;
 	}
 
-	_log(H2D_LOG_DEBUG, "connect %s", address->name);
+	_log(PHL_LOG_DEBUG, "connect %s", address->name);
 
 	/* new connection */
 	loop_stream_t *s = loop_tcp_connect_sockaddr(phl_loop, &address->sockaddr.s,
 			&phl_upstream_ops);
 	if (s == NULL) {
-		_log(H2D_LOG_ERROR, "connect fail %s", strerror(errno));
-		return H2D_PTR_ERROR;
+		_log(PHL_LOG_ERROR, "connect fail %s", strerror(errno));
+		return PHL_PTR_ERROR;
 	}
 	loop_stream_set_timeout(s, upstream->send_timeout * 1000);
 
@@ -147,7 +147,7 @@ phl_upstream_retry_connection(struct phl_upstream_connection *old)
 	struct phl_upstream_address *address = old->address;
 	struct phl_upstream_conf *upstream = address->upstream;
 
-	_log(H2D_LOG_DEBUG, "retry for %s", address->name);
+	_log(PHL_LOG_DEBUG, "retry for %s", address->name);
 
 	atomic_fetch_add(&upstream->stats->retry, 1);
 
@@ -178,20 +178,20 @@ void phl_upstream_release_connection(struct phl_upstream_connection *upc, bool i
 	struct phl_upstream_address *address = upc->address;
 	struct phl_upstream_conf *upstream = address->upstream;
 
-	_log(H2D_LOG_DEBUG, "release %s%s", address->name, upc->error ? " in error" : "");
+	_log(PHL_LOG_DEBUG, "release %s%s", address->name, upc->error ? " in error" : "");
 
 	if (!upc->error) {
 		address->failure.fails = 0;
 		address->failure.passes++;
 		if (address->failure.down_time != 0 && address->failure.passes == upstream->failure.passes) {
-			_log(H2D_LOG_ERROR, "go up");
+			_log(PHL_LOG_ERROR, "go up");
 			address->failure.down_time = 0;
 		}
 	} else {
 		address->failure.passes = 0;
 		address->failure.fails++;
 		if (address->failure.down_time == 0 && address->failure.fails == upstream->failure.fails) {
-			_log(H2D_LOG_ERROR, "go down");
+			_log(PHL_LOG_ERROR, "go down");
 			atomic_fetch_add(&address->stats->failure_down, 1);
 			address->failure.down_time = time(NULL);
 		}
@@ -199,13 +199,13 @@ void phl_upstream_release_connection(struct phl_upstream_connection *upc, bool i
 
 	/* close the connection */
 	if (upc->error || !is_clean || loop_stream_is_closed(upc->loop_stream)) {
-		_log(H2D_LOG_DEBUG, "just close, state=%d", r->state);
+		_log(PHL_LOG_DEBUG, "just close, state=%d", r->state);
 		phl_upstream_connection_close(upc);
 		return;
 	}
 
 	/* put the connection into idle pool */
-	_log(H2D_LOG_DEBUG, "keeplive, idles=%d", address->idle_num);
+	_log(PHL_LOG_DEBUG, "keeplive, idles=%d", address->idle_num);
 
 	if (address->idle_num > upstream->idle_max) {
 		/* close the oldest one if pool is full */
@@ -231,7 +231,7 @@ int phl_upstream_connection_read(struct phl_upstream_connection *upc,
 
 	/* upc->preread_buf was allocated in phl_upstream_connection_read_notfinish() */
 	if (upc->preread_buf != NULL) {
-		_log_upc(H2D_LOG_DEBUG, "read preread %d", upc->preread_len);
+		_log_upc(PHL_LOG_DEBUG, "read preread %d", upc->preread_len);
 
 		if (buf_len < upc->preread_len) {
 			memcpy(buffer, upc->preread_buf, buf_len);
@@ -254,8 +254,8 @@ int phl_upstream_connection_read(struct phl_upstream_connection *upc,
 
 	int read_len = loop_stream_read(upc->loop_stream, buf_pos, buf_len);
 	if (read_len < 0) {
-		_log_upc(H2D_LOG_ERROR, "read fail %d", read_len);
-		return H2D_ERROR;
+		_log_upc(PHL_LOG_ERROR, "read fail %d", read_len);
+		return PHL_ERROR;
 	}
 	if (read_len > 0) { /* update timer */
 		loop_stream_set_timeout(upc->loop_stream,
@@ -263,9 +263,9 @@ int phl_upstream_connection_read(struct phl_upstream_connection *upc,
 	}
 
 	int ret_len = buf_pos - (uint8_t *)buffer + read_len;
-	_log_upc(H2D_LOG_DEBUG, "read %d", ret_len);
+	_log_upc(PHL_LOG_DEBUG, "read %d", ret_len);
 
-	return ret_len == 0 ? H2D_AGAIN : ret_len;
+	return ret_len == 0 ? PHL_AGAIN : ret_len;
 }
 void phl_upstream_connection_read_notfinish(struct phl_upstream_connection *upc,
 		void *buffer, int buf_len)
@@ -273,7 +273,7 @@ void phl_upstream_connection_read_notfinish(struct phl_upstream_connection *upc,
 	if (buf_len == 0) {
 		return;
 	}
-	_log_upc(H2D_LOG_DEBUG, "read not finish %d", buf_len);
+	_log_upc(PHL_LOG_DEBUG, "read not finish %d", buf_len);
 
 	assert(upc->preread_buf == NULL);
 	upc->preread_buf = malloc(buf_len);
@@ -293,7 +293,7 @@ int phl_upstream_connection_write(struct phl_upstream_connection *upc,
 	}
 
 	if (loop_stream_is_write_blocked(upc->loop_stream)) {
-		return H2D_AGAIN;
+		return PHL_AGAIN;
 	}
 	if (upc->prewrite_len > 0) {
 		data = (const char *)data + upc->prewrite_len;
@@ -302,23 +302,23 @@ int phl_upstream_connection_write(struct phl_upstream_connection *upc,
 
 	int write_len = loop_stream_write(upc->loop_stream, data, data_len);
 	if (write_len < 0) {
-		_log_upc(H2D_LOG_ERROR, "write fail %d", write_len);
-		return H2D_ERROR;
+		_log_upc(PHL_LOG_ERROR, "write fail %d", write_len);
+		return PHL_ERROR;
 	}
 	if (write_len != data_len) {
-		_log_upc(H2D_LOG_DEBUG, "write blockes %d %d", write_len, data_len);
+		_log_upc(PHL_LOG_DEBUG, "write blockes %d %d", write_len, data_len);
 		upc->prewrite_len = write_len;
-		return H2D_AGAIN;
+		return PHL_AGAIN;
 	}
 
-	_log_upc(H2D_LOG_DEBUG, "write %d", write_len);
+	_log_upc(PHL_LOG_DEBUG, "write %d", write_len);
 	upc->prewrite_len = 0;
 
 	/* we assume that the response is expected just after one write */
 	loop_stream_set_timeout(upc->loop_stream,
 			upc->address->upstream->recv_timeout * 1000);
 
-	return H2D_OK;
+	return PHL_OK;
 }
 
 static void phl_upstream_loadbalance_module_fix(struct phl_upstream_loadbalance *lb, int i)
@@ -329,13 +329,13 @@ static void phl_upstream_loadbalance_module_fix(struct phl_upstream_loadbalance 
 
 void phl_upstream_dynamic_module_fix(struct phl_upstream_loadbalance *m, int i)
 {
-	phl_upstream_loadbalance_module_fix(m, H2D_UPSTREAM_LOADBALANCE_STATIC_NUMBER + i);
+	phl_upstream_loadbalance_module_fix(m, PHL_UPSTREAM_LOADBALANCE_STATIC_NUMBER + i);
 }
 
 void phl_upstream_init(void)
 {
 	/* static modules only here */
-	for (int i = 0; i < H2D_UPSTREAM_LOADBALANCE_STATIC_NUMBER; i++) {
+	for (int i = 0; i < PHL_UPSTREAM_LOADBALANCE_STATIC_NUMBER; i++) {
 		struct phl_upstream_loadbalance *lb = phl_upstream_loadbalance_statics[i];
 		phl_upstream_loadbalance_module_fix(lb, i);
 	}
@@ -348,13 +348,13 @@ struct phl_upstream_loadbalance *phl_upstream_loadbalance_next(struct phl_upstre
 		return phl_upstream_loadbalance_statics[0];
 	}
 	int next = lb->index + 1;
-	if (next < H2D_UPSTREAM_LOADBALANCE_STATIC_NUMBER) {
+	if (next < PHL_UPSTREAM_LOADBALANCE_STATIC_NUMBER) {
 		return phl_upstream_loadbalance_statics[next];
 	}
 	if (phl_conf_runtime == NULL || phl_conf_runtime->dynamic_upstream_modules == NULL) {
 		return NULL;
 	}
-	return phl_conf_runtime->dynamic_upstream_modules[next - H2D_UPSTREAM_LOADBALANCE_STATIC_NUMBER].sym;
+	return phl_conf_runtime->dynamic_upstream_modules[next - PHL_UPSTREAM_LOADBALANCE_STATIC_NUMBER].sym;
 }
 
 bool phl_upstream_address_is_pickable(struct phl_upstream_address *address,

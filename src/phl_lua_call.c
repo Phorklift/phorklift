@@ -10,7 +10,7 @@ static bool phl_lua_call(struct phl_request *r, wuy_cflua_function_t f)
 
 	lua_rawgeti(phl_L, LUA_REGISTRYINDEX, f);
 	if (lua_pcall(phl_L, 0, 1, 0) != 0) {
-		phl_request_log(r, H2D_LOG_ERROR, "lua_pcall fail: %s", lua_tostring(phl_L, -1));
+		phl_request_log(r, PHL_LOG_ERROR, "lua_pcall fail: %s", lua_tostring(phl_L, -1));
 		lua_pop(phl_L, 1);
 		return false;
 	}

@@ -1,6 +1,6 @@
 #include "phl_main.h"
 
-#define H2D_REQUEST_DETACHED_SUBR_FATHER (struct phl_request *)(-1L)
+#define PHL_REQUEST_DETACHED_SUBR_FATHER (struct phl_request *)(-1L)
 
 static WUY_LIST(phl_request_defer_list);
 
@@ -19,7 +19,7 @@ struct phl_request *phl_request_new(struct phl_connection *c)
 	wuy_list_init(&r->subr_head);
 	wuy_slist_init(&r->req.headers);
 	wuy_slist_init(&r->resp.headers);
-	r->resp.content_length = H2D_CONTENT_LENGTH_INIT;
+	r->resp.content_length = PHL_CONTENT_LENGTH_INIT;
 
 	r->id = c->request_id++;
 	r->c = c;
@@ -28,7 +28,7 @@ struct phl_request *phl_request_new(struct phl_connection *c)
 	r->conf_host = r->c->conf_listen->default_host;
 	r->conf_path = r->conf_host->default_path;
 
-	phl_request_log(r, H2D_LOG_DEBUG, "new request");
+	phl_request_log(r, PHL_LOG_DEBUG, "new request");
 
 	return r;
 }
@@ -39,12 +39,12 @@ void phl_request_reset_response(struct phl_request *r)
 		return;
 	}
 
-	phl_request_log(r, H2D_LOG_DEBUG, "reset response code=%d", r->resp.status_code);
+	phl_request_log(r, PHL_LOG_DEBUG, "reset response code=%d", r->resp.status_code);
 
 	r->resp.status_code = 0;
 	r->resp.content_generated_length = 0;
 	r->resp.sent_length = 0;
-	r->resp.content_length = H2D_CONTENT_LENGTH_INIT;
+	r->resp.content_length = PHL_CONTENT_LENGTH_INIT;
 	wuy_slist_init(&r->resp.headers);
 }
 
@@ -72,7 +72,7 @@ static void phl_request_stats(struct phl_request *r)
 	struct phl_conf_path_stats *stats = r->conf_path->stats;
 
 	atomic_fetch_add(&stats->total, 1);
-	if (r->state == H2D_REQUEST_STATE_DONE) {
+	if (r->state == PHL_REQUEST_STATE_DONE) {
 		atomic_fetch_add(&stats->done, 1);
 
 		/* time */
@@ -89,7 +89,7 @@ static void phl_request_stats(struct phl_request *r)
 	WUY_HTTP_STATUS_CODE_TABLE
 #undef X
 	default:
-		phl_request_log(r, H2D_LOG_ERROR, "unknown status code %d", r->resp.status_code);
+		phl_request_log(r, PHL_LOG_ERROR, "unknown status code %d", r->resp.status_code);
 		atomic_fetch_add(&stats->status_others, 1);
 	}
 }
@@ -126,8 +126,8 @@ static void phl_request_access_log(struct phl_request *r)
 		}
 	}
 
-#define H2D_DIFF(a, b) (a != 0) ? a - b : -1
-#define H2D_DIFF2(a, b) (b != 0) ? a - b : -1
+#define PHL_DIFF(a, b) (a != 0) ? a - b : -1
+#define PHL_DIFF2(a, b) (b != 0) ? a - b : -1
 	long close_time = wuy_time_ms();
 	phl_log_file_write(log->file, log->max_line, "%s %s %d %lu %d %ld %ld %ld %ld %s",
 			r->req.host ? r->req.host : "-",
@@ -135,9 +135,9 @@ static void phl_request_access_log(struct phl_request *r)
 			r->resp.status_code,
 			r->resp.sent_length,
 			r->state,
-			H2D_DIFF(r->req_end_time, r->create_time),
-			H2D_DIFF(r->resp_begin_time, r->req_end_time),
-			H2D_DIFF2(close_time, r->resp_begin_time),
+			PHL_DIFF(r->req_end_time, r->create_time),
+			PHL_DIFF(r->resp_begin_time, r->req_end_time),
+			PHL_DIFF2(close_time, r->resp_begin_time),
 			close_time - r->create_time,
 			format);
 }
@@ -164,10 +164,10 @@ void phl_request_close(struct phl_request *r)
 	}
 	r->closed = true;
 
-	phl_request_log(r, H2D_LOG_DEBUG, "request done: %s", r->req.uri.raw);
+	phl_request_log(r, PHL_LOG_DEBUG, "request done: %s", r->req.uri.raw);
 
 	if (r->father != NULL) { /* subrequest */
-		if (r->father == H2D_REQUEST_DETACHED_SUBR_FATHER) {
+		if (r->father == PHL_REQUEST_DETACHED_SUBR_FATHER) {
 			phl_request_subr_close(r);
 		} else { /* wake up father, and should be closed by father later */
 			phl_request_run(r->father, "subrequest done");
@@ -186,7 +186,7 @@ void phl_request_close(struct phl_request *r)
 
 void phl_request_subr_close(struct phl_request *r)
 {
-	phl_request_log(r, H2D_LOG_DEBUG, "subr done: %s", r->req.uri.raw);
+	phl_request_log(r, PHL_LOG_DEBUG, "subr done: %s", r->req.uri.raw);
 
 	struct phl_connection *c = r->c;
 	wuy_list_del_if(&c->list_node);
@@ -199,8 +199,8 @@ void phl_request_subr_close(struct phl_request *r)
 int phl_request_redirect(struct phl_request *r, const char *path)
 {
 	if (r->redirects++ > 10) {
-		phl_request_log(r, H2D_LOG_ERROR, "too many redirect");
-		return H2D_ERROR;
+		phl_request_log(r, PHL_LOG_ERROR, "too many redirect");
+		return PHL_ERROR;
 	}
 
 	switch (path[0]) {
@@ -211,11 +211,11 @@ int phl_request_redirect(struct phl_request *r, const char *path)
 		phl_request_set_uri(r, path, strlen(path));
 		break;
 	default:
-		phl_request_log(r, H2D_LOG_ERROR, "invalid redirect: %s", path);
-		return H2D_ERROR;
+		phl_request_log(r, PHL_LOG_ERROR, "invalid redirect: %s", path);
+		return PHL_ERROR;
 	}
 
-	phl_request_log(r, H2D_LOG_DEBUG, "redirect %s", path);
+	phl_request_log(r, PHL_LOG_DEBUG, "redirect %s", path);
 
 	phl_request_access_log(r);
 
@@ -223,12 +223,12 @@ int phl_request_redirect(struct phl_request *r, const char *path)
 	phl_request_clear_stuff(r);
 
 	r->conf_path = NULL;
-	r->state = H2D_REQUEST_STATE_RECEIVE_HEADERS;
+	r->state = PHL_REQUEST_STATE_RECEIVE_HEADERS;
 	r->filter_indexs[0] = r->filter_indexs[1] = r->filter_indexs[2] = 0;
 	r->filter_terminal = NULL;
 	r->is_broken = false;
 
-	return H2D_BREAK;
+	return PHL_BREAK;
 }
 
 bool phl_request_set_host(struct phl_request *r, const char *host_str, int host_len)
@@ -258,7 +258,7 @@ bool phl_request_set_uri(struct phl_request *r, const char *uri_str, int uri_len
 	int path_len = wuy_http_uri(r->req.uri.raw, uri_len, &host,
 			&r->req.uri.path_pos, &r->req.uri.query_pos, &fragment);
 	if (path_len < 0) {
-		phl_request_log(r, H2D_LOG_INFO, "invalid request URI");
+		phl_request_log(r, PHL_LOG_INFO, "invalid request URI");
 		return false;
 	}
 
@@ -279,7 +279,7 @@ bool phl_request_set_uri(struct phl_request *r, const char *uri_str, int uri_len
 	char *decode = wuy_pool_alloc_align(r->pool, path_len + 1, 1);
 	path_len = wuy_http_decode_path(decode, r->req.uri.path_pos, path_len);
 	if (path_len < 0) {
-		phl_request_log(r, H2D_LOG_INFO, "invalid request URI path");
+		phl_request_log(r, PHL_LOG_INFO, "invalid request URI path");
 		return false;
 	}
 
@@ -290,10 +290,10 @@ bool phl_request_set_uri(struct phl_request *r, const char *uri_str, int uri_len
 int phl_request_append_body(struct phl_request *r, const void *buf, int len)
 {
 	if (len == 0) {
-		return H2D_OK;
+		return PHL_OK;
 	}
 
-	if (r->req.content_length != H2D_CONTENT_LENGTH_INIT) {
+	if (r->req.content_length != PHL_CONTENT_LENGTH_INIT) {
 		if (r->req.body_len + len > r->req.content_length) {
 			return WUY_HTTP_400;
 		}
@@ -314,13 +314,13 @@ int phl_request_append_body(struct phl_request *r, const void *buf, int len)
 		memcpy(r->req.body_buf + r->req.body_len, buf, len);
 		r->req.body_len += len;
 	}
-	return H2D_OK;
+	return PHL_OK;
 }
 
 static int phl_request_receive_headers(struct phl_request *r)
 {
 	if (r->c->is_http2) {
-		return H2D_AGAIN;
+		return PHL_AGAIN;
 	}
 	return phl_http1_request_headers(r);
 }
@@ -328,11 +328,11 @@ static int phl_request_receive_headers(struct phl_request *r)
 static int phl_request_receive_body_sync(struct phl_request *r)
 {
 	if (!r->conf_path->req_body_sync) {
-		return H2D_OK;
+		return PHL_OK;
 	}
 
 	if (r->c->is_http2) {
-		return r->req.body_finished ? H2D_OK : H2D_AGAIN;
+		return r->req.body_finished ? PHL_OK : PHL_AGAIN;
 	}
 	return phl_http1_request_body(r);
 }
@@ -341,21 +341,21 @@ static int phl_request_locate_conf_host(struct phl_request *r)
 {
 	if (r->conf_host != r->c->conf_listen->default_host) {
 		/* subrequests and redirected requests' conf_host has been set */
-		return H2D_OK;
+		return PHL_OK;
 	}
 
 	r->conf_host = phl_conf_host_locate(r->c->conf_listen, r->req.host);
 	if (r->conf_host == NULL) {
-		phl_request_log(r, H2D_LOG_INFO, "no host matched: %s", r->req.host);
-		return H2D_ERROR;
+		phl_request_log(r, PHL_LOG_INFO, "no host matched: %s", r->req.host);
+		return PHL_ERROR;
 	}
 
 	r->conf_path = r->conf_host->default_path;
 
 	if (r->c->ssl_sni_conf_host != NULL && r->conf_host != r->c->ssl_sni_conf_host) {
-		phl_request_log(r, H2D_LOG_DEBUG, "wanring: ssl_sni_conf_host not match");
+		phl_request_log(r, PHL_LOG_DEBUG, "wanring: ssl_sni_conf_host not match");
 	}
-	return H2D_OK;
+	return PHL_OK;
 }
 
 static int phl_request_locate_conf_path(struct phl_request *r)
@@ -366,44 +366,44 @@ static int phl_request_locate_conf_path(struct phl_request *r)
 
 	const char *uri_path = r->named_path ? r->named_path : r->req.uri.path;
 	if (uri_path == NULL) {
-		phl_request_log(r, H2D_LOG_INFO, "no request path");
-		return H2D_ERROR;
+		phl_request_log(r, PHL_LOG_INFO, "no request path");
+		return PHL_ERROR;
 	}
 	r->conf_path = phl_conf_path_locate(r->conf_host, uri_path);
 	if (r->conf_path == NULL) {
 		r->conf_path = r->conf_host->default_path;
-		phl_request_log(r, H2D_LOG_DEBUG, "no path matched: %s", uri_path);
+		phl_request_log(r, PHL_LOG_DEBUG, "no path matched: %s", uri_path);
 		return WUY_HTTP_404;
 	}
 
 dynamic_get:
 	while (phl_dynamic_is_enabled(&r->conf_path->dynamic)) {
-		phl_request_log(r, H2D_LOG_DEBUG, "get dynamic sub_path");
+		phl_request_log(r, PHL_LOG_DEBUG, "get dynamic sub_path");
 		struct phl_conf_path *sub_path = phl_dynamic_get(&r->conf_path->dynamic, r);
-		if (!H2D_PTR_IS_OK(sub_path)) {
-			return H2D_PTR2RET(sub_path);
+		if (!PHL_PTR_IS_OK(sub_path)) {
+			return PHL_PTR2RET(sub_path);
 		}
 		r->conf_path = sub_path;
 	}
 
 	/* check some path-confs */
 	if (r->conf_path->req_body_max != 0
-			&& r->req.content_length != H2D_CONTENT_LENGTH_INIT
+			&& r->req.content_length != PHL_CONTENT_LENGTH_INIT
 			&& r->req.content_length > r->conf_path->req_body_max) {
 		return WUY_HTTP_413;
 	}
-	return H2D_OK;
+	return PHL_OK;
 }
 
 static int phl_request_process_headers(struct phl_request *r)
 {
 	int ret = phl_module_filter_process_headers(r);
-	if (ret != H2D_OK) {
+	if (ret != PHL_OK) {
 		return ret;
 	}
 
 	if (r->conf_path->content->content.process_headers == NULL) {
-		return H2D_OK;
+		return PHL_OK;
 	}
 	return r->conf_path->content->content.process_headers(r);
 }
@@ -411,22 +411,22 @@ static int phl_request_process_headers(struct phl_request *r)
 static int phl_request_process_body(struct phl_request *r) // TODO!!!
 {
 	if (r->is_broken) { // TODO discard request body
-		return H2D_OK;
+		return PHL_OK;
 	}
-	if (r->req.content_length == H2D_CONTENT_LENGTH_INIT && !wuy_http_chunked_is_enabled(&r->req.chunked)) {
-		return H2D_OK;
+	if (r->req.content_length == PHL_CONTENT_LENGTH_INIT && !wuy_http_chunked_is_enabled(&r->req.chunked)) {
+		return PHL_OK;
 	}
 	if (r->req.content_length == 0) {
-		return H2D_OK;
+		return PHL_OK;
 	}
 
 	int ret = phl_module_filter_process_body(r);
-	if (ret != H2D_OK) {
+	if (ret != PHL_OK) {
 		return ret;
 	}
 
 	if (r->conf_path->content->content.process_body == NULL) {
-		return H2D_OK;
+		return PHL_OK;
 	}
 	return r->conf_path->content->content.process_body(r);
 }
@@ -434,7 +434,7 @@ static int phl_request_process_body(struct phl_request *r) // TODO!!!
 static inline int phl_request_simple_response_body(enum wuy_http_status_code code,
 		char *buf, int len)
 {
-#define H2D_STATUS_CODE_RESPONSE_BODY_FORMAT \
+#define PHL_STATUS_CODE_RESPONSE_BODY_FORMAT \
 	"<html>\n" \
 	"<head><title>%d %s</title></head>\n" \
 	"<body>\n" \
@@ -447,7 +447,7 @@ static inline int phl_request_simple_response_body(enum wuy_http_status_code cod
 		return 0;
 	}
 	const char *str = wuy_http_string_status_code(code);
-	return snprintf(buf, len, H2D_STATUS_CODE_RESPONSE_BODY_FORMAT,
+	return snprintf(buf, len, PHL_STATUS_CODE_RESPONSE_BODY_FORMAT,
 			code, str, code, str);
 }
 
@@ -457,7 +457,7 @@ static int phl_request_response_headers_1(struct phl_request *r)
 		r->req_end_time = wuy_time_ms();
 	}
 
-	int ret = H2D_OK;
+	int ret = PHL_OK;
 	if (!r->is_broken) {
 		ret = r->conf_path->content->content.response_headers(r);
 
@@ -479,7 +479,7 @@ static int phl_request_response_headers_3(struct phl_request *r)
 {
 	if (r->father != NULL) {
 		/* subruest does not send response headers out */
-		return H2D_OK;
+		return PHL_OK;
 	}
 	if (r->c->is_http2) {
 		return phl_http2_response_headers(r);
@@ -508,7 +508,7 @@ static int phl_request_response_body(struct phl_request *r)
 
 		int window = http2_stream_window(r->h2s);
 		if (window == 0) {
-			return H2D_AGAIN;
+			return PHL_AGAIN;
 		}
 		if (window < buf_len) {
 			buf_len = window;
@@ -539,8 +539,8 @@ static int phl_request_response_body(struct phl_request *r)
 		}
 		body_len = read(r->resp.easy_fd, buf_pos, body_len);
 		if (body_len < 0) {
-			phl_request_log(r, H2D_LOG_ERROR, "read body_fd erro: %s", strerror(errno));
-			body_len = H2D_ERROR;
+			phl_request_log(r, PHL_LOG_ERROR, "read body_fd erro: %s", strerror(errno));
+			body_len = PHL_ERROR;
 		}
 
 	} else if (!r->is_broken) {
@@ -556,7 +556,7 @@ static int phl_request_response_body(struct phl_request *r)
 
 	r->resp.content_generated_length += body_len;
 
-	if (r->resp.content_original_length != H2D_CONTENT_LENGTH_INIT) {
+	if (r->resp.content_original_length != PHL_CONTENT_LENGTH_INIT) {
 		is_last = r->resp.content_generated_length >= r->resp.content_original_length;
 	} else {
 		is_last = body_len == 0;
@@ -580,14 +580,14 @@ skip_generate:
 	r->resp.sent_length += body_len;
 	c->send_buf_len += body_len;
 
-	return is_last ? H2D_OK : phl_request_response_body(r);
+	return is_last ? PHL_OK : phl_request_response_body(r);
 }
 
 static void phl_request_run_post(struct phl_request *r)
 {
 	struct phl_request *subr, *safe;
 	wuy_list_iter_safe_type(&r->subr_head, subr, safe, list_node) {
-		if (subr->state != H2D_REQUEST_STATE_LOCATE_CONF_HOST) {
+		if (subr->state != PHL_REQUEST_STATE_LOCATE_CONF_HOST) {
 			break;
 		}
 		wuy_list_delete(&subr->list_node);
@@ -615,32 +615,32 @@ void phl_request_run(struct phl_request *r, const char *from)
 		return;
 	}
 
-	phl_request_log(r, H2D_LOG_DEBUG, "{{{ phl_request_run %d, from %s", r->state, from);
+	phl_request_log(r, PHL_LOG_DEBUG, "{{{ phl_request_run %d, from %s", r->state, from);
 
-	if (r->state == H2D_REQUEST_STATE_DONE) {
+	if (r->state == PHL_REQUEST_STATE_DONE) {
 		phl_request_close(r);
 		return;
 	}
 
-	assert(r->state < H2D_REQUEST_STATE_DONE);
+	assert(r->state < PHL_REQUEST_STATE_DONE);
 	int ret = phl_request_steps[r->state](r);
 
-	phl_request_log(r, H2D_LOG_DEBUG, "}}} state:%d ret:%d", r->state, ret);
+	phl_request_log(r, PHL_LOG_DEBUG, "}}} state:%d ret:%d", r->state, ret);
 
-	if (ret == H2D_OK || ret == H2D_BREAK) {
+	if (ret == PHL_OK || ret == PHL_BREAK) {
 		r->state++; /* next step */
 		return phl_request_run(r, "again");
 	}
 
-	if (ret == H2D_AGAIN) {
+	if (ret == PHL_AGAIN) {
 		phl_request_run_post(r);
 		return;
 	}
 
-	if (ret == H2D_ERROR) {
+	if (ret == PHL_ERROR) {
 		if (r->resp.status_code != 0) {
 			ret = r->resp.status_code;
-		} else if (r->state <= H2D_REQUEST_STATE_RESPONSE_HEADERS_1) {
+		} else if (r->state <= PHL_REQUEST_STATE_RESPONSE_HEADERS_1) {
 			ret = WUY_HTTP_500;
 		} else {
 			phl_request_close(r);
@@ -651,13 +651,13 @@ void phl_request_run(struct phl_request *r, const char *from)
 	/* returns status code and breaks the normal process */
 	r->is_broken = true;
 	r->resp.status_code = ret;
-	r->state = H2D_REQUEST_STATE_RESPONSE_HEADERS_1;
+	r->state = PHL_REQUEST_STATE_RESPONSE_HEADERS_1;
 	return phl_request_run(r, "break");
 }
 
 struct phl_request *phl_request_subr_new(struct phl_request *father, const char *uri)
 {
-	phl_request_log(father, H2D_LOG_DEBUG, "new subrequest");
+	phl_request_log(father, PHL_LOG_DEBUG, "new subrequest");
 
 	struct phl_connection *c = calloc(1, sizeof(struct phl_connection));
 	c->conf_listen = father->c->conf_listen;
@@ -666,7 +666,7 @@ struct phl_request *phl_request_subr_new(struct phl_request *father, const char 
 	subr->req.host = wuy_pool_strdup(subr->pool, father->req.host);
 	subr->conf_host = father->conf_host;
 	subr->conf_path = subr->conf_host->default_path;
-	subr->state = H2D_REQUEST_STATE_LOCATE_CONF_HOST;
+	subr->state = PHL_REQUEST_STATE_LOCATE_CONF_HOST;
 	subr->father = father;
 	wuy_list_insert(&father->subr_head, &subr->list_node);
 
@@ -685,7 +685,7 @@ struct phl_request *phl_request_subr_new(struct phl_request *father, const char 
 		break;
 	default:
 		phl_request_subr_close(subr);
-		phl_request_log(father, H2D_LOG_ERROR, "subr invalid uri %s", uri);
+		phl_request_log(father, PHL_LOG_ERROR, "subr invalid uri %s", uri);
 		return NULL;
 	}
 
@@ -694,7 +694,7 @@ struct phl_request *phl_request_subr_new(struct phl_request *father, const char 
 
 void phl_request_subr_detach(struct phl_request *subr)
 {
-	subr->father = H2D_REQUEST_DETACHED_SUBR_FATHER;
+	subr->father = PHL_REQUEST_DETACHED_SUBR_FATHER;
 }
 
 int phl_request_subr_flush_connection(struct phl_connection *c)
@@ -703,13 +703,13 @@ int phl_request_subr_flush_connection(struct phl_connection *c)
 	struct phl_request *father = subr->father;
 
 	/* drop response for detached subrequests */
-	if (father == H2D_REQUEST_DETACHED_SUBR_FATHER) {
+	if (father == PHL_REQUEST_DETACHED_SUBR_FATHER) {
 		c->send_buf_len = 0;
-		return H2D_OK;
+		return PHL_OK;
 	}
 
 	phl_request_run(father, "subrequest flush");
-	return H2D_AGAIN;
+	return PHL_AGAIN;
 }
 
 static void phl_request_defer_free(void *data)

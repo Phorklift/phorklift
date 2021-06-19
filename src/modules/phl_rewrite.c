@@ -11,7 +11,7 @@ static int phl_rewrite_process_headers(struct phl_request *r)
 {
 	struct phl_rewrite_conf *conf = r->conf_path->module_confs[phl_rewrite_module.index];
 	if (conf->strs == NULL) {
-		return H2D_OK;
+		return PHL_OK;
 	}
 
 	for (int i = 0; i < conf->num; i += 2) {
@@ -26,7 +26,7 @@ static int phl_rewrite_process_headers(struct phl_request *r)
 		}
 	}
 
-	return H2D_OK;
+	return PHL_OK;
 }
 
 static const char *phl_rewrite_conf_post(void *data)

@@ -1,5 +1,5 @@
-#ifndef H2D_LUA_THREAD_H
-#define H2D_LUA_THREAD_H
+#ifndef PHL_LUA_THREAD_H
+#define PHL_LUA_THREAD_H
 
 #include <lua5.1/lua.h>
 

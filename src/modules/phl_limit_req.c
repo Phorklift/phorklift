@@ -91,7 +91,7 @@ static int phl_limit_req_process_headers(struct phl_request *r)
 	struct phl_limit_req_shared *shared = conf->shared;
 
 	if (shared == NULL) {
-		return H2D_OK;
+		return PHL_OK;
 	}
 
 	/* generate key */
@@ -100,8 +100,8 @@ static int phl_limit_req_process_headers(struct phl_request *r)
 	if (wuy_cflua_is_function_set(conf->key)) {
 		key = phl_lua_call_lstring(r, conf->key, &len);
 		if (key == NULL) {
-			_log(H2D_LOG_ERROR, "fail in key()");
-			return H2D_ERROR;
+			_log(PHL_LOG_ERROR, "fail in key()");
+			return PHL_ERROR;
 		}
 	} else {
 		// TODO ipv6
@@ -110,8 +110,8 @@ static int phl_limit_req_process_headers(struct phl_request *r)
 	}
 
 	if (len >= conf->key_max_len) {
-		_log(H2D_LOG_ERROR, "too long key!");
-		return H2D_ERROR;
+		_log(PHL_LOG_ERROR, "too long key!");
+		return PHL_ERROR;
 	}
 
 	/* hash search */
@@ -132,7 +132,7 @@ static int phl_limit_req_process_headers(struct phl_request *r)
 
 	/* not found, create new meter */
 	if (!found) {
-		_log(H2D_LOG_DEBUG, "new meter. %d", shared->stats_total);
+		_log(PHL_LOG_DEBUG, "new meter. %d", shared->stats_total);
 
 		node = phl_limit_req_alloc_node(conf);
 		strcpy(node->key, key);
@@ -145,12 +145,12 @@ static int phl_limit_req_process_headers(struct phl_request *r)
 
 		shared->stats_limited++;
 		pthread_mutex_unlock(&shared->lock); /* unlock here */
-		_log(H2D_LOG_INFO, "limited!");
+		_log(PHL_LOG_INFO, "limited!");
 		return WUY_HTTP_503;
 	}
 
 	pthread_mutex_unlock(&shared->lock); /* unlock here */
-	return H2D_OK;
+	return PHL_OK;
 }
 
 static const char *phl_limit_req_conf_post(void *data)

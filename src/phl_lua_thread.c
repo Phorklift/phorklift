@@ -9,7 +9,7 @@
 static int phl_lua_thread_start(struct phl_request *r,
 		wuy_cflua_function_t entry, const char *argf, va_list ap)
 {
-	_log(H2D_LOG_DEBUG, "start");
+	_log(PHL_LOG_DEBUG, "start");
 	atomic_fetch_add(&r->conf_path->stats->lua_new, 1);
 
 	r->L = lua_newthread(phl_L);
@@ -49,7 +49,7 @@ static int phl_lua_thread_start(struct phl_request *r,
 
 static void phl_lua_thread_close(struct phl_request *r)
 {
-	_log(H2D_LOG_DEBUG, "close");
+	_log(PHL_LOG_DEBUG, "close");
 	atomic_fetch_add(&r->conf_path->stats->lua_free, 1);
 
 	/* un-mark it for GC */
@@ -92,35 +92,35 @@ lua_State *phl_lua_thread_run(struct phl_request *r,
 	} else if (lua_gettop(r->L) > 0) {
 		lua_CFunction resume_handler = lua_tocfunction(r->L, 1);
 		argn = resume_handler(r->L);
-		if (argn == H2D_AGAIN) {
-			_log(H2D_LOG_DEBUG, "resume handler again");
+		if (argn == PHL_AGAIN) {
+			_log(PHL_LOG_DEBUG, "resume handler again");
 			atomic_fetch_add(&r->conf_path->stats->lua_again, 1);
-			return H2D_PTR_AGAIN;
+			return PHL_PTR_AGAIN;
 		}
-		if (argn == H2D_ERROR) {
-			_log(H2D_LOG_ERROR, "resume handler error: %d", argn);
+		if (argn == PHL_ERROR) {
+			_log(PHL_LOG_ERROR, "resume handler error: %d", argn);
 			atomic_fetch_add(&r->conf_path->stats->lua_error, 1);
 			phl_lua_thread_close(r);
-			return H2D_PTR_ERROR;
+			return PHL_PTR_ERROR;
 		}
 	}
 
-	_log(H2D_LOG_DEBUG, "resume...");
+	_log(PHL_LOG_DEBUG, "resume...");
 	int ret = lua_resume(r->L, argn);
 
 	if (ret == LUA_YIELD) {
-		_log(H2D_LOG_DEBUG, "resume yields");
+		_log(PHL_LOG_DEBUG, "resume yields");
 		atomic_fetch_add(&r->conf_path->stats->lua_again, 1);
-		return H2D_PTR_AGAIN;
+		return PHL_PTR_AGAIN;
 	}
 	if (ret != 0) {
-		_log(H2D_LOG_ERROR, "resume error: %s", lua_tostring(r->L, -1));
+		_log(PHL_LOG_ERROR, "resume error: %s", lua_tostring(r->L, -1));
 		atomic_fetch_add(&r->conf_path->stats->lua_error, 1);
 		phl_lua_thread_close(r);
-		return H2D_PTR_ERROR;
+		return PHL_PTR_ERROR;
 	}
 
-	_log(H2D_LOG_DEBUG, "resume returns OK");
+	_log(PHL_LOG_DEBUG, "resume returns OK");
 	lua_State *L = r->L;
 	phl_lua_thread_close(r);
 	return L;

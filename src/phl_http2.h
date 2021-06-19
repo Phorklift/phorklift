@@ -1,5 +1,5 @@
-#ifndef H2D_HTTP2_H
-#define H2D_HTTP2_H
+#ifndef PHL_HTTP2_H
+#define PHL_HTTP2_H
 
 #include "phl_connection.h"
 

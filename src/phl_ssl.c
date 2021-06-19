@@ -12,14 +12,14 @@ struct phl_ssl_ticket_secret {
 	uint8_t		hmac_key[16];
 };
 
-#define H2D_SSL_EX_DATA			0
-#define H2D_SSL_CTX_EX_TICKET_SECRET	0
-#define H2D_SSL_CTX_EX_STATS		1
+#define PHL_SSL_EX_DATA			0
+#define PHL_SSL_CTX_EX_TICKET_SECRET	0
+#define PHL_SSL_CTX_EX_STATS		1
 
 static struct phl_ssl_stats *phl_ssl_get_stats(SSL *ssl)
 {
 	SSL_CTX *ssl_ctx = SSL_get_SSL_CTX(ssl);
-	return SSL_CTX_get_ex_data(ssl_ctx, H2D_SSL_CTX_EX_STATS);
+	return SSL_CTX_get_ex_data(ssl_ctx, PHL_SSL_CTX_EX_STATS);
 }
 
 static int phl_ssl_alpn_callback(SSL *ssl, const unsigned char **out,
@@ -39,7 +39,7 @@ static int phl_ssl_alpn_callback(SSL *ssl, const unsigned char **out,
 
 	if (*outlen == 2 && (*out)[0] == 'h' && (*out)[1] == '2') {
 		atomic_fetch_add(&stats->alpn_h2, 1);
-		phl_http2_connection_init(SSL_get_ex_data(ssl, H2D_SSL_EX_DATA));
+		phl_http2_connection_init(SSL_get_ex_data(ssl, PHL_SSL_EX_DATA));
 	} else {
 		atomic_fetch_add(&stats->alpn_miss, 1);
 	}
@@ -56,7 +56,7 @@ static int phl_ssl_sni_callback(SSL *ssl, int *ad, void *arg)
 		return SSL_TLSEXT_ERR_OK;
 	}
 
-	struct phl_connection *c = SSL_get_ex_data(ssl, H2D_SSL_EX_DATA);
+	struct phl_connection *c = SSL_get_ex_data(ssl, PHL_SSL_EX_DATA);
 	c->ssl_sni_conf_host = phl_conf_host_locate(c->conf_listen, name);
 	if (c->ssl_sni_conf_host == NULL) {
 		printf("ssl SNI fail\n");
@@ -81,7 +81,7 @@ static int phl_ssl_ticket_callback(SSL *ssl, unsigned char *name,
 
 	SSL_CTX *ssl_ctx = SSL_get_SSL_CTX(ssl);
 	struct phl_ssl_ticket_secret *secret = SSL_CTX_get_ex_data(ssl_ctx,
-			H2D_SSL_CTX_EX_TICKET_SECRET);
+			PHL_SSL_CTX_EX_TICKET_SECRET);
 
 	const EVP_MD *digest = EVP_sha256();
 	const EVP_CIPHER *cipher = EVP_aes_128_cbc();
@@ -147,7 +147,7 @@ void phl_ssl_stream_set(loop_stream_t *s, SSL_CTX *ctx, bool is_server)
 	if (is_server) {
 		SSL_set_accept_state(ssl);
 		struct phl_connection *c = loop_stream_get_app_data(s);
-		SSL_set_ex_data(ssl, H2D_SSL_EX_DATA, c);
+		SSL_set_ex_data(ssl, PHL_SSL_EX_DATA, c);
 	} else {
 		SSL_set_connect_state(ssl);
 	}
@@ -159,22 +159,22 @@ int phl_ssl_stream_handshake(loop_stream_t *s)
 {
 	SSL *ssl = loop_stream_get_underlying(s);
 	if (ssl == NULL) { /* non-SSL */
-		return H2D_OK;
+		return PHL_OK;
 	}
 	int ret = SSL_do_handshake(ssl);
 	if (ret == 1) { /* done */
-		return H2D_OK;
+		return PHL_OK;
 	}
 	if (ret == 0) { /* SSL closed */
-		return H2D_ERROR;
+		return PHL_ERROR;
 	}
 
 	/* handshake error */
 	int sslerr = SSL_get_error(ssl, ret);
 	if (sslerr == SSL_ERROR_WANT_READ || sslerr == SSL_ERROR_WANT_WRITE) {
-		return H2D_AGAIN;
+		return PHL_AGAIN;
 	}
-	return H2D_ERROR;
+	return PHL_ERROR;
 }
 
 int phl_ssl_stream_underlying_read(void *ssl, void *buffer, int buf_len)
@@ -254,8 +254,8 @@ static const char *phl_ssl_conf_post(void *data)
 	}
 
 	/* ticket secret */
-#define H2D_SECRET_SIZE sizeof(struct phl_ssl_ticket_secret)
-	struct phl_ssl_ticket_secret *secret = wuy_pool_alloc(wuy_cflua_pool, H2D_SECRET_SIZE + 1);
+#define PHL_SECRET_SIZE sizeof(struct phl_ssl_ticket_secret)
+	struct phl_ssl_ticket_secret *secret = wuy_pool_alloc(wuy_cflua_pool, PHL_SECRET_SIZE + 1);
 	if (conf->ticket_secret != NULL) {
 		FILE *fp = fopen(conf->ticket_secret, "r");
 		if (fp == NULL) {
@@ -263,25 +263,25 @@ static const char *phl_ssl_conf_post(void *data)
 			return "fail in open ticket_secret file";
 		}
 
-		size_t len = fread(secret, 1, H2D_SECRET_SIZE + 1, fp);
+		size_t len = fread(secret, 1, PHL_SECRET_SIZE + 1, fp);
 		fclose(fp);
-		if (len != H2D_SECRET_SIZE) {
+		if (len != PHL_SECRET_SIZE) {
 			wuy_cflua_post_arg = conf->ticket_secret;
 			return "invalid ticket_secret length";
 		}
 	} else {
-		if (!RAND_bytes((unsigned char *)secret, H2D_SECRET_SIZE)) {
+		if (!RAND_bytes((unsigned char *)secret, PHL_SECRET_SIZE)) {
 			printf("fail in generate random ticket_secret");
 		}
 	}
 	SSL_CTX_set_tlsext_ticket_key_cb(conf->ctx, phl_ssl_ticket_callback);
-	SSL_CTX_set_ex_data(conf->ctx, H2D_SSL_CTX_EX_TICKET_SECRET, secret);
+	SSL_CTX_set_ex_data(conf->ctx, PHL_SSL_CTX_EX_TICKET_SECRET, secret);
 
 	SSL_CTX_set_timeout(conf->ctx, conf->session_timeout);
 
 	/* others */
 	conf->stats = wuy_shmpool_alloc(sizeof(struct phl_ssl_stats));
-	SSL_CTX_set_ex_data(conf->ctx, H2D_SSL_CTX_EX_STATS, conf->stats);
+	SSL_CTX_set_ex_data(conf->ctx, PHL_SSL_CTX_EX_STATS, conf->stats);
 
 	return WUY_CFLUA_OK;
 }

@@ -87,13 +87,13 @@ static bool phl_file_cache_new_dir(struct phl_file_cache_conf *conf, time_t now)
 	char dirname[100];
 	sprintf(dirname, "P_%ld", time(NULL));
 	if (!phl_file_cache_mkdir(conf->dirfd, dirname)) {
-		_log_conf(H2D_LOG_ERROR, "new directory %s", strerror(errno));
+		_log_conf(PHL_LOG_ERROR, "new directory %s", strerror(errno));
 		return false;
 	}
 
 	int new_dirfd = openat(conf->dirfd, dirname, O_RDONLY|O_DIRECTORY);
 	if (new_dirfd < 0) {
-		_log_conf(H2D_LOG_ERROR, "fail in new dir: %s", strerror(errno));
+		_log_conf(PHL_LOG_ERROR, "fail in new dir: %s", strerror(errno));
 		return false;
 	}
 
@@ -141,7 +141,7 @@ static void phl_file_cache_prepare_prefix(struct phl_file_cache_conf *conf,
 
 	if (!phl_file_cache_do_prepare_prefix(conf->current_dirfd,
 				filename, conf->dir_level)) {
-		_log_conf(H2D_LOG_ERROR, "prepare prefix for %s: %s",
+		_log_conf(PHL_LOG_ERROR, "prepare prefix for %s: %s",
 				filename, strerror(errno));
 	}
 }
@@ -149,20 +149,20 @@ static void phl_file_cache_prepare_prefix(struct phl_file_cache_conf *conf,
 static bool phl_file_cache_rename_file(struct phl_file_cache_conf *conf,
 		const char *filename)
 {
-	_log_conf(H2D_LOG_DEBUG, "move to current directory %s", filename);
+	_log_conf(PHL_LOG_DEBUG, "move to current directory %s", filename);
 
 	if (renameat(conf->last_dirfd, filename, conf->current_dirfd, filename) == 0) {
 		return true;
 	}
 	if (errno != ENOENT) {
-		_log_conf(H2D_LOG_ERROR, "fail to move %s", strerror(errno));
+		_log_conf(PHL_LOG_ERROR, "fail to move %s", strerror(errno));
 		return false;
 	}
 
 	phl_file_cache_prepare_prefix(conf, filename);
 
 	if (renameat(conf->last_dirfd, filename, conf->current_dirfd, filename) < 0) {
-		_log_conf(H2D_LOG_ERROR, "fail to move again: %s", strerror(errno));
+		_log_conf(PHL_LOG_ERROR, "fail to move again: %s", strerror(errno));
 		return false;
 	}
 	return true;
@@ -171,14 +171,14 @@ static bool phl_file_cache_rename_file(struct phl_file_cache_conf *conf,
 static int phl_file_cache_create_file(struct phl_file_cache_conf *conf,
 		const char *filename)
 {
-	_log_conf(H2D_LOG_DEBUG, "create new file %s", filename);
+	_log_conf(PHL_LOG_DEBUG, "create new file %s", filename);
 
 	int fd = openat(conf->current_dirfd, filename, O_CREAT | O_EXCL | O_WRONLY, 0644);
 	if (fd >= 0) {
 		return fd;
 	}
 	if (errno != ENOENT) {
-		_log_conf(H2D_LOG_ERROR, "fail to create %s", strerror(errno));
+		_log_conf(PHL_LOG_ERROR, "fail to create %s", strerror(errno));
 		return fd;
 	}
 
@@ -186,7 +186,7 @@ static int phl_file_cache_create_file(struct phl_file_cache_conf *conf,
 
 	fd = openat(conf->current_dirfd, filename, O_CREAT | O_EXCL | O_WRONLY, 0644);
 	if (fd < 0) {
-		_log_conf(H2D_LOG_ERROR, "fail to create again: %s", strerror(errno));
+		_log_conf(PHL_LOG_ERROR, "fail to create again: %s", strerror(errno));
 		return fd;
 	}
 	return fd;
@@ -221,10 +221,10 @@ static int phl_file_cache_filter_process_headers(struct phl_request *r)
 {
 	struct phl_file_cache_conf *conf = r->conf_path->module_confs[phl_file_cache_module.index];
 	if (conf->dir_name == NULL) {
-		return H2D_OK;
+		return PHL_OK;
 	}
 	if (r->req.method != WUY_HTTP_GET && r->req.method != WUY_HTTP_HEAD) {
-		return H2D_OK;
+		return PHL_OK;
 	}
 
 	/* get key and calculate hash */
@@ -233,8 +233,8 @@ static int phl_file_cache_filter_process_headers(struct phl_request *r)
 	if (wuy_cflua_is_function_set(conf->key)) {
 		key = phl_lua_call_lstring(r, conf->key, &len);
 		if (key == NULL) {
-			_log(H2D_LOG_ERROR, "none key");
-			return H2D_OK;
+			_log(PHL_LOG_ERROR, "none key");
+			return PHL_OK;
 		}
 	} else {
 		len = strlen(key);
@@ -254,7 +254,7 @@ static int phl_file_cache_filter_process_headers(struct phl_request *r)
 	}
 	sprintf(p, "%016lx%016lx", hash[0], hash[1]);
 
-	_log(H2D_LOG_DEBUG, "key: %*s, filename: %s", len, key, filename);
+	_log(PHL_LOG_DEBUG, "key: %*s, filename: %s", len, key, filename);
 
 	struct phl_file_cache_ctx *ctx = wuy_pool_alloc(r->pool, sizeof(struct phl_file_cache_ctx));
 	r->module_ctxs[phl_file_cache_module.index] = ctx;
@@ -276,44 +276,44 @@ static int phl_file_cache_filter_process_headers(struct phl_request *r)
 	} else {
 cache_miss:
 		/* save the filename and store response into it in filters later */
-		_log(H2D_LOG_DEBUG, "miss");
+		_log(PHL_LOG_DEBUG, "miss");
 		atomic_fetch_add(&conf->stats->miss, 1);
 		ctx->new_filename = wuy_pool_strdup(r->pool, filename);
-		return H2D_OK;
+		return PHL_OK;
 	}
 
 	/* cache hit! */
-	_log(H2D_LOG_DEBUG, "hit");
+	_log(PHL_LOG_DEBUG, "hit");
 
 	/* read meta information */
 	int ret = read(ctx->fd, &ctx->item, sizeof(struct phl_file_cache_item));
 	if (ret < 0) {
-		_log(H2D_LOG_ERROR, "error to read cache file %s %s", filename, strerror(errno));
-		return H2D_ERROR;
+		_log(PHL_LOG_ERROR, "error to read cache file %s %s", filename, strerror(errno));
+		return PHL_ERROR;
 	}
-	if (ret < sizeof(struct phl_file_cache_item) || ctx->item.content_length == H2D_CONTENT_LENGTH_INIT) {
-		_log(H2D_LOG_DEBUG, "not finished");
+	if (ret < sizeof(struct phl_file_cache_item) || ctx->item.content_length == PHL_CONTENT_LENGTH_INIT) {
+		_log(PHL_LOG_DEBUG, "not finished");
 		atomic_fetch_add(&conf->stats->not_finished, 1);
 		phl_file_cache_abort(r);
-		return H2D_OK;
+		return PHL_OK;
 	}
 	if (ctx->item.expire_at < time(NULL)) {
-		_log(H2D_LOG_DEBUG, "expired");
+		_log(PHL_LOG_DEBUG, "expired");
 		atomic_fetch_add(&conf->stats->expired, 1);
 
 		close(ctx->fd);
 		unlinkat(conf->current_dirfd, filename, 0);
 		ctx->fd = -1;
 		ctx->new_filename = wuy_pool_strdup(r->pool, filename);
-		return H2D_OK;
+		return PHL_OK;
 	}
 
 	/* read and set response headers */
 	char buffer[ctx->item.header_total_length], *buf_pos = buffer;
 	ret = read(ctx->fd, buffer, sizeof(buffer));
 	if (ret < 0) {
-		_log(H2D_LOG_ERROR, "read headers %s", strerror(errno));
-		return H2D_ERROR;
+		_log(PHL_LOG_ERROR, "read headers %s", strerror(errno));
+		return PHL_ERROR;
 	}
 
 	for (int i = 0; i < ctx->item.header_num; i++) {
@@ -334,12 +334,12 @@ static int phl_file_cache_filter_response_headers(struct phl_request *r)
 	struct phl_file_cache_conf *conf = r->conf_path->module_confs[phl_file_cache_module.index];
 	struct phl_file_cache_ctx *ctx = r->module_ctxs[phl_file_cache_module.index];
 	if (ctx == NULL || ctx->new_filename == NULL) {
-		return H2D_OK;
+		return PHL_OK;
 	}
 	if (r->resp.status_code != WUY_HTTP_200) { // TODO cache more status_code
 		atomic_fetch_add(&conf->stats->ignore_status, 1);
 		phl_file_cache_abort(r);
-		return H2D_OK;
+		return PHL_OK;
 	}
 
 	time_t expire_after = -1;
@@ -354,7 +354,7 @@ static int phl_file_cache_filter_response_headers(struct phl_request *r)
 			if (memcmp(value, "max-age=", 8) != 0) {
 				atomic_fetch_add(&conf->stats->ignore_expire, 1);
 				phl_file_cache_abort(r);
-				return H2D_OK;
+				return PHL_OK;
 			}
 			expire_after = atoi(value+8);
 		} else if (strcasecmp(h->str, "Expires") == 0) {
@@ -371,21 +371,21 @@ static int phl_file_cache_filter_response_headers(struct phl_request *r)
 	if (expire_after <= 0) {
 		atomic_fetch_add(&conf->stats->ignore_expire, 1);
 		phl_file_cache_abort(r);
-		return H2D_OK;
+		return PHL_OK;
 	}
 
 	/* create item */
 	ctx->fd = phl_file_cache_create_file(conf, ctx->new_filename);
 	if (ctx->fd < 0) {
 		phl_file_cache_abort(r);
-		return H2D_OK;
+		return PHL_OK;
 	}
 
 	/* dump the item and headers infomation into buffer */
 	char buffer[sizeof(struct phl_file_cache_item) + ctx->item.header_total_length];
 
 	struct phl_file_cache_item *item = (struct phl_file_cache_item *)buffer;
-	item->content_length = H2D_CONTENT_LENGTH_INIT; /* mark as not-finished */
+	item->content_length = PHL_CONTENT_LENGTH_INIT; /* mark as not-finished */
 	item->expire_at = expire_after + time(NULL);
 	item->status_code = r->resp.status_code;
 	item->header_num = ctx->item.header_num;
@@ -401,12 +401,12 @@ static int phl_file_cache_filter_response_headers(struct phl_request *r)
 
 	int ret = write(ctx->fd, buffer, sizeof(buffer));
 	if (ret < 0) {
-		_log(H2D_LOG_ERROR, "write headers fail %s %s", ctx->new_filename, strerror(errno));
+		_log(PHL_LOG_ERROR, "write headers fail %s %s", ctx->new_filename, strerror(errno));
 		phl_file_cache_abort(r);
-		return H2D_OK;
+		return PHL_OK;
 	}
 
-	return H2D_OK;
+	return PHL_OK;
 }
 
 static int phl_file_cache_filter_response_body(struct phl_request *r,
@@ -420,7 +420,7 @@ static int phl_file_cache_filter_response_body(struct phl_request *r,
 	}
 
 	if (write(ctx->fd, data, data_len) != data_len) {
-		_log(H2D_LOG_ERROR, "write body fail %s %s",
+		_log(PHL_LOG_ERROR, "write body fail %s %s",
 				ctx->new_filename, strerror(errno));
 		phl_file_cache_abort(r);
 	}
@@ -432,7 +432,7 @@ static int phl_file_cache_filter_response_body(struct phl_request *r,
 
 		lseek(ctx->fd, 0, SEEK_SET);
 		if (write(ctx->fd, &ctx->new_length, sizeof(size_t)) < 0) {
-			_log(H2D_LOG_ERROR, "write fail");
+			_log(PHL_LOG_ERROR, "write fail");
 		}
 
 		/* mark finished */

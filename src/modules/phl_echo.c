@@ -16,14 +16,14 @@ static int phl_echo_generate_response_headers(struct phl_request *r)
 
 	r->resp.status_code = conf->status_code;
 	r->resp.content_length = conf->len;
-	return H2D_OK;
+	return PHL_OK;
 }
 
 static int phl_echo_generate_response_body(struct phl_request *r, uint8_t *buf, int size)
 {
 	struct phl_echo_conf *conf = r->conf_path->module_confs[phl_echo_module.index];
 	if (size < conf->len) {
-		return H2D_ERROR;
+		return PHL_ERROR;
 	}
 	memcpy(buf, conf->str, conf->len);
 	return conf->len;

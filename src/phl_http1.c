@@ -16,18 +16,18 @@ int phl_http1_request_headers(struct phl_request *r)
 				c->recv_buf_end - c->recv_buf_pos,
 				&r->req.method, &url_str, &url_len, &r->req.version);
 		if (proc_len < 0) {
-			_log(H2D_LOG_INFO, "invalid request line");
-			return H2D_ERROR;
+			_log(PHL_LOG_INFO, "invalid request line");
+			return PHL_ERROR;
 		}
 		if (proc_len == 0) {
-			return H2D_AGAIN;
+			return PHL_AGAIN;
 		}
 
 		if (!phl_request_set_uri(r, url_str, url_len)) {
-			return H2D_ERROR;
+			return PHL_ERROR;
 		}
 
-		_log(H2D_LOG_DEBUG, "request URI %.*s", url_len, url_str);
+		_log(PHL_LOG_DEBUG, "request URI %.*s", url_len, url_str);
 
 		c->recv_buf_pos += proc_len;
 	}
@@ -41,18 +41,18 @@ int phl_http1_request_headers(struct phl_request *r)
 				c->recv_buf_end - c->recv_buf_pos,
 				&name_len, &value_str, &value_len);
 		if (proc_len < 0) {
-			_log(H2D_LOG_INFO, "invalid request header");
-			return H2D_ERROR;
+			_log(PHL_LOG_INFO, "invalid request header");
+			return PHL_ERROR;
 		}
 		if (proc_len == 0) {
-			return H2D_AGAIN;
+			return PHL_AGAIN;
 		}
 		c->recv_buf_pos += proc_len;
 		if (proc_len == 2) { /* end of headers */
 			break;
 		}
 
-		_log(H2D_LOG_DEBUG, "request header: %.*s %.*s",
+		_log(PHL_LOG_DEBUG, "request header: %.*s %.*s",
 				name_len, name_str, value_len, value_str);
 
 		/* handle some */
@@ -66,7 +66,7 @@ int phl_http1_request_headers(struct phl_request *r)
 		}
 		if (memcmp(name_str, "Host", 4) == 0) {
 			if (!phl_request_set_host(r, value_str, value_len)) {
-				return H2D_ERROR;
+				return PHL_ERROR;
 			}
 			continue;
 		}
@@ -80,15 +80,15 @@ int phl_http1_request_headers(struct phl_request *r)
 
 		phl_header_add(&r->req.headers, name_str, name_len, value_str, value_len, r->pool);
 	}
-	return H2D_OK;
+	return PHL_OK;
 }
 
 int phl_http1_request_body(struct phl_request *r)
 {
 	/* no body */
-	if (r->req.content_length != H2D_CONTENT_LENGTH_INIT
+	if (r->req.content_length != PHL_CONTENT_LENGTH_INIT
 			&& !wuy_http_chunked_is_enabled(&r->req.chunked)) {
-		return H2D_OK;
+		return PHL_OK;
 	}
 
 	/* we assume all received data is body, not supporting pipeline */
@@ -99,26 +99,26 @@ int phl_http1_request_body(struct phl_request *r)
 	c->recv_buf_pos = c->recv_buf_end;
 
 	/* plain */
-	if (r->req.content_length != H2D_CONTENT_LENGTH_INIT) {
+	if (r->req.content_length != PHL_CONTENT_LENGTH_INIT) {
 		int ret = phl_request_append_body(r, buf_pos, buf_len);
-		if (ret != H2D_OK) {
+		if (ret != PHL_OK) {
 			return ret;
 		}
-		return r->req.body_finished ? H2D_OK : H2D_AGAIN;
+		return r->req.body_finished ? PHL_OK : PHL_AGAIN;
 	}
 
 	/* chunked */
 	while (buf_pos < buf_end) {
 		int data_len = wuy_http_chunked_decode(&r->req.chunked, &buf_pos, buf_end);
 		if (data_len < 0) {
-			phl_request_log(r, H2D_LOG_DEBUG, "chunked error: %d", data_len);
+			phl_request_log(r, PHL_LOG_DEBUG, "chunked error: %d", data_len);
 			return WUY_HTTP_400;
 		}
 		if (data_len == 0) {
 			break;
 		}
 		int ret = phl_request_append_body(r, buf_pos, data_len);
-		if (ret != H2D_OK) {
+		if (ret != PHL_OK) {
 			return ret;
 		}
 		buf_pos += data_len;
@@ -126,14 +126,14 @@ int phl_http1_request_body(struct phl_request *r)
 
 	if (wuy_http_chunked_is_finished(&r->req.chunked)) {
 		r->req.body_finished = true;
-		return H2D_OK;
+		return PHL_OK;
 	}
-	return H2D_AGAIN;
+	return PHL_AGAIN;
 }
 
 static bool phl_http1_response_is_chunked(struct phl_request *r)
 {
-	return r->req.version != 0 && r->resp.content_length == H2D_CONTENT_LENGTH_INIT;
+	return r->req.version != 0 && r->resp.content_length == PHL_CONTENT_LENGTH_INIT;
 }
 int phl_http1_response_headers(struct phl_request *r)
 {
@@ -152,7 +152,7 @@ int phl_http1_response_headers(struct phl_request *r)
 
 	if (phl_http1_response_is_chunked(r)) {
 		p += sprintf(p, "Transfer-Encoding: chunked\r\n");
-	} else if (r->resp.content_length != H2D_CONTENT_LENGTH_INIT) {
+	} else if (r->resp.content_length != PHL_CONTENT_LENGTH_INIT) {
 		p += sprintf(p, "Content-Length: %ld\r\n", r->resp.content_length);
 	}
 
@@ -162,22 +162,22 @@ int phl_http1_response_headers(struct phl_request *r)
 	}
 	p += sprintf(p, "\r\n");
 
-	_log(H2D_LOG_DEBUG, "response headers: %ld", p - begin);
+	_log(PHL_LOG_DEBUG, "response headers: %ld", p - begin);
 
 	c->send_buf_len += p - begin;
 
-	return H2D_OK;
+	return PHL_OK;
 }
 
-#define H2D_CHUNKED_PREFIX_LENGTH 10
+#define PHL_CHUNKED_PREFIX_LENGTH 10
 void phl_http1_response_body_packfix(struct phl_request *r,
 		uint8_t **p_buf_pos, int *p_buf_len)
 {
 	if (!phl_http1_response_is_chunked(r)) {
 		return;
 	}
-	*p_buf_pos += H2D_CHUNKED_PREFIX_LENGTH;
-	*p_buf_len -= H2D_CHUNKED_PREFIX_LENGTH + 7;
+	*p_buf_pos += PHL_CHUNKED_PREFIX_LENGTH;
+	*p_buf_len -= PHL_CHUNKED_PREFIX_LENGTH + 7;
 }
 int phl_http1_response_body_pack(struct phl_request *r, uint8_t *payload,
 		int length, bool is_last)
@@ -186,15 +186,15 @@ int phl_http1_response_body_pack(struct phl_request *r, uint8_t *payload,
 		return length;
 	}
 
-	sprintf((char *)payload - H2D_CHUNKED_PREFIX_LENGTH, "%-8x\r", length);
+	sprintf((char *)payload - PHL_CHUNKED_PREFIX_LENGTH, "%-8x\r", length);
 	payload[-1] = '\n';
 
 	if (length != 0 && is_last) {
 		memcpy(payload + length, "\r\n0\r\n\r\n", 7);
-		return length + H2D_CHUNKED_PREFIX_LENGTH + 7;
+		return length + PHL_CHUNKED_PREFIX_LENGTH + 7;
 	} else {
 		memcpy(payload + length, "\r\n", 2);
-		return length + H2D_CHUNKED_PREFIX_LENGTH + 2;
+		return length + PHL_CHUNKED_PREFIX_LENGTH + 2;
 	}
 }
 
@@ -203,11 +203,11 @@ static void phl_http1_set_state(struct phl_connection *c)
 	enum phl_connection_state state;
 	struct phl_request *r = c->u.request;
 	if (r == NULL) {
-		state = H2D_CONNECTION_STATE_IDLE;
-	} else if (r->state < H2D_REQUEST_STATE_RESPONSE_HEADERS_1) {
-		state = H2D_CONNECTION_STATE_READING;
+		state = PHL_CONNECTION_STATE_IDLE;
+	} else if (r->state < PHL_REQUEST_STATE_RESPONSE_HEADERS_1) {
+		state = PHL_CONNECTION_STATE_READING;
 	} else {
-		state = H2D_CONNECTION_STATE_WRITING;
+		state = PHL_CONNECTION_STATE_WRITING;
 	}
 
 	phl_connection_set_state(c, state);
@@ -241,10 +241,10 @@ void phl_http1_request_close(struct phl_request *r)
 
 	c->u.request = NULL;
 
-	if (r->state != H2D_REQUEST_STATE_DONE || r->req.version == 0) {
+	if (r->state != PHL_REQUEST_STATE_DONE || r->req.version == 0) {
 		phl_connection_close(c);
 	} else {
-		phl_connection_set_state(c, H2D_CONNECTION_STATE_IDLE);
+		phl_connection_set_state(c, PHL_CONNECTION_STATE_IDLE);
 	}
 }
 

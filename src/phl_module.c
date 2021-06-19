@@ -6,15 +6,15 @@
 #include "phl_main.h"
 
 enum {
-	H2D_MODULE_FILTER_PROCESS_HEADERS = 0,
-	H2D_MODULE_FILTER_PROCESS_BODY,
-	H2D_MODULE_FILTER_RESPONSE_HEADERS,
-	H2D_MODULE_FILTER_RESPONSE_BODY,
-	H2D_MODULE_FILTER_NUM,
+	PHL_MODULE_FILTER_PROCESS_HEADERS = 0,
+	PHL_MODULE_FILTER_PROCESS_BODY,
+	PHL_MODULE_FILTER_RESPONSE_HEADERS,
+	PHL_MODULE_FILTER_RESPONSE_BODY,
+	PHL_MODULE_FILTER_NUM,
 };
 struct phl_module_filters {
-	double			ranks[H2D_MODULE_FILTER_NUM][H2D_MODULE_MAX];
-	struct phl_module	*modules[H2D_MODULE_FILTER_NUM][H2D_MODULE_MAX];
+	double			ranks[PHL_MODULE_FILTER_NUM][PHL_MODULE_MAX];
+	struct phl_module	*modules[PHL_MODULE_FILTER_NUM][PHL_MODULE_MAX];
 };
 
 
@@ -22,12 +22,12 @@ struct phl_module_filters {
 int phl_module_number;
 
 #define X(m) extern struct phl_module m;
-H2D_MODULE_X_LIST
+PHL_MODULE_X_LIST
 #undef X
 static struct phl_module *phl_module_statics[] =
 {
 	#define X(m) &m,
-	H2D_MODULE_X_LIST
+	PHL_MODULE_X_LIST
 	#undef X
 };
 
@@ -38,27 +38,27 @@ struct phl_module *phl_module_next(struct phl_module *m)
 		return phl_module_statics[0];
 	}
 	int next = m->index + 1;
-	if (next < H2D_MODULE_STATIC_NUMBER) {
+	if (next < PHL_MODULE_STATIC_NUMBER) {
 		return phl_module_statics[next];
 	}
 	if (phl_conf_runtime == NULL || phl_conf_runtime->dynamic_modules == NULL) {
 		return NULL;
 	}
-	return phl_conf_runtime->dynamic_modules[next - H2D_MODULE_STATIC_NUMBER].sym;
+	return phl_conf_runtime->dynamic_modules[next - PHL_MODULE_STATIC_NUMBER].sym;
 }
 
-#define H2D_MODULE_TO_MEMBER(m, offset) (void *)((char *)m + offset)
-#define H2D_MODULE_FROM_MEMBER(m, offset) (void *)((char *)m - offset)
+#define PHL_MODULE_TO_MEMBER(m, offset) (void *)((char *)m + offset)
+#define PHL_MODULE_FROM_MEMBER(m, offset) (void *)((char *)m - offset)
 static struct wuy_cflua_command *phl_module_next_command(
 		struct wuy_cflua_command *cmd, off_t offset)
 {
 	struct phl_module *m = NULL;
 	if (cmd->type != WUY_CFLUA_TYPE_END || cmd->u.next == NULL) {
-		m = H2D_MODULE_FROM_MEMBER(cmd, offset);
+		m = PHL_MODULE_FROM_MEMBER(cmd, offset);
 	}
 
 	while ((m = phl_module_next(m)) != NULL) {
-		struct wuy_cflua_command *next = H2D_MODULE_TO_MEMBER(m, offset);
+		struct wuy_cflua_command *next = PHL_MODULE_TO_MEMBER(m, offset);
 		if (next->type != WUY_CFLUA_TYPE_END) {
 			return next;
 		}
@@ -82,7 +82,7 @@ static void phl_module_stats(void **confs, wuy_json_t *json, off_t offset)
 {
 	struct phl_module *m = NULL;
 	while ((m = phl_module_next(m)) != NULL) {
-		void (*stats)(void *, wuy_json_t *) = *(void **)H2D_MODULE_TO_MEMBER(m, offset);
+		void (*stats)(void *, wuy_json_t *) = *(void **)PHL_MODULE_TO_MEMBER(m, offset);
 		if (stats != NULL && confs[m->index] != NULL) {
 			stats(confs[m->index], json);
 		}
@@ -116,7 +116,7 @@ static void phl_module_fix(struct phl_module *m, int i)
 void phl_module_master_init(void)
 {
 	/* init static modules only */
-	for (int i = 0; i < H2D_MODULE_STATIC_NUMBER; i++) {
+	for (int i = 0; i < PHL_MODULE_STATIC_NUMBER; i++) {
 		struct phl_module *m = phl_module_statics[i];
 		phl_module_fix(m, i);
 		if (m->master_init != NULL) {
@@ -133,7 +133,7 @@ void phl_module_worker_init(void)
 	while ((m = phl_module_next(m)) != NULL) {
 		phl_module_number++;
 
-		if (phl_module_number > H2D_MODULE_STATIC_NUMBER) {
+		if (phl_module_number > PHL_MODULE_STATIC_NUMBER) {
 			/* fix dynamic module again, because it may be changed
 			 * because of failure in reloading configuration */
 			phl_module_fix(m, phl_module_number - 1);
@@ -211,10 +211,10 @@ static int phl_module_filter_run(struct phl_request *r, int index)
 	while (1) {
 		struct phl_module *m = modules[r->filter_indexs[index]];
 		if (m == NULL) {
-			return H2D_OK;
+			return PHL_OK;
 		}
 		int ret = (*(&m->filters.process_headers + index))(r);
-		if (ret != H2D_OK) {
+		if (ret != PHL_OK) {
 			if (ret > 0) { /* HTTP status_code */
 				r->filter_terminal = m;
 			}
@@ -225,20 +225,20 @@ static int phl_module_filter_run(struct phl_request *r, int index)
 }
 int phl_module_filter_process_headers(struct phl_request *r)
 {
-	return phl_module_filter_run(r, H2D_MODULE_FILTER_PROCESS_HEADERS);
+	return phl_module_filter_run(r, PHL_MODULE_FILTER_PROCESS_HEADERS);
 }
 int phl_module_filter_process_body(struct phl_request *r)
 {
-	return phl_module_filter_run(r, H2D_MODULE_FILTER_PROCESS_BODY);
+	return phl_module_filter_run(r, PHL_MODULE_FILTER_PROCESS_BODY);
 }
 int phl_module_filter_response_headers(struct phl_request *r)
 {
-	return phl_module_filter_run(r, H2D_MODULE_FILTER_RESPONSE_HEADERS);
+	return phl_module_filter_run(r, PHL_MODULE_FILTER_RESPONSE_HEADERS);
 }
 int phl_module_filter_response_body(struct phl_request *r, uint8_t *data,
 		int data_len, int buf_len, bool *p_is_last)
 {
-	struct phl_module **modules = r->conf_path->filters->modules[H2D_MODULE_FILTER_RESPONSE_BODY];
+	struct phl_module **modules = r->conf_path->filters->modules[PHL_MODULE_FILTER_RESPONSE_BODY];
 
 	int i = 0;
 	while (1) {
@@ -303,7 +303,7 @@ static const char *phl_module_filters_arbitrary(lua_State *L, void *data)
 	lua_pushnil(L);
 	while (lua_next(L, -2) != 0) {
 		int index = lua_tointeger(L, -2);
-		if (index == 0 || index > H2D_MODULE_FILTER_NUM) {
+		if (index == 0 || index > PHL_MODULE_FILTER_NUM) {
 			return "invalid key";
 		}
 		if (!lua_isnumber(L, -1)) {
@@ -319,7 +319,7 @@ static void phl_module_filters_init(void *data)
 {
 	struct phl_module_filters *conf = data;
 
-	for (int i = 0; i < H2D_MODULE_FILTER_NUM; i++) {
+	for (int i = 0; i < PHL_MODULE_FILTER_NUM; i++) {
 		int j = 0;
 		struct phl_module *m = NULL;
 		while ((m = phl_module_next(m)) != NULL) {
@@ -331,28 +331,28 @@ static const char *phl_module_filters_post(void *data)
 {
 	struct phl_module_filters *conf = data;
 
-	int counts[H2D_MODULE_FILTER_NUM] = {0};
+	int counts[PHL_MODULE_FILTER_NUM] = {0};
 	struct phl_module *m = NULL;
 	while ((m = phl_module_next(m)) != NULL) {
 		if (m->filters.process_headers) {
-			int j = H2D_MODULE_FILTER_PROCESS_HEADERS;
+			int j = PHL_MODULE_FILTER_PROCESS_HEADERS;
 			conf->modules[j][counts[j]++] = m;
 		}
 		if (m->filters.process_body) {
-			int j = H2D_MODULE_FILTER_PROCESS_BODY;
+			int j = PHL_MODULE_FILTER_PROCESS_BODY;
 			conf->modules[j][counts[j]++] = m;
 		}
 		if (m->filters.response_headers) {
-			int j = H2D_MODULE_FILTER_RESPONSE_HEADERS;
+			int j = PHL_MODULE_FILTER_RESPONSE_HEADERS;
 			conf->modules[j][counts[j]++] = m;
 		}
 		if (m->filters.response_body) {
-			int j = H2D_MODULE_FILTER_RESPONSE_BODY;
+			int j = PHL_MODULE_FILTER_RESPONSE_BODY;
 			conf->modules[j][counts[j]++] = m;
 		}
 	}
 
-	for (int i = 0; i < H2D_MODULE_FILTER_NUM; i++) {
+	for (int i = 0; i < PHL_MODULE_FILTER_NUM; i++) {
 		phl_module_filters_rank_index = i;
 		phl_module_filters_ranks = conf->ranks[i];
 		qsort(conf->modules[i], counts[i], sizeof(struct phl_module *), phl_module_filter_cmp);
@@ -372,7 +372,7 @@ struct wuy_cflua_table phl_module_filters_conf_table = {
 
 static const char *phl_module_dynamic_load(struct phl_module_dynamic *d)
 {
-	phl_conf_log(H2D_LOG_INFO, "load dynamic module %s", d->filename);
+	phl_conf_log(PHL_LOG_INFO, "load dynamic module %s", d->filename);
 
 	/* make the module name */
 	const char *p = strrchr(d->filename, '/');
@@ -420,7 +420,7 @@ static const char *phl_module_dynamic_post(void *data)
 		}
 
 		struct phl_module *m = d->sym;
-		phl_module_fix(m, H2D_MODULE_STATIC_NUMBER + (d - modules));
+		phl_module_fix(m, PHL_MODULE_STATIC_NUMBER + (d - modules));
 
 		if (m->master_init != NULL) {
 			m->master_init();

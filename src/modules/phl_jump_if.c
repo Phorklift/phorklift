@@ -1,10 +1,10 @@
 #include "phl_main.h"
 
-#define H2D_JUMP_IF_MAX 10
+#define PHL_JUMP_IF_MAX 10
 
 struct phl_jump_if_conf {
-	const char	*pathnames[H2D_JUMP_IF_MAX];
-	int		status_codes[H2D_JUMP_IF_MAX];
+	const char	*pathnames[PHL_JUMP_IF_MAX];
+	int		status_codes[PHL_JUMP_IF_MAX];
 	int		num;
 };
 
@@ -14,7 +14,7 @@ static int phl_jump_if_filter_response_headers(struct phl_request *r)
 {
 	struct phl_jump_if_conf *conf = r->conf_path->module_confs[phl_jump_if_module.index];
 	if (conf->num == 0) {
-		return H2D_OK;
+		return PHL_OK;
 	}
 
 	const char *jump_path = NULL;
@@ -25,7 +25,7 @@ static int phl_jump_if_filter_response_headers(struct phl_request *r)
 		}
 	}
 	if (jump_path == NULL) {
-		return H2D_OK;
+		return PHL_OK;
 	}
 
 	return phl_request_redirect(r, jump_path);

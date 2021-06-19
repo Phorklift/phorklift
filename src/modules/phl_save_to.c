@@ -28,10 +28,10 @@ static int phl_save_to_filter_response_headers(struct phl_request *r)
 {
 	struct phl_save_to_conf *conf = r->conf_path->module_confs[phl_save_to_module.index];
 	if (conf->pathname == NULL) {
-		return H2D_OK;
+		return PHL_OK;
 	}
 	if (r->resp.status_code != WUY_HTTP_200) { // TODO cache more status_code
-		return H2D_OK;
+		return PHL_OK;
 	}
 
 	time_t expire_after = -1;
@@ -41,7 +41,7 @@ static int phl_save_to_filter_response_headers(struct phl_request *r)
 		const char *value = phl_header_value(h);
 		if (strcasecmp(h->str, "Cache-Control") == 0) {
 			if (memcmp(value, "max-age=", 8) != 0) {
-				return H2D_OK;
+				return PHL_OK;
 			}
 			expire_after = atoi(value+8);
 		} else if (strcasecmp(h->str, "Expires") == 0) {
@@ -53,19 +53,19 @@ static int phl_save_to_filter_response_headers(struct phl_request *r)
 		expire_after = conf->default_expire;
 	}
 	if (expire_after <= 0) {
-		return H2D_OK;
+		return PHL_OK;
 	}
 
 	struct phl_save_to_ctx *ctx = wuy_pool_alloc(r->pool, sizeof(struct phl_save_to_ctx));
 	ctx->expire_after = expire_after;
 
-	if (r->resp.content_length != H2D_CONTENT_LENGTH_INIT) {
+	if (r->resp.content_length != PHL_CONTENT_LENGTH_INIT) {
 		ctx->buf_size = r->resp.content_length;
 		ctx->buffer = wuy_pool_realloc(r->pool, NULL, ctx->buf_size);
 	}
 
 	r->module_ctxs[phl_save_to_module.index] = ctx;
-	return H2D_OK;
+	return PHL_OK;
 }
 
 static int phl_save_to_filter_response_body(struct phl_request *r,

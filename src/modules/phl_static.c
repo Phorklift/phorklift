@@ -28,7 +28,7 @@ static int phl_static_process_request_headers(struct phl_request *r)
 	if (r->req.method != WUY_HTTP_GET && r->req.method != WUY_HTTP_HEAD) {
 		return WUY_HTTP_405;
 	}
-	return H2D_OK;
+	return PHL_OK;
 }
 
 static int phl_static_dir_headers(struct phl_request *r, int fd)
@@ -55,7 +55,7 @@ static int phl_static_dir_headers(struct phl_request *r, int fd)
 
 	r->resp.status_code = WUY_HTTP_200;
 	r->resp.content_length = r->resp.easy_str_len;
-	return H2D_OK;
+	return PHL_OK;
 }
 
 static int phl_static_range_headers(struct phl_request *r, struct phl_header *h,
@@ -81,7 +81,7 @@ static int phl_static_range_headers(struct phl_request *r, struct phl_header *h,
 	h = phl_header_get(&r->req.headers, "If-Range");
 	if (h != NULL) {
 		time_t if_range = wuy_http_date_parse(phl_header_value(h));
-		phl_request_log_at(r, conf->log, H2D_LOG_DEBUG, "check If-Range %ld %ld",
+		phl_request_log_at(r, conf->log, PHL_LOG_DEBUG, "check If-Range %ld %ld",
 				if_range, st_buf->st_mtime);
 		if (if_range != st_buf->st_mtime) {
 			return WUY_HTTP_200;
@@ -100,7 +100,7 @@ static int phl_static_range_headers(struct phl_request *r, struct phl_header *h,
 			range->last, st_buf->st_size);
 	phl_header_add_lite(&r->resp.headers, "Content-Range", buf, len, r->pool);
 
-	return H2D_OK;
+	return PHL_OK;
 }
 
 static int phl_static_generate_response_headers(struct phl_request *r)
@@ -114,11 +114,11 @@ static int phl_static_generate_response_headers(struct phl_request *r)
 		filename = ".";
 	}
 
-	phl_request_log_at(r, conf->log, H2D_LOG_DEBUG, "open file %s", filename);
+	phl_request_log_at(r, conf->log, PHL_LOG_DEBUG, "open file %s", filename);
 
 	int fd = openat(conf->dirfd, filename, O_RDONLY);
 	if (fd < 0) {
-		phl_request_log_at(r, conf->log, H2D_LOG_INFO, "error to open file %s %s",
+		phl_request_log_at(r, conf->log, PHL_LOG_INFO, "error to open file %s %s",
 				filename, strerror(errno));
 		return WUY_HTTP_404;
 	}
@@ -133,7 +133,7 @@ static int phl_static_generate_response_headers(struct phl_request *r)
 			return phl_static_dir_headers(r, fd);
 		}
 		if (conf->index == NULL) {
-			phl_request_log_at(r, conf->log, H2D_LOG_INFO, "request directory");
+			phl_request_log_at(r, conf->log, PHL_LOG_INFO, "request directory");
 			return WUY_HTTP_404;
 		}
 
@@ -141,7 +141,7 @@ static int phl_static_generate_response_headers(struct phl_request *r)
 		close(fd);
 		fd = index_fd;
 		if (fd < 0) {
-			phl_request_log_at(r, conf->log, H2D_LOG_INFO,
+			phl_request_log_at(r, conf->log, PHL_LOG_INFO,
 					"error to open index %s", strerror(errno));
 			return WUY_HTTP_404;
 		}
@@ -153,7 +153,7 @@ static int phl_static_generate_response_headers(struct phl_request *r)
 	r->module_ctxs[phl_static_module.index] = (void *)(intptr_t)fd;
 
 	if (ftype != S_IFREG && ftype != S_IFLNK) {
-		phl_request_log_at(r, conf->log, H2D_LOG_INFO, "invalid file type");
+		phl_request_log_at(r, conf->log, PHL_LOG_INFO, "invalid file type");
 		return WUY_HTTP_404;
 	}
 
@@ -161,7 +161,7 @@ static int phl_static_generate_response_headers(struct phl_request *r)
 	struct phl_header *h = phl_header_get(&r->req.headers, "If-Modified-Since");
 	if (h != NULL) {
 		time_t if_modified_since = wuy_http_date_parse(phl_header_value(h));
-		phl_request_log_at(r, conf->log, H2D_LOG_DEBUG, "check If-Modified-Since %ld %ld",
+		phl_request_log_at(r, conf->log, PHL_LOG_DEBUG, "check If-Modified-Since %ld %ld",
 				if_modified_since, st_buf.st_mtime);
 		if (if_modified_since == st_buf.st_mtime) {
 			return WUY_HTTP_304;
@@ -192,7 +192,7 @@ static int phl_static_generate_response_headers(struct phl_request *r)
 
 	r->resp.status_code = WUY_HTTP_200;
 	r->resp.content_length = st_buf.st_size;
-	return H2D_OK;
+	return PHL_OK;
 }
 
 static void phl_static_ctx_free(struct phl_request *r)

@@ -119,32 +119,32 @@ static struct phl_upstream_address *phl_upstream_random_pick(
 	int picked = phl_upstream_random_random(ctx, ctx->total_num);
 	struct phl_upstream_address *address = ctx->addresses[picked].address;
 
-	phl_request_log_at(r, upstream->log, H2D_LOG_DEBUG, "random pick %d %s", picked, address->name);
+	phl_request_log_at(r, upstream->log, PHL_LOG_DEBUG, "random pick %d %s", picked, address->name);
 
 	/* this one is not-available by now */
 	if (picked >= ctx->available_num) {
 		if (address->failure.down_time == 0 && address->healthcheck.down_time == 0) {
-			phl_request_log_at(r, upstream->log, H2D_LOG_INFO, "random recover %d %s",
+			phl_request_log_at(r, upstream->log, PHL_LOG_INFO, "random recover %d %s",
 					picked, address->name);
 			phl_upstream_random_recover(ctx, picked);
 			return address;
 		}
 		if (phl_upstream_address_is_pickable(address, r)) {
-			phl_request_log_at(r, upstream->log, H2D_LOG_DEBUG, "random try not-available");
+			phl_request_log_at(r, upstream->log, PHL_LOG_DEBUG, "random try not-available");
 			return address;
 		}
 
 retry:
 		/* pick again amount available addresses only */
 		if (ctx->available_num == 0) { /* no available */
-			phl_request_log_at(r, upstream->log, H2D_LOG_DEBUG, "random return not-available");
+			phl_request_log_at(r, upstream->log, PHL_LOG_DEBUG, "random return not-available");
 			return address;
 		}
 
 		picked = phl_upstream_random_random(ctx, ctx->available_num);
 		address = ctx->addresses[picked].address;
 
-		phl_request_log_at(r, upstream->log, H2D_LOG_DEBUG, "random pick again: %d %s",
+		phl_request_log_at(r, upstream->log, PHL_LOG_DEBUG, "random pick again: %d %s",
 				picked, address->name);
 	}
 
@@ -152,7 +152,7 @@ retry:
 		return address; /* done! this is the mostly case */
 	}
 
-	phl_request_log_at(r, upstream->log, H2D_LOG_INFO, "random expire %d %s", picked, address->name);
+	phl_request_log_at(r, upstream->log, PHL_LOG_INFO, "random expire %d %s", picked, address->name);
 	phl_upstream_random_expire(ctx, picked);
 
 	goto retry;

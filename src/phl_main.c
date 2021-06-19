@@ -8,7 +8,7 @@
 
 #include "phl_main.h"
 
-#define H2D_VERSION "0.0.1"
+#define PHL_VERSION "0.0.1"
 
 static bool opt_daemon = true;
 
@@ -32,7 +32,7 @@ static const char *phl_getopt(int argc, char *const *argv)
 		case 'p':
 			if (chdir(optarg) != 0) {
 				fprintf(stderr, "Fail to chdir to %s : %s\n", optarg, strerror(errno));
-				exit(H2D_EXIT_GETOPT);
+				exit(PHL_EXIT_GETOPT);
 			}
 			break;
 		case 'f':
@@ -44,24 +44,24 @@ static const char *phl_getopt(int argc, char *const *argv)
 			phl_conf_doc();
 			exit(0);
 		case 'v':
-			printf("version: %s\n", H2D_VERSION);
+			printf("version: %s\n", PHL_VERSION);
 			exit(0);
 		case 'h':
 			printf("%s", help);
 			exit(0);
 		default:
 			printf("%s", help);
-			exit(H2D_EXIT_GETOPT);
+			exit(PHL_EXIT_GETOPT);
 		}
 	}
 
 	if (optind > argc - 1) {
 		fprintf(stderr, "argument conf_file is need!\n");
-		exit(H2D_EXIT_GETOPT);
+		exit(PHL_EXIT_GETOPT);
 	}
 	if (optind < argc - 1) {
 		fprintf(stderr, "only 1 conf_file is allowed!\n");
-		exit(H2D_EXIT_GETOPT);
+		exit(PHL_EXIT_GETOPT);
 	}
 	return argv[optind];
 }
@@ -81,7 +81,7 @@ static void phl_worker_entry(void)
 	phl_in_worker = true;
 	phl_pid = getpid();
 
-	phl_conf_log(H2D_LOG_INFO, "worker starts!");
+	phl_conf_log(PHL_LOG_INFO, "worker starts!");
 
 	signal(SIGHUP, SIG_IGN);
 	signal(SIGQUIT, phl_signal_worker_quit);
@@ -97,7 +97,7 @@ static void phl_worker_entry(void)
 	/* go to work! */
 	loop_run(phl_loop);
 
-	phl_conf_log(H2D_LOG_INFO, "worker quits!");
+	phl_conf_log(PHL_LOG_INFO, "worker quits!");
 }
 
 static void phl_signal_reload_conf(int signo)
@@ -121,7 +121,7 @@ static pid_t phl_worker_new(void)
 {
 	pid_t pid = fork();
 	if (pid < 0) {
-		phl_conf_log(H2D_LOG_ERROR, "fail in fork %s", strerror(errno));
+		phl_conf_log(PHL_LOG_ERROR, "fail in fork %s", strerror(errno));
 		return -1;
 	}
 	if (pid == 0) {
@@ -146,10 +146,10 @@ static bool phl_worker_check(void)
 	}
 
 	if (WIFEXITED(status)) {
-		phl_conf_log(H2D_LOG_ERROR, "worker exits with status=%d", WEXITSTATUS(status));
+		phl_conf_log(PHL_LOG_ERROR, "worker exits with status=%d", WEXITSTATUS(status));
 
 	} else if (WIFSIGNALED(status)) {
-		phl_conf_log(H2D_LOG_ERROR, "worker is terminated by signal %d", WTERMSIG(status));
+		phl_conf_log(PHL_LOG_ERROR, "worker is terminated by signal %d", WTERMSIG(status));
 		for (int i = 0; phl_workers[i] != -1; i++) {
 			if (pid == phl_workers[i]) {
 				phl_workers[i] = phl_worker_new();
@@ -157,7 +157,7 @@ static bool phl_worker_check(void)
 			}
 		}
 	} else {
-		phl_conf_log(H2D_LOG_ERROR, "worker quits!");
+		phl_conf_log(PHL_LOG_ERROR, "worker quits!");
 	}
 
 	return phl_worker_check();
@@ -166,12 +166,12 @@ static bool phl_worker_check(void)
 static int phl_run(const char *conf_file)
 {
 	if (!phl_conf_parse(conf_file)) {
-		return H2D_EXIT_CONF;
+		return PHL_EXIT_CONF;
 	}
 
 	phl_lua_api_init();
 
-	phl_conf_log(H2D_LOG_INFO, "start!");
+	phl_conf_log(PHL_LOG_INFO, "start!");
 
 	if (opt_daemon) {
 		fprintf(stdout, "go to daemon.\n");
@@ -252,12 +252,12 @@ int main(int argc, char * const *argv)
 
 	/* master */
 	while (1) {
-		phl_conf_log(H2D_LOG_INFO, "master pause...");
+		phl_conf_log(PHL_LOG_INFO, "master pause...");
 		pause(); /* wait for signals */
-		phl_conf_log(H2D_LOG_INFO, "master wake up");
+		phl_conf_log(PHL_LOG_INFO, "master wake up");
 
 		if (sig_reload_conf) {
-			phl_conf_log(H2D_LOG_INFO, "reload configration");
+			phl_conf_log(PHL_LOG_INFO, "reload configration");
 			sig_reload_conf = false;
 			phl_run(conf_file);
 		}

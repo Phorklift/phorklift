@@ -1,5 +1,5 @@
-#ifndef H2D_LUA_API_H
-#define H2D_LUA_API_H
+#ifndef PHL_LUA_API_H
+#define PHL_LUA_API_H
 
 #include "phl_request.h"
 

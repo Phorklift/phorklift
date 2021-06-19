@@ -17,29 +17,29 @@ static int phl_gzip_filter_response_headers(struct phl_request *r)
 {
 	struct phl_gzip_conf *conf = r->conf_path->module_confs[phl_gzip_module.index];
 	if (conf->level == 0) {
-		return H2D_OK;
+		return PHL_OK;
 	}
 	if (r->resp.status_code != WUY_HTTP_200) {
-		return H2D_OK;
+		return PHL_OK;
 	}
 	if (r->resp.content_length <= conf->min_length) {
-		return H2D_OK;
+		return PHL_OK;
 	}
 
 	struct phl_header *h;
 	phl_header_iter(&r->resp.headers, h) {
 		if (strcasecmp(h->str, "Content-Encoding") == 0) {
-			return H2D_OK;
+			return PHL_OK;
 		}
 	}
 
 	if (wuy_cflua_is_function_set(conf->filter) && phl_lua_call_boolean(r, conf->filter) != 1) {
-		return H2D_OK;
+		return PHL_OK;
 	}
 
 	/* enable gzip */
 
-	r->resp.content_length = H2D_CONTENT_LENGTH_INIT,
+	r->resp.content_length = PHL_CONTENT_LENGTH_INIT,
 	phl_header_add(&r->resp.headers, "Content-Encoding", 16, "gzip", 4, r->pool);
 
 	z_streamp zs = wuy_pool_alloc(r->pool, sizeof(*zs));
@@ -47,7 +47,7 @@ static int phl_gzip_filter_response_headers(struct phl_request *r)
 			conf->mem_level, Z_DEFAULT_STRATEGY);
 
 	r->module_ctxs[phl_gzip_module.index] = zs;
-	return H2D_OK;
+	return PHL_OK;
 }
 
 static int phl_gzip_filter_response_body(struct phl_request *r, uint8_t *data,
@@ -67,10 +67,10 @@ static int phl_gzip_filter_response_body(struct phl_request *r, uint8_t *data,
 
 	int ret = deflate(zs, *p_is_last ? Z_FINISH : Z_NO_FLUSH);
 	if (ret != Z_STREAM_END) {
-		phl_request_log(r, H2D_LOG_ERROR, "gzip: defalte() %d: "
+		phl_request_log(r, PHL_LOG_ERROR, "gzip: defalte() %d: "
 				"in=%d out=%d, avail_in=%d avail_out=%d",
 				ret, data_len, buf_len, zs->avail_in, zs->avail_out);
-		return H2D_ERROR;
+		return PHL_ERROR;
 	}
 
 	int out_len = buf_len - zs->avail_out;

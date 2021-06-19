@@ -1,20 +1,20 @@
-#ifndef H2D_UPSTREAM_H
-#define H2D_UPSTREAM_H
+#ifndef PHL_UPSTREAM_H
+#define PHL_UPSTREAM_H
 
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <sys/un.h>
 
-/* calculate H2D_UPSTREAM_LOADBALANCE_STATIC_NUMBER in preprocess */
+/* calculate PHL_UPSTREAM_LOADBALANCE_STATIC_NUMBER in preprocess */
 enum _ups_nonuse {
 	#define X(m) phl_upstream_index_##m,
-	H2D_UPSTREAM_LOADBALANCE_X_LIST
+	PHL_UPSTREAM_LOADBALANCE_X_LIST
 	#undef X
 
-	H2D_UPSTREAM_LOADBALANCE_STATIC_NUMBER
+	PHL_UPSTREAM_LOADBALANCE_STATIC_NUMBER
 };
 
-#define H2D_UPSTREAM_LOADBALANCE_MAX	(H2D_MODULE_STATIC_NUMBER + H2D_MODULE_DYNAMIC_MAX)
+#define PHL_UPSTREAM_LOADBALANCE_MAX	(PHL_MODULE_STATIC_NUMBER + PHL_MODULE_DYNAMIC_MAX)
 
 struct phl_upstream_stats {
 	atomic_long		pick_fail;
@@ -116,7 +116,7 @@ struct phl_upstream_loadbalance {
 
 struct phl_upstream_ops {
 	/* build request into phl_upstream_content_ctx.req_buf/req_len,
-	 * and return H2D_OK if successful. */
+	 * and return PHL_OK if successful. */
 	int	(*build_request)(struct phl_request *r);
 
 	/* optional bellow */
@@ -190,7 +190,7 @@ struct phl_upstream_conf {
 
 	/* loadbalances */
 	struct phl_upstream_loadbalance	*loadbalance;
-	void				*lb_confs[H2D_UPSTREAM_LOADBALANCE_MAX];
+	void				*lb_confs[PHL_UPSTREAM_LOADBALANCE_MAX];
 	void				*lb_ctx;
 
 	struct phl_upstream_ops		*ops;
@@ -216,7 +216,7 @@ const char *phl_upstream_content_set_ops(struct phl_upstream_conf *conf,
 int phl_upstream_content_generate_response_headers(struct phl_request *r);
 int phl_upstream_content_generate_response_body(struct phl_request *r,
 		uint8_t *buffer, int buf_len);
-#define H2D_UPSTREAM_CONTENT { \
+#define PHL_UPSTREAM_CONTENT { \
 	.response_headers = phl_upstream_content_generate_response_headers, \
 	.response_body = phl_upstream_content_generate_response_body, \
 }

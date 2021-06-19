@@ -5,13 +5,13 @@ phl_conf_predefs_lua.h: phl_conf_predefs.lua
 	@echo '";' >> $@
 
 phl_module_list.h: $(MOD_SRCS)
-	echo '#define H2D_MODULE_X_LIST \\' > $@
+	echo '#define PHL_MODULE_X_LIST \\' > $@
 	@ls modules/*.c | sed 's@modules/@\tX(@' | sed 's/.c$$/_module) \\/' >> $@
 	@echo >> $@
-	echo '#define H2D_UPSTREAM_LOADBALANCE_X_LIST \\' >> $@
+	echo '#define PHL_UPSTREAM_LOADBALANCE_X_LIST \\' >> $@
 	@ls loadbalances/*.c | sed 's@loadbalances/@\tX(@' | sed 's/.c$$/_loadbalance) \\/' >> $@
 	@echo >> $@
-	echo '#define H2D_LUAAPI_X_LIST \\' >> $@
+	echo '#define PHL_LUAAPI_X_LIST \\' >> $@
 	@ls luaapis/*.c | sed 's@luaapis/@\tX(@' | sed 's/.c$$/_package) \\/' >> $@
 	@echo >> $@
 

@@ -1,5 +1,5 @@
-#ifndef H2D_RESOLVER_H
-#define H2D_RESOLVER_H
+#ifndef PHL_RESOLVER_H
+#define PHL_RESOLVER_H
 
 struct phl_resolver_query {
 	int	expire_after;

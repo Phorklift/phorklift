@@ -1,5 +1,5 @@
-#ifndef H2D_LOG_H
-#define H2D_LOG_H
+#ifndef PHL_LOG_H
+#define PHL_LOG_H
 
 /* log file */
 
@@ -13,7 +13,7 @@ void phl_log_file_vwrite(struct phl_log_file *file, int max_line, const char *fm
 
 /* error log */
 
-#define H2D_LOG_LEVEL_TABLE \
+#define PHL_LOG_LEVEL_TABLE \
 	X(DEBUG, debug) \
 	X(INFO, info) \
 	X(WARN, warn) \
@@ -21,16 +21,16 @@ void phl_log_file_vwrite(struct phl_log_file *file, int max_line, const char *fm
 	X(FATAL, fatal)
 
 enum phl_log_level {
-#define X(c, l) H2D_LOG_##c,
-	H2D_LOG_LEVEL_TABLE
+#define X(c, l) PHL_LOG_##c,
+	PHL_LOG_LEVEL_TABLE
 #undef X
 };
 
 static inline const char *phl_log_strlevel(enum phl_log_level level)
 {
 	switch (level) {
-#define X(c, l) case H2D_LOG_##c: return "[" #l "]";
-	H2D_LOG_LEVEL_TABLE
+#define X(c, l) case PHL_LOG_##c: return "[" #l "]";
+	PHL_LOG_LEVEL_TABLE
 #undef X
 	default: abort();
 	}

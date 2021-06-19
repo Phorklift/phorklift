@@ -1,5 +1,5 @@
-#ifndef H2D_REQUEST_H
-#define H2D_REQUEST_H
+#ifndef PHL_REQUEST_H
+#define PHL_REQUEST_H
 
 struct phl_request;
 
@@ -8,7 +8,7 @@ struct phl_request;
 #include "phl_conf.h"
 #include "phl_connection.h"
 
-#define H2D_CONTENT_LENGTH_INIT		SIZE_MAX
+#define PHL_CONTENT_LENGTH_INIT		SIZE_MAX
 
 struct phl_request {
 	struct {
@@ -55,17 +55,17 @@ struct phl_request {
 	} resp;
 
 	enum {
-		H2D_REQUEST_STATE_RECEIVE_HEADERS = 0,
-		H2D_REQUEST_STATE_LOCATE_CONF_HOST,
-		H2D_REQUEST_STATE_LOCATE_CONF_PATH,
-		H2D_REQUEST_STATE_RECEIVE_BODY_SYNC,
-		H2D_REQUEST_STATE_PROCESS_HEADERS,
-		H2D_REQUEST_STATE_PROCESS_BODY,
-		H2D_REQUEST_STATE_RESPONSE_HEADERS_1,
-		H2D_REQUEST_STATE_RESPONSE_HEADERS_2,
-		H2D_REQUEST_STATE_RESPONSE_HEADERS_3,
-		H2D_REQUEST_STATE_RESPONSE_BODY,
-		H2D_REQUEST_STATE_DONE,
+		PHL_REQUEST_STATE_RECEIVE_HEADERS = 0,
+		PHL_REQUEST_STATE_LOCATE_CONF_HOST,
+		PHL_REQUEST_STATE_LOCATE_CONF_PATH,
+		PHL_REQUEST_STATE_RECEIVE_BODY_SYNC,
+		PHL_REQUEST_STATE_PROCESS_HEADERS,
+		PHL_REQUEST_STATE_PROCESS_BODY,
+		PHL_REQUEST_STATE_RESPONSE_HEADERS_1,
+		PHL_REQUEST_STATE_RESPONSE_HEADERS_2,
+		PHL_REQUEST_STATE_RESPONSE_HEADERS_3,
+		PHL_REQUEST_STATE_RESPONSE_BODY,
+		PHL_REQUEST_STATE_DONE,
 	} state;
 
 	uint32_t		id;
@@ -132,7 +132,7 @@ int phl_request_subr_flush_connection(struct phl_connection *c);
 
 #define phl_request_do_log(r, log, level, fmt, ...) \
 	do { \
-		const char *_uri = (level >= H2D_LOG_ERROR) ? r->req.uri.raw : "-"; \
+		const char *_uri = (level >= PHL_LOG_ERROR) ? r->req.uri.raw : "-"; \
 		phl_log_level(log, level, "%lu:%u %s " fmt, r->c->id, r->id, _uri, ##__VA_ARGS__); \
 	} while(0)
 

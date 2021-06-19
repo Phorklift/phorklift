@@ -15,20 +15,20 @@ static void phl_upstream_healthcheck_done(struct phl_upstream_address *address,
 		address->healthcheck.fails = 0;
 		address->healthcheck.passes++;
 		if (address->healthcheck.down_time != 0 && address->healthcheck.passes == upstream->healthcheck.passes) {
-			_log(H2D_LOG_ERROR, "go up");
+			_log(PHL_LOG_ERROR, "go up");
 			address->healthcheck.down_time = 0;
 		}
 	} else {
 		address->healthcheck.passes = 0;
 		address->healthcheck.fails++;
 		if (address->healthcheck.down_time == 0 && address->healthcheck.fails == upstream->healthcheck.fails) {
-			_log(H2D_LOG_ERROR, "go down for %s", reason);
+			_log(PHL_LOG_ERROR, "go down for %s", reason);
 			atomic_fetch_add(&address->stats->healthcheck_down, 1);
 			address->healthcheck.down_time = time(NULL);
 		}
 	}
 
-	_log(H2D_LOG_DEBUG, "done, %s, %s. fails=%d, passes=%d", pass ? "pass" : "fail",
+	_log(PHL_LOG_DEBUG, "done, %s, %s. fails=%d, passes=%d", pass ? "pass" : "fail",
 			reason, address->healthcheck.fails, address->healthcheck.passes);
 }
 
@@ -108,7 +108,7 @@ static loop_stream_ops_t phl_upstream_healthcheck_ops = {
 	.on_read = phl_upstream_healthcheck_on_read,
 	.on_writable = phl_upstream_healthcheck_on_writable,
 	.on_close = phl_upstream_healthcheck_on_close,
-	H2D_SSL_LOOP_STREAM_UNDERLYINGS,
+	PHL_SSL_LOOP_STREAM_UNDERLYINGS,
 };
 
 static int64_t phl_upstream_healthcheck_address_handler(int64_t at, void *data)
@@ -117,11 +117,11 @@ static int64_t phl_upstream_healthcheck_address_handler(int64_t at, void *data)
 	struct phl_upstream_conf *upstream = address->upstream;
 
 	if (address->healthcheck.stream != NULL) {
-		_log(H2D_LOG_INFO, "last not finish");
+		_log(PHL_LOG_INFO, "last not finish");
 		goto out;
 	}
 
-	_log(H2D_LOG_DEBUG, "begin");
+	_log(PHL_LOG_DEBUG, "begin");
 
 	loop_stream_t *s = loop_tcp_connect_sockaddr(phl_loop,
 			&address->sockaddr.s, &phl_upstream_healthcheck_ops);

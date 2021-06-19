@@ -19,8 +19,8 @@ static int phl_script_generate_response_headers(struct phl_request *r)
 	struct phl_script_conf *conf = r->conf_path->module_confs[phl_script_module.index];
 
 	lua_State *L = phl_lua_thread_run(r, conf->content, NULL);
-	if (!H2D_PTR_IS_OK(L)) {
-		return H2D_PTR2RET(L);
+	if (!PHL_PTR_IS_OK(L)) {
+		return PHL_PTR2RET(L);
 	}
 
 	int status_code = WUY_HTTP_200;
@@ -34,7 +34,7 @@ static int phl_script_generate_response_headers(struct phl_request *r)
 	size_t len;
 	const char *body = lua_tolstring(L, -1, &len);
 	if (body == NULL) {
-		phl_request_log(r, H2D_LOG_ERROR, "content fail");
+		phl_request_log(r, PHL_LOG_ERROR, "script: content fail");
 		return WUY_HTTP_500;
 	}
 
@@ -43,7 +43,7 @@ static int phl_script_generate_response_headers(struct phl_request *r)
 
 	r->resp.status_code = status_code;
 	r->resp.content_length = r->resp.easy_str_len;
-	return H2D_OK;
+	return PHL_OK;
 }
 
 static int phl_script_process_headers(struct phl_request *r)
@@ -51,16 +51,16 @@ static int phl_script_process_headers(struct phl_request *r)
 	struct phl_script_conf *conf = r->conf_path->module_confs[phl_script_module.index];
 
 	if (!wuy_cflua_is_function_set(conf->request_headers)) {
-		return H2D_OK;
+		return PHL_OK;
 	}
 
 	lua_State *L = phl_lua_thread_run(r, conf->request_headers, NULL);
-	if (!H2D_PTR_IS_OK(L)) {
-		return H2D_PTR2RET(L);
+	if (!PHL_PTR_IS_OK(L)) {
+		return PHL_PTR2RET(L);
 	}
 
 	if (lua_gettop(L) == 0) {
-		return H2D_OK;
+		return PHL_OK;
 	}
 
 	return lua_tointeger(L, 1);
@@ -71,14 +71,14 @@ static int phl_script_response_headers(struct phl_request *r)
 	struct phl_script_conf *conf = r->conf_path->module_confs[phl_script_module.index];
 
 	if (!wuy_cflua_is_function_set(conf->response_headers)) {
-		return H2D_OK;
+		return PHL_OK;
 	}
 
 	lua_State *L = phl_lua_thread_run(r, conf->response_headers, NULL);
-	if (!H2D_PTR_IS_OK(L)) {
-		return H2D_PTR2RET(L);
+	if (!PHL_PTR_IS_OK(L)) {
+		return PHL_PTR2RET(L);
 	}
-	return H2D_OK;
+	return PHL_OK;
 }
 
 /* configuration */

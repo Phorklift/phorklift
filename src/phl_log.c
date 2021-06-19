@@ -107,8 +107,8 @@ void phl_log_init(void)
 
 static enum phl_log_level phl_log_parse_level(const char *str)
 {
-#define X(c, l)	if (strcmp(str, #l) == 0) return H2D_LOG_##c;
-	H2D_LOG_LEVEL_TABLE
+#define X(c, l)	if (strcmp(str, #l) == 0) return PHL_LOG_##c;
+	PHL_LOG_LEVEL_TABLE
 #undef X
 	return -1;
 }

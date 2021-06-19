@@ -44,7 +44,7 @@ static int phl_proxy_build_request_headers(struct phl_request *r, char *buffer)
 	if (r->req.host != NULL) {
 		pos += sprintf(pos, "Host: %s\r\n", r->req.host);
 	}
-	if (r->req.content_length != H2D_CONTENT_LENGTH_INIT ) {
+	if (r->req.content_length != PHL_CONTENT_LENGTH_INIT) {
 		pos += sprintf(pos, "Content-Length: %ld\r\n", r->req.content_length);
 	}
 
@@ -81,8 +81,8 @@ static int phl_proxy_build_request(struct phl_request *r)
 	ctx->req_len = phl_proxy_build_request_headers(r, ctx->req_buf);
 	memcpy(ctx->req_buf + ctx->req_len, r->req.body_buf, r->req.body_len);
 	ctx->req_len += r->req.body_len;
-	phl_request_log(r, H2D_LOG_DEBUG, "proxy request: %.*s", ctx->req_len, ctx->req_buf);
-	return H2D_OK;
+	phl_request_log(r, PHL_LOG_DEBUG, "proxy request: %.*s", ctx->req_len, ctx->req_buf);
+	return PHL_OK;
 }
 
 static int phl_proxy_parse_response_headers(struct phl_request *r,
@@ -96,10 +96,10 @@ static int phl_proxy_parse_response_headers(struct phl_request *r,
 		int proc_len = wuy_http_status_line(p, buf_len,
 				&r->resp.status_code, &r->resp.version);
 		if (proc_len == 0) {
-			return H2D_AGAIN;
+			return PHL_AGAIN;
 		}
 		if (proc_len < 0) {
-			return H2D_ERROR;
+			return PHL_ERROR;
 		}
 		p += proc_len;
 	}
@@ -111,7 +111,7 @@ static int phl_proxy_parse_response_headers(struct phl_request *r,
 		int proc_len = wuy_http_header(p, buf_end - p, &name_len,
 				&value_str, &value_len);
 		if (proc_len < 0) {
-			return H2D_ERROR;
+			return PHL_ERROR;
 		}
 		if (proc_len == 0) {
 			*is_done = false;
@@ -137,7 +137,7 @@ static int phl_proxy_parse_response_headers(struct phl_request *r,
 			continue;
 		}
 
-		phl_request_log(r, H2D_LOG_DEBUG, "proxy response header: %.*s %.*s",
+		phl_request_log(r, PHL_LOG_DEBUG, "proxy response header: %.*s %.*s",
 				name_len, name_str, value_len, value_str);
 
 		phl_header_add(&r->resp.headers, name_str, name_len,
@@ -176,14 +176,14 @@ static int phl_proxy_build_response_body(struct phl_request *r, uint8_t *buffer,
 	while (data_pos < buf_end) {
 		int len = wuy_http_chunked_decode(chunked, &data_pos, buf_end);
 		if (len < 0) {
-			phl_request_log(r, H2D_LOG_ERROR, "proxy chunked error: %d", len);
-			return H2D_ERROR;
+			phl_request_log(r, PHL_LOG_ERROR, "proxy chunked error: %d", len);
+			return PHL_ERROR;
 		}
 		if (len == 0) {
 			break;
 		}
 
-		phl_request_log(r, H2D_LOG_DEBUG, "proxy chunked: %d", len);
+		phl_request_log(r, PHL_LOG_DEBUG, "proxy chunked: %d", len);
 		if (data_pos != buf_pos) {
 			memmove(buf_pos, data_pos, len);
 		}
@@ -192,7 +192,7 @@ static int phl_proxy_build_response_body(struct phl_request *r, uint8_t *buffer,
 	}
 
 	if (buf_pos == buffer && !wuy_http_chunked_is_finished(chunked)) {
-		return H2D_AGAIN;
+		return PHL_AGAIN;
 	}
 
 	/* if chunked is finished, this function will be called again
@@ -239,6 +239,6 @@ struct phl_module phl_proxy_module = {
 			.post = phl_proxy_conf_post,
 		}
 	},
-	.content = H2D_UPSTREAM_CONTENT,
+	.content = PHL_UPSTREAM_CONTENT,
 	.ctx_free = phl_upstream_content_ctx_free,
 };

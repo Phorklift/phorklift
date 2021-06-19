@@ -16,7 +16,7 @@ static loop_stream_ops_t phl_stream_ops = {
 	.on_readable = phl_stream_on_active,
 	.on_writable = phl_stream_on_active,
 
-	H2D_SSL_LOOP_STREAM_UNDERLYINGS 
+	PHL_SSL_LOOP_STREAM_UNDERLYINGS 
 };
 
 static int phl_stream_connect(lua_State *L)
@@ -60,7 +60,7 @@ static int phl_stream_send_resume(lua_State *L)
 	lua_pop(L, 1);
 	lua_pushinteger(L, prewrite_len + write_len);
 
-	return H2D_AGAIN;
+	return PHL_AGAIN;
 }
 
 static int phl_stream_send(lua_State *L)

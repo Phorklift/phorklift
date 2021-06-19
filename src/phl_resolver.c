@@ -65,14 +65,14 @@ uint8_t *phl_resolver_hostname(const char *hostname, int *plen)
 	struct addrinfo *results;
 	int rr = getaddrinfo(hostname, NULL, &hints, &results); /* blocks here! */
 	if (rr != 0) {
-		phl_conf_log(H2D_LOG_ERROR, "getaddrinfo() fail: hostname=%s ret=%d:%s",
+		phl_conf_log(PHL_LOG_ERROR, "getaddrinfo() fail: hostname=%s ret=%d:%s",
 				hostname, rr, strerror(errno));
 		return NULL;
 	}
 
 	time_t after = time(NULL);
 	if (after - before > 1) {
-		phl_conf_log(H2D_LOG_INFO, "getaddrinfo() lasts long: hostname=%s, %lds",
+		phl_conf_log(PHL_LOG_INFO, "getaddrinfo() lasts long: hostname=%s, %lds",
 				hostname, after - before);
 	}
 
@@ -141,7 +141,7 @@ static void *phl_resolver_routine(void *dummy)
 		int query_len = recvfrom(phl_resolver_fd, &query, sizeof(query)-1, 0,
 				(struct sockaddr *)&client, &addr_len);
 		if (query_len <= 0) {
-			phl_conf_log(H2D_LOG_ERROR, "recvfrom() error %s", strerror(errno));
+			phl_conf_log(PHL_LOG_ERROR, "recvfrom() error %s", strerror(errno));
 			continue;
 		}
 
@@ -201,7 +201,7 @@ void phl_resolver_init(void)
 	unlink(phl_resolver_address);
 	if (bind(phl_resolver_fd, (struct sockaddr *)&un, sizeof(un)) < 0) {
 		perror("bind resolver address");
-		exit(H2D_EXIT_RESOLVER);
+		exit(PHL_EXIT_RESOLVER);
 	}
 
 	phl_resolver_init_if_fork();

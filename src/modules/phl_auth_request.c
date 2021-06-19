@@ -10,7 +10,7 @@ static int phl_auth_request_process_headers(struct phl_request *r)
 {
 	struct phl_auth_request_conf *conf = r->conf_path->module_confs[phl_auth_request_module.index];
 	if (conf->pathname == NULL) {
-		return H2D_OK;
+		return PHL_OK;
 	}
 
 	struct phl_request *subr = r->module_ctxs[phl_auth_request_module.index];
@@ -21,17 +21,17 @@ static int phl_auth_request_process_headers(struct phl_request *r)
 		// subr->req.method = r->req.method;
 
 		r->module_ctxs[phl_auth_request_module.index] = subr;
-		return H2D_AGAIN;
+		return PHL_AGAIN;
 	}
 
 	struct phl_header *h;
 	switch (subr->resp.status_code) {
 	case 0:
-		return H2D_AGAIN;
+		return PHL_AGAIN;
 	case WUY_HTTP_200:
 		phl_request_subr_close(subr);
 		r->module_ctxs[phl_auth_request_module.index] = NULL;
-		return H2D_OK;
+		return PHL_OK;
 	case WUY_HTTP_401:
 		phl_header_iter(&subr->resp.headers, h) {
 			if (strcasecmp(h->str, "WWW-Authenticate") == 0) {
@@ -44,7 +44,7 @@ static int phl_auth_request_process_headers(struct phl_request *r)
 	case WUY_HTTP_403:
 		return WUY_HTTP_403;
 	default:
-		return H2D_ERROR;
+		return PHL_ERROR;
 	}
 }
 

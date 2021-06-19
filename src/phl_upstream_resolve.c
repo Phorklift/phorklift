@@ -23,7 +23,7 @@ static void phl_upstream_address_defer_free(struct phl_upstream_conf *upstream)
 static void phl_upstream_address_delete(struct phl_upstream_address *address)
 {
 	struct phl_upstream_conf *upstream = address->upstream;
-	_log(H2D_LOG_INFO, "delete address %s", address->name);
+	_log(PHL_LOG_INFO, "delete address %s", address->name);
 
 	wuy_list_delete(&address->hostname_node);
 	wuy_list_delete(&address->upstream_node);
@@ -64,7 +64,7 @@ static struct phl_upstream_address_stats *phl_upstream_alloc_stats(
 	} else {
 		static struct phl_upstream_address_stats fake_stats;
 		first_idle = &fake_stats;
-		_log(H2D_LOG_ERROR, "no address stats for %s", name);
+		_log(PHL_LOG_ERROR, "no address stats for %s", name);
 	}
 
 	pthread_mutex_unlock(upstream->address_stats_lock);
@@ -103,7 +103,7 @@ static void phl_upstream_address_add(struct phl_upstream_conf *upstream,
 	char buf[128];
 	wuy_sockaddr_dumps(sockaddr, buf, sizeof(buf));
 	address->name = strdup(buf);
-	_log(H2D_LOG_INFO, "new address %s", address->name);
+	_log(PHL_LOG_INFO, "new address %s", address->name);
 
 	wuy_list_init(&address->idle_head);
 	wuy_list_init(&address->active_head);
@@ -166,7 +166,7 @@ static void phl_upstream_resolve_hostname(struct phl_upstream_conf *upstream)
 	}
 
 	if (upstream->address_num == 0) {
-		_log(H2D_LOG_ERROR, "!!! no address. no update\n");
+		_log(PHL_LOG_ERROR, "!!! no address. no update\n");
 		return;
 	}
 
@@ -186,7 +186,7 @@ static int phl_upstream_resolve_on_read(loop_stream_t *s, void *data, int len)
 	struct phl_upstream_hostname *hostname = &upstream->hostnames[upstream->resolve_index-1];
 
 	if (memcmp(data, "ERROR", 5) == 0) {
-		_log(H2D_LOG_ERROR, "resolve error");
+		_log(PHL_LOG_ERROR, "resolve error");
 		goto next;
 	}
 

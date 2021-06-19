@@ -20,8 +20,8 @@ static const struct phl_lua_api_reg_int phl_lua_api_const_ints[] = {
 	WUY_HTTP_STATUS_CODE_TABLE
 #undef X
 
-#define X(c, l) { #c, H2D_LOG_##c },
-	H2D_LOG_LEVEL_TABLE
+#define X(c, l) { #c, PHL_LOG_##c },
+	PHL_LOG_LEVEL_TABLE
 #undef X
 	{ NULL },
 
@@ -310,7 +310,7 @@ static void phl_lua_api_register(const struct phl_lua_api_package *p)
 
 
 #define X(p) extern const struct phl_lua_api_package p;
-H2D_LUAAPI_X_LIST
+PHL_LUAAPI_X_LIST
 #undef X
 
 void phl_lua_api_init(void)
@@ -321,7 +321,7 @@ void phl_lua_api_init(void)
 	phl_lua_api_add_functions(phl_lua_api_functions);
 
 	#define X(p) phl_lua_api_register(&p);
-	H2D_LUAAPI_X_LIST
+	PHL_LUAAPI_X_LIST
 	#undef X
 
 	lua_setglobal(phl_L, "phl");

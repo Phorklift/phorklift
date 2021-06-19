@@ -1,5 +1,5 @@
-#ifndef H2D_DYNAMIC_H
-#define H2D_DYNAMIC_H
+#ifndef PHL_DYNAMIC_H
+#define PHL_DYNAMIC_H
 
 struct phl_dynamic_conf {
 	/* conf */

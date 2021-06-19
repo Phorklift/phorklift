@@ -33,7 +33,7 @@ static struct phl_upstream_conf *phl_ups_get_upstream_string(lua_State *L)
 	const char *key = lua_tostring(L, 1);
 	struct phl_ups_dict_entry *entry = wuy_dict_get(phl_ups_string_dict, key);
 	if (entry != NULL) {
-		_log(H2D_LOG_DEBUG, "string hit: %s", key);
+		_log(PHL_LOG_DEBUG, "string hit: %s", key);
 		return entry->upstream;
 	}
 
@@ -54,7 +54,7 @@ static struct phl_upstream_conf *phl_ups_get_upstream_string(lua_State *L)
 	entry->upstream = upstream;
 	wuy_dict_add(phl_ups_string_dict, entry);
 
-	_log(H2D_LOG_DEBUG, "string new: %s", key);
+	_log(PHL_LOG_DEBUG, "string new: %s", key);
 	return upstream;
 }
 
@@ -63,7 +63,7 @@ static struct phl_upstream_conf *phl_ups_get_upstream_table(lua_State *L)
 	const void *key = lua_topointer(L, 1);
 	struct phl_ups_dict_entry *entry = wuy_dict_get(phl_ups_table_dict, key);
 	if (entry != NULL) {
-		_log(H2D_LOG_DEBUG, "table hit: %p", key);
+		_log(PHL_LOG_DEBUG, "table hit: %p", key);
 		return entry->upstream;
 	}
 
@@ -80,7 +80,7 @@ static struct phl_upstream_conf *phl_ups_get_upstream_table(lua_State *L)
 	entry->upstream = upstream;
 	wuy_dict_add(phl_ups_table_dict, entry);
 
-	_log(H2D_LOG_DEBUG, "table new: %p", key);
+	_log(PHL_LOG_DEBUG, "table new: %p", key);
 	return upstream;
 }
 
@@ -91,10 +91,10 @@ static int phl_ups_get_connection_resume(lua_State *L)
 	struct phl_upstream_connection *upc = phl_upstream_get_connection(upstream,
 			phl_lua_api_current);
 
-	if (upc == H2D_PTR_ERROR) {
+	if (upc == PHL_PTR_ERROR) {
 		return 0;
 	}
-	if (upc == H2D_PTR_AGAIN) {
+	if (upc == PHL_PTR_AGAIN) {
 		if (lua_gettop(L) == 1) {
 			/* insert the resume-handler at index=1 in stack */
 			lua_pushcfunction(L, phl_ups_get_connection_resume);
@@ -152,11 +152,11 @@ static int phl_ups_send_resume(lua_State *L)
 	const char *data = lua_tolstring(L, -1, &data_len);
 
 	int write_len = phl_upstream_connection_write(upc, data, data_len);
-	if (write_len == H2D_ERROR) {
+	if (write_len == PHL_ERROR) {
 		lua_pushboolean(L, false);
 		return 1;
 	}
-	if (write_len == H2D_AGAIN) {
+	if (write_len == PHL_AGAIN) {
 		if (lua_gettop(L) == 2) {
 			/* insert the resume-handler at index=1 in stack */
 			lua_pushcfunction(L, phl_ups_send_resume);
@@ -186,10 +186,10 @@ static int phl_ups_recv_resume(lua_State *L)
 	char buffer[size];
 	int read_len = phl_upstream_connection_read(upc, buffer, size);
 
-	if (read_len == H2D_ERROR) {
+	if (read_len == PHL_ERROR) {
 		return 0;
 	}
-	if (read_len == H2D_AGAIN) {
+	if (read_len == PHL_AGAIN) {
 		if (lua_gettop(L) == 2) {
 			/* insert the resume-handler at index=1 in stack */
 			lua_pushcfunction(L, phl_ups_recv_resume);

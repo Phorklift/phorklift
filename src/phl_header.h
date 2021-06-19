@@ -1,5 +1,5 @@
-#ifndef H2D_HTTP_H
-#define H2D_HTTP_H
+#ifndef PHL_HTTP_H
+#define PHL_HTTP_H
 
 #include <string.h>
 #include <stdlib.h>

@@ -15,7 +15,7 @@ static bool phl_upstream_content_status_code_retry(struct phl_request *r)
 	}
 	for (int *p = upstream->retry_status_codes; *p != 0; p++) {
 		if (r->resp.status_code == *p) {
-			phl_request_log_at(r, upstream->log, H2D_LOG_DEBUG,
+			phl_request_log_at(r, upstream->log, PHL_LOG_DEBUG,
 					"retry for status_code=%d", r->resp.status_code);
 			return true;
 		}
@@ -35,25 +35,25 @@ int phl_upstream_content_generate_response_headers(struct phl_request *r)
 		r->module_ctxs[r->conf_path->content->index] = ctx;
 
 		int ret = ops->build_request(r);
-		if (ret != H2D_OK) {
+		if (ret != PHL_OK) {
 			return ret;
 		}
 	}
 
 	if (ctx->upc == NULL) {
 		void *upc = phl_upstream_get_connection(upstream, r);
-		if (!H2D_PTR_IS_OK(upc)) {
-			return H2D_PTR2RET(upc);
+		if (!PHL_PTR_IS_OK(upc)) {
+			return PHL_PTR2RET(upc);
 		}
 		ctx->upc = upc;
 	}
 
 	if (!ctx->has_sent_request) {
 		int ret = phl_upstream_connection_write(ctx->upc, ctx->req_buf, ctx->req_len);
-		if (ret == H2D_AGAIN) {
-			return H2D_AGAIN;
+		if (ret == PHL_AGAIN) {
+			return PHL_AGAIN;
 		}
-		if (ret == H2D_ERROR) {
+		if (ret == PHL_ERROR) {
 			return phl_upstream_content_fail(r);
 		}
 		ctx->has_sent_request = true;
@@ -61,15 +61,15 @@ int phl_upstream_content_generate_response_headers(struct phl_request *r)
 
 	if (ops->parse_response_headers == NULL) {
 		r->resp.status_code = WUY_HTTP_200;
-		return H2D_OK;
+		return PHL_OK;
 	}
 
 	char buffer[4096];
 	int read_len = phl_upstream_connection_read(ctx->upc, buffer, sizeof(buffer));
-	if (read_len == H2D_AGAIN) {
-		return H2D_AGAIN;
+	if (read_len == PHL_AGAIN) {
+		return PHL_AGAIN;
 	}
-	if (read_len == H2D_ERROR) {
+	if (read_len == PHL_ERROR) {
 		return phl_upstream_content_fail(r);
 	}
 
@@ -82,14 +82,14 @@ int phl_upstream_content_generate_response_headers(struct phl_request *r)
 	phl_upstream_connection_read_notfinish(ctx->upc, buffer + proc_len, read_len - proc_len);
 
 	if (!is_done) {
-		return H2D_AGAIN;
+		return PHL_AGAIN;
 	}
 
 	if (phl_upstream_content_status_code_retry(r)) {
 		return phl_upstream_content_fail(r);
 	}
 
-	return H2D_OK;
+	return PHL_OK;
 }
 
 static int phl_upstream_content_fail(struct phl_request *r)
@@ -101,14 +101,14 @@ static int phl_upstream_content_fail(struct phl_request *r)
 
 	/* retry */
 	if (ctx->retries < 0 || ctx->retries++ >= upstream->max_retries) {
-		phl_request_log_at(r, upstream->log, H2D_LOG_INFO, "no retry %d", ctx->retries);
-		return r->resp.status_code != 0 ? H2D_OK : WUY_HTTP_502;
+		phl_request_log_at(r, upstream->log, PHL_LOG_INFO, "no retry %d", ctx->retries);
+		return r->resp.status_code != 0 ? PHL_OK : WUY_HTTP_502;
 	}
 
 	phl_request_reset_response(r);
 
 	ctx->upc = phl_upstream_retry_connection(ctx->upc);
-	if (ctx->upc == H2D_PTR_ERROR) {
+	if (ctx->upc == PHL_PTR_ERROR) {
 		return WUY_HTTP_500;
 	}
 	ctx->has_sent_request = false;
@@ -143,7 +143,7 @@ void phl_upstream_content_ctx_free(struct phl_request *r)
 {
 	struct phl_upstream_content_ctx *ctx = r->module_ctxs[r->conf_path->content->index];
 	if (ctx->upc != NULL) {
-		phl_upstream_release_connection(ctx->upc, r->state == H2D_REQUEST_STATE_DONE);
+		phl_upstream_release_connection(ctx->upc, r->state == PHL_REQUEST_STATE_DONE);
 	}
 }
 

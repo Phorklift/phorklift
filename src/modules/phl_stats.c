@@ -88,7 +88,7 @@ static int phl_stats_generate_response_headers(struct phl_request *r)
 
 	r->resp.content_length = ctx->body_len;
 	r->resp.status_code = WUY_HTTP_200;
-	return H2D_OK;
+	return PHL_OK;
 }
 static int phl_stats_generate_response_body(struct phl_request *r, uint8_t *buf, int buf_len)
 {

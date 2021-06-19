@@ -21,7 +21,7 @@ static int phl_acl_process_headers(struct phl_request *r)
 {
 	struct phl_acl_conf *conf = r->conf_path->module_confs[phl_acl_module.index];
 	if (conf->strs == NULL) {
-		return H2D_OK;
+		return PHL_OK;
 	}
 
 	struct sockaddr_in *sin = (struct sockaddr_in *)&r->c->client_addr;
@@ -33,14 +33,14 @@ static int phl_acl_process_headers(struct phl_request *r)
 				printf("[info] denied by ACL rule #%d\n", i+1);
 				return WUY_HTTP_403;
 			}
-			return H2D_OK;
+			return PHL_OK;
 		}
 	}
 	if (!conf->rules[conf->num-1].is_deny) {
 		printf("[info] denied by ACL default rule\n");
 		return WUY_HTTP_403;
 	}
-	return H2D_OK;
+	return PHL_OK;
 }
 
 /* configuration */

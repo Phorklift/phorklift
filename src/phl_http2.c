@@ -20,7 +20,7 @@ static bool phl_http2_hook_stream_new(http2_stream_t *h2s, http2_connection_t *h
 {
 	struct phl_request *r = phl_request_new(http2_connection_get_app_data(h2c));
 
-	_log(H2D_LOG_DEBUG, "new stream");
+	_log(PHL_LOG_DEBUG, "new stream");
 
 	r->h2s = h2s;
 	http2_stream_set_app_data(h2s, r);
@@ -37,17 +37,17 @@ static bool phl_http2_hook_stream_header(http2_stream_t *h2s, const char *name_s
 
 		if (name_len != 0) { /* means end-of-stream */
 			r->req.body_finished = true;
-			if (r->req.content_length != H2D_CONTENT_LENGTH_INIT
+			if (r->req.content_length != PHL_CONTENT_LENGTH_INIT
 					&& r->req.content_length != 0) {
 				return false;
 			}
 		}
 
-		r->state++; /* to H2D_REQUEST_STATE_LOCATE_HEADERS */
+		r->state++; /* to PHL_REQUEST_STATE_LOCATE_HEADERS */
 		return true;
 	}
 
-	_log(H2D_LOG_DEBUG, "request header: %.*s %.*s",
+	_log(PHL_LOG_DEBUG, "request header: %.*s %.*s",
 			name_len, name_str, value_len, value_str);
 
 	/* parse this one header */
@@ -87,16 +87,16 @@ static bool phl_http2_hook_stream_body(http2_stream_t *h2s, const uint8_t *buf, 
 {
 	struct phl_request *r = http2_stream_get_app_data(h2s);
 
-	_log(H2D_LOG_DEBUG, "request body %d", len);
+	_log(PHL_LOG_DEBUG, "request body %d", len);
 
 	if (buf == NULL) {
-		_log(H2D_LOG_DEBUG, "set r->req.body_finished");
+		_log(PHL_LOG_DEBUG, "set r->req.body_finished");
 		r->req.body_finished = true;
 		return true;
 	}
 
 	int ret = phl_request_append_body(r, buf, len);
-	if (ret != H2D_OK) {
+	if (ret != PHL_OK) {
 		r->resp.status_code = ret;
 		return false;
 	}
@@ -129,7 +129,7 @@ int phl_http2_response_headers(struct phl_request *r)
 	int proc_len = http2_make_status_code(p, pos_end - p, r->resp.status_code);
 	p += proc_len;
 
-	if (r->resp.content_length != H2D_CONTENT_LENGTH_INIT) {
+	if (r->resp.content_length != PHL_CONTENT_LENGTH_INIT) {
 		proc_len = http2_make_content_length(p, pos_end - p, r->resp.content_length);
 		p += proc_len;
 	}
@@ -145,9 +145,9 @@ int phl_http2_response_headers(struct phl_request *r)
 
 	c->send_buf_len += p - pos_frame;
 
-	_log(H2D_LOG_DEBUG, "response headers %ld", p - pos_frame);
+	_log(PHL_LOG_DEBUG, "response headers %ld", p - pos_frame);
 
-	return H2D_OK;
+	return PHL_OK;
 }
 
 void phl_http2_response_body_packfix(struct phl_request *r,
@@ -188,11 +188,11 @@ static bool phl_http2_hook_control_frame(http2_connection_t *h2c, const uint8_t 
 {
 	struct phl_connection *c = http2_connection_get_app_data(h2c);
 
-	_log_conn(H2D_LOG_DEBUG, "send control frame type=%d len=%d", buf[3], len);
+	_log_conn(PHL_LOG_DEBUG, "send control frame type=%d len=%d", buf[3], len);
 
 	int ret = phl_connection_make_space(c, len);
 	if (ret < 0) {
-		// TODO send again if ret==H2D_AGAIN
+		// TODO send again if ret==PHL_AGAIN
 		return false;
 	}
 
@@ -222,7 +222,7 @@ static void phl_http2_hook_log(http2_connection_t *h2c, const char *fmt, ...)
 	vsprintf(buffer, fmt, ap);
 	va_end(ap);
 
-	phl_log_level(log, H2D_LOG_DEBUG, "%s", buffer);
+	phl_log_level(log, PHL_LOG_DEBUG, "%s", buffer);
 }
 
 void phl_http2_init(void)
@@ -258,7 +258,7 @@ void phl_http2_on_readable(struct phl_connection *c)
 	/* phl_http2_hook_stream_header/_body/_close() are called inside here */
 	int proc_len = http2_process_input(h2c, buf_pos, buf_len);
 
-	_log_conn(H2D_LOG_DEBUG, "on_read %d, process=%d", buf_len, proc_len);
+	_log_conn(PHL_LOG_DEBUG, "on_read %d, process=%d", buf_len, proc_len);
 	if (proc_len < 0) {
 		phl_connection_close(c);
 		return;
@@ -274,7 +274,7 @@ void phl_http2_on_readable(struct phl_connection *c)
 
 void phl_http2_on_writable(struct phl_connection *c)
 {
-	_log_conn(H2D_LOG_DEBUG, "on_writable");
+	_log_conn(PHL_LOG_DEBUG, "on_writable");
 
 	/* phl_http2_hook_stream_response() is called inside here */
 	http2_schedular(c->u.h2c);
@@ -284,7 +284,7 @@ void phl_http2_on_writable(struct phl_connection *c)
 
 void phl_http2_request_close(struct phl_request *r)
 {
-	if (r->state != H2D_REQUEST_STATE_DONE) {
+	if (r->state != PHL_REQUEST_STATE_DONE) {
 		phl_http2_response_body_finish(r);
 	}
 
@@ -296,7 +296,7 @@ void phl_http2_request_close(struct phl_request *r)
 /* on the connection negotiated to HTTP/2, by ALPN or Upgrade */
 void phl_http2_connection_init(struct phl_connection *c)
 {
-	_log_conn(H2D_LOG_DEBUG, "upgrade!");
+	_log_conn(PHL_LOG_DEBUG, "upgrade!");
 
 	http2_connection_t *h2c = http2_connection_new(&c->conf_listen->http2.settings);
 	http2_connection_set_app_data(h2c, c);
@@ -307,7 +307,7 @@ void phl_http2_connection_init(struct phl_connection *c)
 	} else {
 		level = c->conf_listen->default_host->default_path->error_log->level;
 	}
-	if (level == H2D_LOG_DEBUG) {
+	if (level == PHL_LOG_DEBUG) {
 		http2_connection_enable_log(h2c, phl_http2_hook_log);
 	}
 

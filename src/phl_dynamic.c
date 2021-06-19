@@ -24,7 +24,7 @@ static void phl_dynamic_delete(struct phl_dynamic_conf *sub_dyn)
 {
 	struct phl_dynamic_conf *dynamic = sub_dyn->father;
 
-	_log_conf(H2D_LOG_INFO, "delete %s", sub_dyn->name);
+	_log_conf(PHL_LOG_INFO, "delete %s", sub_dyn->name);
 
 	if (sub_dyn->is_just_holder) {
 		if (sub_dyn->error_ret == 0) {
@@ -38,7 +38,7 @@ static void phl_dynamic_delete(struct phl_dynamic_conf *sub_dyn)
 	}
 
 	if (sub_dyn->sub_dict != NULL && wuy_dict_count(sub_dyn->sub_dict) != 0) {
-		_log_conf(H2D_LOG_INFO, "%s holds subs, so wait a minute", sub_dyn->name);
+		_log_conf(PHL_LOG_INFO, "%s holds subs, so wait a minute", sub_dyn->name);
 		loop_timer_set_after(sub_dyn->timer, 60 * 1000);
 		return;
 	}
@@ -97,13 +97,13 @@ static struct phl_dynamic_conf *phl_dynamic_parse_sub_dyn(lua_State *L,
 		const char *name, struct phl_request *r)
 {
 	if (lua_isstring(L, -1) && !phl_dynamic_load_str_conf(L)) {
-		_log(H2D_LOG_ERROR, "fail to load string: %s", lua_tostring(L, -1));
-		return H2D_PTR_ERROR;
+		_log(PHL_LOG_ERROR, "fail to load string: %s", lua_tostring(L, -1));
+		return PHL_PTR_ERROR;
 	}
 	if (!lua_istable(L, -1)) {
-		_log(H2D_LOG_ERROR, "%s: conf is not table but %s", name,
+		_log(PHL_LOG_ERROR, "%s: conf is not table but %s", name,
 				lua_typename(L, lua_type(L, -1)));
-		return H2D_PTR_ERROR;
+		return PHL_PTR_ERROR;
 	}
 
 	lua_xmove(L, phl_L, 1);
@@ -114,8 +114,8 @@ static struct phl_dynamic_conf *phl_dynamic_parse_sub_dyn(lua_State *L,
 			atomic_load(dynamic->shared_id), name);
 	wuy_shmpool_t *shmpool = wuy_shmpool_new(pool_name, 40*1024, 40*1024, 10);
 	if (shmpool == NULL) {
-		_log(H2D_LOG_ERROR, "fail in wuy_shmpool_new");
-		return H2D_PTR_ERROR;
+		_log(PHL_LOG_ERROR, "fail in wuy_shmpool_new");
+		return PHL_PTR_ERROR;
 	}
 
 	/* parse */
@@ -128,13 +128,13 @@ static struct phl_dynamic_conf *phl_dynamic_parse_sub_dyn(lua_State *L,
 			pool, &father_container);
 	dynamic->get_name = tmp_get_name; /* recover */
 	if (err != WUY_CFLUA_OK) {
-		_log(H2D_LOG_ERROR, "parse sub %s error: %s", name, err);
-		return H2D_PTR_ERROR;
+		_log(PHL_LOG_ERROR, "parse sub %s error: %s", name, err);
+		return PHL_PTR_ERROR;
 	}
 
 	wuy_shmpool_finish(shmpool);
 
-	_log(H2D_LOG_INFO, "sub %s get_conf() done", name);
+	_log(PHL_LOG_INFO, "sub %s get_conf() done", name);
 
 	/* init the sub-dyn */
 	struct phl_dynamic_conf *sub_dyn = phl_dynamic_from_container(container, dynamic);
@@ -175,22 +175,22 @@ void *phl_dynamic_get(struct phl_dynamic_conf *dynamic, struct phl_request *r)
 	int name_len;
 	const char *name = phl_lua_call_lstring(r, dynamic->get_name, &name_len);
 	if (name == NULL) {
-		_log(H2D_LOG_ERROR, "fail to call get_name");
-		return H2D_PTR_ERROR;
+		_log(PHL_LOG_ERROR, "fail to call get_name");
+		return PHL_PTR_ERROR;
 	}
 	if (name_len > 100) {
-		_log(H2D_LOG_ERROR, "too long name");
-		return H2D_PTR_ERROR;
+		_log(PHL_LOG_ERROR, "too long name");
+		return PHL_PTR_ERROR;
 	}
-	_log(H2D_LOG_DEBUG, "get_name: %s", name);
+	_log(PHL_LOG_DEBUG, "get_name: %s", name);
 
 	/* search cache by name */
 	struct phl_dynamic_conf *sub_dyn = wuy_dict_get(dynamic->sub_dict, name);
 
 	if (sub_dyn == NULL) {
 		if (wuy_dict_count(dynamic->sub_dict) >= dynamic->sub_max) {
-			_log(H2D_LOG_ERROR, "fail to create new because of limited");
-			return H2D_PTR_ERROR;
+			_log(PHL_LOG_ERROR, "fail to create new because of limited");
+			return PHL_PTR_ERROR;
 		}
 		sub_dyn = phl_dynamic_new_holder(dynamic, name);
 		goto get_conf;
@@ -202,11 +202,11 @@ void *phl_dynamic_get(struct phl_dynamic_conf *dynamic, struct phl_request *r)
 	}
 	if (sub_dyn->error_ret != 0) {
 		r->resp.status_code = sub_dyn->error_ret;
-		return H2D_PTR_ERROR;
+		return PHL_PTR_ERROR;
 	}
 	if (sub_dyn->is_just_holder) {
 		wuy_list_append(&sub_dyn->holder_wait_head, &r->list_node);
-		return H2D_PTR_AGAIN;
+		return PHL_PTR_AGAIN;
 	}
 
 	loop_timer_set_after(sub_dyn->timer, sub_dyn->idle_timeout * 1000);
@@ -217,16 +217,16 @@ void *phl_dynamic_get(struct phl_dynamic_conf *dynamic, struct phl_request *r)
 
 	/* call get_conf() */
 get_conf:
-	_log(H2D_LOG_DEBUG, "get_conf");
+	_log(PHL_LOG_DEBUG, "get_conf");
 
 	lua_State *L = phl_lua_thread_run(r, dynamic->get_conf, "s", name);
-	if (L == H2D_PTR_ERROR || L == H2D_PTR_AGAIN) {
+	if (L == PHL_PTR_ERROR || L == PHL_PTR_AGAIN) {
 		return L;
 	}
 
 	/* return value: optional status-code */
 	if (lua_isnumber(L, 1)) {
-		_log(H2D_LOG_DEBUG, "status-code: %ld", lua_tointeger(L, 1));
+		_log(PHL_LOG_DEBUG, "status-code: %ld", lua_tointeger(L, 1));
 
 		switch (lua_tointeger(L, 1)) {
 		case WUY_HTTP_200:
@@ -234,20 +234,20 @@ get_conf:
 
 		case WUY_HTTP_304:
 			if (sub_dyn->is_just_holder) {
-				_log(H2D_LOG_ERROR, "holder %s get 304", name);
-				return H2D_PTR_ERROR;
+				_log(PHL_LOG_ERROR, "holder %s get 304", name);
+				return PHL_PTR_ERROR;
 			}
 			return phl_dynamic_to_container(sub_dyn);
 
 		case WUY_HTTP_404:
-			_log(H2D_LOG_ERROR, "sub %s not exist or removed", name);
+			_log(PHL_LOG_ERROR, "sub %s not exist or removed", name);
 			sub_dyn->error_ret = WUY_HTTP_404;
 			r->resp.status_code = WUY_HTTP_404;
 			loop_timer_set_after(sub_dyn->timer, sub_dyn->error_timeout * 1000);
-			return H2D_PTR_ERROR;
+			return PHL_PTR_ERROR;
 
 		default:
-			_log(H2D_LOG_ERROR, "sub %s returns %d", name, lua_tointeger(L, -1));
+			_log(PHL_LOG_ERROR, "sub %s returns %d", name, lua_tointeger(L, -1));
 			goto fail;
 		}
 	}
@@ -261,22 +261,22 @@ get_conf:
 			tag = wuy_vhash64(s, len);
 		} else if (lua_istable(L, -1)) {
 			// TODO
-			_log(H2D_LOG_ERROR, "NOT SUPPORT YET: get_conf() returns table with check_interval!=0");
-			return H2D_PTR_ERROR;
+			_log(PHL_LOG_ERROR, "NOT SUPPORT YET: get_conf() returns table with check_interval!=0");
+			return PHL_PTR_ERROR;
 		} else {
-			_log(H2D_LOG_ERROR, "expect string or table, but got %s",
+			_log(PHL_LOG_ERROR, "expect string or table, but got %s",
 					lua_typename(L, lua_type(L, -1)));
-			return H2D_PTR_ERROR;
+			return PHL_PTR_ERROR;
 		}
 
 		if (tag == sub_dyn->tag) {
-			_log(H2D_LOG_INFO, "no change");
+			_log(PHL_LOG_INFO, "no change");
 			return phl_dynamic_to_container(sub_dyn);
 		}
 	}
 
 	struct phl_dynamic_conf *new_sub = phl_dynamic_parse_sub_dyn(L, dynamic, name, r);
-	if (new_sub == H2D_PTR_ERROR) {
+	if (new_sub == PHL_PTR_ERROR) {
 		goto fail;
 	}
 
@@ -288,7 +288,7 @@ get_conf:
 
 fail:
 	if (sub_dyn->is_just_holder) {
-		return H2D_PTR_ERROR;
+		return PHL_PTR_ERROR;
 	}
 	return phl_dynamic_to_container(sub_dyn); /* use stale */
 }

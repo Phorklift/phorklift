@@ -33,7 +33,7 @@ static int phl_redis_build_request(struct phl_request *r)
 
 	ctx->req_buf = wuy_pool_alloc(r->pool, ctx->req_len);
 	memcpy(ctx->req_buf, query, ctx->req_len);
-	return H2D_OK;
+	return PHL_OK;
 }
 
 static int phl_redis_parse_response_headers(struct phl_request *r,
@@ -92,6 +92,6 @@ struct phl_module phl_redis_module = {
 			.post = phl_redis_conf_post,
 		}
 	},
-	.content = H2D_UPSTREAM_CONTENT,
+	.content = PHL_UPSTREAM_CONTENT,
 	.ctx_free = phl_upstream_content_ctx_free,
 };

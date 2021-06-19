@@ -1,5 +1,5 @@
-#ifndef H2D_SSL_H
-#define H2D_SSL_H
+#ifndef PHL_SSL_H
+#define PHL_SSL_H
 
 #include <openssl/ossl_typ.h>
 
@@ -48,7 +48,7 @@ const char *phl_ssl_stream_error_string(loop_stream_t *s);
 
 void phl_ssl_init(void);
 
-#define H2D_SSL_LOOP_STREAM_UNDERLYINGS \
+#define PHL_SSL_LOOP_STREAM_UNDERLYINGS \
 	.underlying_read = phl_ssl_stream_underlying_read, \
 	.underlying_write = phl_ssl_stream_underlying_write, \
 	.underlying_close = phl_ssl_stream_underlying_close \

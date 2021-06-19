@@ -1,21 +1,21 @@
-#ifndef H2D_MODULE_H
-#define H2D_MODULE_H
+#ifndef PHL_MODULE_H
+#define PHL_MODULE_H
 
 #include <stdbool.h>
 
 #include "phl_module_list.h"
 
-/* calculate H2D_MODULE_STATIC_NUMBER in preprocess */
+/* calculate PHL_MODULE_STATIC_NUMBER in preprocess */
 enum _nonuse {
 	#define X(m) phl_module_index_##m,
-	H2D_MODULE_X_LIST
+	PHL_MODULE_X_LIST
 	#undef X
 
-	H2D_MODULE_STATIC_NUMBER
+	PHL_MODULE_STATIC_NUMBER
 };
 
-#define H2D_MODULE_DYNAMIC_MAX	20
-#define H2D_MODULE_MAX		(H2D_MODULE_STATIC_NUMBER + H2D_MODULE_DYNAMIC_MAX)
+#define PHL_MODULE_DYNAMIC_MAX	20
+#define PHL_MODULE_MAX		(PHL_MODULE_STATIC_NUMBER + PHL_MODULE_DYNAMIC_MAX)
 
 #include "phl_request.h"
 

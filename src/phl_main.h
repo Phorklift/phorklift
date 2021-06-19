@@ -1,5 +1,5 @@
-#ifndef H2D_MAIN_H
-#define H2D_MAIN_H
+#ifndef PHL_MAIN_H
+#define PHL_MAIN_H
 
 /* include common headers here */
 #include <stdio.h>
@@ -51,25 +51,25 @@
 #include "phl_log.h"
 
 /* return values */
-#define H2D_OK			0
-#define H2D_ERROR		-1
-#define H2D_AGAIN		-2
-#define H2D_BREAK		-3
+#define PHL_OK			0
+#define PHL_ERROR		-1
+#define PHL_AGAIN		-2
+#define PHL_BREAK		-3
 
-#define H2D_PTR_ERROR		(void *)-1
-#define H2D_PTR_AGAIN		(void *)-2
+#define PHL_PTR_ERROR		(void *)-1
+#define PHL_PTR_AGAIN		(void *)-2
 
-#define H2D_PTR2RET(pr)		((intptr_t)pr)
-#define H2D_PTR_IS_OK(pr)	(H2D_PTR2RET(pr) > 0)
+#define PHL_PTR2RET(pr)		((intptr_t)pr)
+#define PHL_PTR_IS_OK(pr)	(PHL_PTR2RET(pr) > 0)
 
 /* exit status */
-#define H2D_EXIT_OK		0
-#define H2D_EXIT_GETOPT		1
-#define H2D_EXIT_CONF		2
-#define H2D_EXIT_MODULE_INIT	3
-#define H2D_EXIT_FORK_WORKER	4
-#define H2D_EXIT_RESOLVER	5
-#define H2D_EXIT_DYNAMIC	6
+#define PHL_EXIT_OK		0
+#define PHL_EXIT_GETOPT		1
+#define PHL_EXIT_CONF		2
+#define PHL_EXIT_MODULE_INIT	3
+#define PHL_EXIT_FORK_WORKER	4
+#define PHL_EXIT_RESOLVER	5
+#define PHL_EXIT_DYNAMIC	6
 
 #define MIN(a, b) (a)<(b)?(a):(b)
 #define MAX(a, b) (a)>(b)?(a):(b)

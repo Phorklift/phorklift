@@ -22,7 +22,7 @@ static int phl_auth_basic_process_headers(struct phl_request *r)
 {
 	struct phl_auth_basic_conf *conf = r->conf_path->module_confs[phl_auth_basic_module.index];
 	if (conf->users == NULL) {
-		return H2D_OK;
+		return PHL_OK;
 	}
 
 	struct phl_header *h = phl_header_get(&r->req.headers, "Authorization");
@@ -44,7 +44,7 @@ static int phl_auth_basic_process_headers(struct phl_request *r)
 	for (const char **p = conf->users; *p != NULL; p++) {
 		const char *user = *p;
 		if (memcmp(user, auth_str, auth_len) == 0 && user[auth_len] == '\0') {
-			return H2D_OK;
+			return PHL_OK;
 		}
 	}
 
