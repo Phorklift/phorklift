@@ -4,3 +4,4 @@ phl_module_list.h
 *.log
 phorklift.pid
 phorklift
+depends

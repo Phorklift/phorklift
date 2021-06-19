@@ -7,4 +7,9 @@ OBJECTS = $(patsubst %.c,%.o,$(SOURCES))
 all: $(OBJECTS)
 
 clean:
-	rm -f *.o
+	rm -f *.o depends
+
+depends: $(SOURCES)
+	$(CC) $(CFLAGS) -MG -MM *.c > depends
+
+include depends

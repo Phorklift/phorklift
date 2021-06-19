@@ -12,11 +12,11 @@ OBJECTS = $(patsubst %.c,%.o,$(SOURCES))
 MOD_SRCS = $(wildcard modules/*.c loadbalances/*.c luaapis/*.c)
 MOD_OBJS = $(patsubst %.c,%.o,$(MOD_SRCS))
 
-phorklift: $(AUTO_HEADERS) $(OBJECTS)
+phorklift: $(OBJECTS)
 	make -C modules
 	make -C loadbalances
 	make -C luaapis
-	$(CC) -o $@ $(OBJECTS) $(MOD_OBJS) $(LDFLAGS) $(LDLIBS)
+	$(CC) -o $@ $^ $(MOD_OBJS) $(LDFLAGS) $(LDLIBS)
 
 include auto_headers.mk
 
@@ -24,7 +24,8 @@ clean:
 	make -C loadbalances clean
 	make -C modules clean
 	make -C luaapis clean
-	rm -f *.o phorklift $(AUTO_HEADERS)
+	make clean_auto_headers
+	rm -f *.o depends phorklift
 
 all:
 	make -C libwuya
@@ -33,6 +34,7 @@ all:
 	rm -f phorklift
 	make phorklift
 
-# Because some header files are automaticly generated,
-# `$(CC) -MM *.c` can not be used to generate dependence.
-# If you change some header files, remember to run `make clean`.
+depends: $(SOURCES)
+	$(CC) -MG -MM *.c > depends
+
+include depends
