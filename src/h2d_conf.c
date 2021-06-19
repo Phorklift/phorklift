@@ -46,6 +46,16 @@ bool h2d_conf_parse(const char *conf_file)
 
 	wuy_pool_t *new_pool = wuy_pool_new(4096);
 
+	/* 0. check mistake usage: `Runtime = {...}` */
+	lua_getglobal(L, "Runtime");
+	if (lua_type(L, -1) != LUA_TFUNCTION) {
+		h2d_conf_log(H2D_LOG_ERROR, "do not use `=` after Runtime");
+		wuy_pool_destroy(new_pool);
+		lua_close(L);
+		return false;
+	}
+	lua_pop(L, 1);
+
 	/* 1. parse h2d_runtime_conf */
 	lua_getglobal(L, "h2d_conf_runtime");
 

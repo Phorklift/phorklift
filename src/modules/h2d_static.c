@@ -15,18 +15,12 @@ struct h2d_static_conf {
 	int		dirfd;
 };
 
-struct h2d_static_ctx {
-	int		fd;
-	off_t		left;
-	char		*list_dir_buf;
-	int		list_dir_len;
-};
 
 struct h2d_module h2d_static_module;
 
 static const char *h2d_static_mime_type(const char *filename)
 {
-	return "hello";
+	return "TODO";
 }
 
 static int h2d_static_process_request_headers(struct h2d_request *r)
@@ -37,41 +31,37 @@ static int h2d_static_process_request_headers(struct h2d_request *r)
 	return H2D_OK;
 }
 
-static int h2d_static_dir_headers(struct h2d_request *r, struct stat *st_buf)
+static int h2d_static_dir_headers(struct h2d_request *r, int fd)
 {
-	struct h2d_static_ctx *ctx = r->module_ctxs[h2d_static_module.index];
-
-	ctx->list_dir_buf = wuy_pool_alloc(r->pool, 4096);
-
-	char *p = ctx->list_dir_buf;
-	DIR *dir = fdopendir(ctx->fd);
+	char buffer[4096 * 10];
+	char *p = buffer, *end = buffer + sizeof(buffer);
+	DIR *dir = fdopendir(fd);
 	struct dirent *entry;
 	while ((entry = readdir(dir)) != NULL){
 		const char *name = entry->d_name;
 		if (strcmp(name, ".") == 0 || strcmp(name, "..") == 0) {
 			continue;
 		}
-		p += sprintf(p, "%s\n", name);
+		p += snprintf(p, end - p, "%s\n", name);
 	}
-	ctx->list_dir_len = p - ctx->list_dir_buf;
+
+	closedir(dir);
 
 	h2d_header_add_lite(&r->resp.headers, "Content-Type",
 			"application/text", 16, r->pool);
 
+	r->resp.easy_str_len = p - buffer;
+	r->resp.easy_string = wuy_pool_strndup(r->pool, buffer, r->resp.easy_str_len);
+
 	r->resp.status_code = WUY_HTTP_200;
-	r->resp.content_length = ctx->list_dir_len;
-
-	r->resp.easy_string = ctx->list_dir_buf;
-	r->resp.easy_str_len = ctx->list_dir_len;
-
+	r->resp.content_length = r->resp.easy_str_len;
 	return H2D_OK;
 }
 
 static int h2d_static_range_headers(struct h2d_request *r, struct h2d_header *h,
-		struct stat *st_buf)
+		struct stat *st_buf, int fd)
 {
 	struct h2d_static_conf *conf = r->conf_path->module_confs[h2d_static_module.index];
-	struct h2d_static_ctx *ctx = r->module_ctxs[h2d_static_module.index];
 
 	struct wuy_http_range ranges[10];
 	int range_num = wuy_http_range_parse(h2d_header_value(h), h->value_len,
@@ -99,12 +89,11 @@ static int h2d_static_range_headers(struct h2d_request *r, struct h2d_header *h,
 	}
 
 	struct wuy_http_range *range = ranges;
-	lseek(ctx->fd, range->first, SEEK_SET);
-	ctx->left = range->last - range->first + 1;
+	lseek(fd, range->first, SEEK_SET);
 
 	/* response status code and headers */
 	r->resp.status_code = WUY_HTTP_206;
-	r->resp.content_length = ctx->left;
+	r->resp.content_length = range->last - range->first + 1;
 
 	char buf[100];
 	int len = sprintf(buf, "bytes %ld-%ld/%ld", range->first,
@@ -120,35 +109,53 @@ static int h2d_static_generate_response_headers(struct h2d_request *r)
 
 	h2d_header_add_lite(&r->resp.headers, "Server", "h2tpd", 5, r->pool);
 
-	/* ctx */
-	struct h2d_static_ctx *ctx = wuy_pool_alloc(r->pool, sizeof(struct h2d_static_ctx));
-	r->module_ctxs[h2d_static_module.index] = ctx;
-
 	const char *filename = r->req.uri.path + 1;
-	if (filename[0] == '\0') { // TODO not only the root dir, but sub dirs
-		if (conf->index != NULL) {
-			filename = conf->index;
-		} else if (conf->list_dir) {
-			filename = ".";
-			ctx->fd = conf->dirfd;
-			goto skip_open;
-		} else {
-			return WUY_HTTP_404;
-		}
+	if (filename[0] == '\0') { /* "/" */
+		filename = ".";
 	}
 
 	h2d_request_log_at(r, conf->log, H2D_LOG_DEBUG, "open file %s", filename);
 
-	ctx->fd = openat(conf->dirfd, filename, O_RDONLY);
-	if (ctx->fd < 0) {
+	int fd = openat(conf->dirfd, filename, O_RDONLY);
+	if (fd < 0) {
 		h2d_request_log_at(r, conf->log, H2D_LOG_INFO, "error to open file %s %s",
 				filename, strerror(errno));
 		return WUY_HTTP_404;
 	}
-skip_open:;
 
 	struct stat st_buf;
-	fstat(ctx->fd, &st_buf);
+	fstat(fd, &st_buf);
+
+	/* if directory */
+	mode_t ftype = st_buf.st_mode & S_IFMT;
+	if (ftype == S_IFDIR) {
+		if (conf->list_dir) {
+			return h2d_static_dir_headers(r, fd);
+		}
+		if (conf->index == NULL) {
+			h2d_request_log_at(r, conf->log, H2D_LOG_INFO, "request directory");
+			return WUY_HTTP_404;
+		}
+
+		int index_fd = openat(fd, conf->index, O_RDONLY);
+		close(fd);
+		fd = index_fd;
+		if (fd < 0) {
+			h2d_request_log_at(r, conf->log, H2D_LOG_INFO,
+					"error to open index %s", strerror(errno));
+			return WUY_HTTP_404;
+		}
+
+		fstat(fd, &st_buf);
+		ftype = st_buf.st_mode & S_IFMT;
+	}
+
+	r->module_ctxs[h2d_static_module.index] = (void *)(intptr_t)fd;
+
+	if (ftype != S_IFREG && ftype != S_IFLNK) {
+		h2d_request_log_at(r, conf->log, H2D_LOG_INFO, "invalid file type");
+		return WUY_HTTP_404;
+	}
 
 	/* check If-Modified-Since */
 	struct h2d_header *h = h2d_header_get(&r->req.headers, "If-Modified-Since");
@@ -161,20 +168,8 @@ skip_open:;
 		}
 	}
 
-	switch (st_buf.st_mode & S_IFMT) {
-	case S_IFREG:
-		break;
-	case S_IFDIR:
-		if (!conf->list_dir) {
-			printf(" conf %s %s %d\n", conf->dir_name, conf->index, conf->list_dir);
-			return WUY_HTTP_403;
-		}
-		return h2d_static_dir_headers(r, &st_buf);
-	default:
-		return WUY_HTTP_403;
-	}
-
-	r->resp.easy_fd = ctx->fd;
+	/* OK, response the file */
+	r->resp.easy_fd = fd;
 
 	h2d_header_add_lite(&r->resp.headers, "Last-Modified",
 			wuy_http_date_make(st_buf.st_mtime),
@@ -188,7 +183,7 @@ skip_open:;
 	if (r->req.method == WUY_HTTP_GET) {
 		h = h2d_header_get(&r->req.headers, "Range");
 		if (h != NULL) {
-			int ret = h2d_static_range_headers(r, h, &st_buf);
+			int ret = h2d_static_range_headers(r, h, &st_buf, fd);
 			if (ret != WUY_HTTP_200) {
 				return ret;
 			}
@@ -197,18 +192,14 @@ skip_open:;
 
 	r->resp.status_code = WUY_HTTP_200;
 	r->resp.content_length = st_buf.st_size;
-	ctx->left = st_buf.st_size;
-
 	return H2D_OK;
 }
 
 static void h2d_static_ctx_free(struct h2d_request *r)
 {
-	struct h2d_static_conf *conf = r->conf_path->module_confs[h2d_static_module.index];
-	struct h2d_static_ctx *ctx = r->module_ctxs[h2d_static_module.index];
-
-	if (ctx->fd != conf->dirfd) {
-		close(ctx->fd);
+	int fd = (intptr_t)r->module_ctxs[h2d_static_module.index];
+	if (fd != 0) {
+		close(fd);
 	}
 }
 
@@ -238,15 +229,15 @@ static struct wuy_cflua_command h2d_static_conf_commands[] = {
 		.is_single_array = true,
 		.offset = offsetof(struct h2d_static_conf, dir_name),
 	},
-	{	.name = "index",
-		.type = WUY_CFLUA_TYPE_STRING,
-		.offset = offsetof(struct h2d_static_conf, index),
-		.default_value.s = "index.html",
-	},
 	{	.name = "list_dir",
-		.description = "TODO, priority agaist 'index'",
+		.description = "List the directory if set.",
 		.type = WUY_CFLUA_TYPE_BOOLEAN,
 		.offset = offsetof(struct h2d_static_conf, list_dir),
+	},
+	{	.name = "index",
+		.description = "Set the index file if directory is queried. Only if list_dir not set.",
+		.type = WUY_CFLUA_TYPE_STRING,
+		.offset = offsetof(struct h2d_static_conf, index),
 	},
 	{	.name = "log",
 		.type = WUY_CFLUA_TYPE_TABLE,

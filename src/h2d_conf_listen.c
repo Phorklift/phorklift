@@ -130,13 +130,13 @@ static const char *h2d_conf_listen_post(void *data)
 		if (!wuy_sockaddr_loads(address, &ss, 0)) {
 			errno = EINVAL;
 			wuy_cflua_post_arg = address;
-			return address;
+			return "invalid listen address";
 		}
 		fd = wuy_tcp_listen((struct sockaddr *)&ss, conf_listen->network.backlog,
 				conf_listen->network.reuse_port);
 		if (fd < 0) {
 			wuy_cflua_post_arg = address;
-			return address;
+			return "fail to listen";
 		}
 
 		wuy_tcp_set_defer_accept(fd, conf_listen->network.defer_accept);

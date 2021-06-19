@@ -31,7 +31,8 @@ static const char *h2d_conf_runtime_post(void *data)
 
 static struct wuy_cflua_command h2d_conf_runtime_worker_commands[] = {
 	{	.type = WUY_CFLUA_TYPE_INTEGER,
-		.description = "Worker process number. Set -1 to disable master-worker mode.",
+		.description = "Worker process number. "
+			"Set 0 for #CPU. Set -1 to disable master-worker mode.",
 		.is_single_array = true,
 		.offset = offsetof(struct h2d_conf_runtime_worker, num),
 	},

@@ -533,7 +533,11 @@ static int h2d_request_response_body(struct h2d_request *r)
 		memcpy(buf_pos, r->resp.easy_string + r->resp.content_generated_length, body_len);
 
 	} else if (r->resp.easy_fd != 0) {
-		body_len = read(r->resp.easy_fd, buf_pos, buf_len);
+		body_len = r->resp.content_length - r->resp.content_generated_length;
+		if (body_len > buf_len) {
+			body_len = buf_len;
+		}
+		body_len = read(r->resp.easy_fd, buf_pos, body_len);
 		if (body_len < 0) {
 			h2d_request_log(r, H2D_LOG_ERROR, "read body_fd erro: %s", strerror(errno));
 			body_len = H2D_ERROR;
@@ -592,6 +596,19 @@ static void h2d_request_run_post(struct h2d_request *r)
 	}
 }
 
+static int (*h2d_request_steps[])(struct h2d_request *) = {
+	h2d_request_receive_headers,
+	h2d_request_locate_conf_host,
+	h2d_request_locate_conf_path,
+	h2d_request_receive_body_sync,
+	h2d_request_process_headers,
+	h2d_request_process_body,
+	h2d_request_response_headers_1,
+	h2d_request_response_headers_2,
+	h2d_request_response_headers_3,
+	h2d_request_response_body,
+};
+
 void h2d_request_run(struct h2d_request *r, const char *from)
 {
 	if (r->closed) {
@@ -600,44 +617,13 @@ void h2d_request_run(struct h2d_request *r, const char *from)
 
 	h2d_request_log(r, H2D_LOG_DEBUG, "{{{ h2d_request_run %d, from %s", r->state, from);
 
-	int ret;
-	switch (r->state) {
-	case H2D_REQUEST_STATE_RECEIVE_HEADERS:
-		ret = h2d_request_receive_headers(r);
-		break;
-	case H2D_REQUEST_STATE_LOCATE_CONF_HOST:
-		ret = h2d_request_locate_conf_host(r);
-		break;
-	case H2D_REQUEST_STATE_LOCATE_CONF_PATH:
-		ret = h2d_request_locate_conf_path(r);
-		break;
-	case H2D_REQUEST_STATE_RECEIVE_BODY_SYNC:
-		ret = h2d_request_receive_body_sync(r);
-		break;
-	case H2D_REQUEST_STATE_PROCESS_HEADERS:
-		ret = h2d_request_process_headers(r);
-		break;
-	case H2D_REQUEST_STATE_PROCESS_BODY:
-		ret = h2d_request_process_body(r);
-		break;
-	case H2D_REQUEST_STATE_RESPONSE_HEADERS_1:
-		ret = h2d_request_response_headers_1(r);
-		break;
-	case H2D_REQUEST_STATE_RESPONSE_HEADERS_2:
-		ret = h2d_request_response_headers_2(r);
-		break;
-	case H2D_REQUEST_STATE_RESPONSE_HEADERS_3:
-		ret = h2d_request_response_headers_3(r);
-		break;
-	case H2D_REQUEST_STATE_RESPONSE_BODY:
-		ret = h2d_request_response_body(r);
-		break;
-	case H2D_REQUEST_STATE_DONE:
+	if (r->state == H2D_REQUEST_STATE_DONE) {
 		h2d_request_close(r);
 		return;
-	default:
-		abort();
 	}
+
+	assert(r->state < H2D_REQUEST_STATE_DONE);
+	int ret = h2d_request_steps[r->state](r);
 
 	h2d_request_log(r, H2D_LOG_DEBUG, "}}} state:%d ret:%d", r->state, ret);
 
