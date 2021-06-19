@@ -124,8 +124,8 @@ h2d_upstream_get_connection(struct h2d_upstream_conf *upstream, struct h2d_reque
 	}
 	loop_stream_set_timeout(s, upstream->send_timeout * 1000);
 
-	if (upstream->ssl_enable) {
-		h2d_ssl_stream_set(s, upstream->ssl_ctx, false);
+	if (upstream->ssl != NULL) {
+		h2d_ssl_stream_set(s, upstream->ssl->ctx, false);
 	}
 
 	upc = calloc(1, sizeof(struct h2d_upstream_connection));
@@ -462,10 +462,6 @@ static const char *h2d_upstream_conf_post(void *data)
 		conf->name = conf->hostnames_str[0];
 	}
 
-	if (conf->ssl_enable) {
-		conf->ssl_ctx = h2d_ssl_ctx_new_client();
-	}
-
 	const char *resv_err = h2d_upstream_conf_resolve_init(conf);
 	if (resv_err != WUY_CFLUA_OK) {
 		return resv_err;
@@ -492,7 +488,9 @@ static void h2d_upstream_conf_free(void *data)
 		loop_stream_close(conf->resolve_stream);
 	}
 
-	conf->loadbalance->ctx_free(conf->lb_ctx);
+	if (conf->loadbalance != NULL) {
+		conf->loadbalance->ctx_free(conf->lb_ctx);
+	}
 }
 
 static void h2d_upstream_conf_stats(struct h2d_upstream_conf *conf, wuy_json_t *json)
@@ -649,9 +647,10 @@ static struct wuy_cflua_command h2d_upstream_conf_commands[] = {
 		.default_value.n = 100,
 		.limits.n = WUY_CFLUA_LIMITS_NON_NEGATIVE,
 	},
-	{	.name = "ssl_enable",
-		.type = WUY_CFLUA_TYPE_BOOLEAN,
-		.offset = offsetof(struct h2d_upstream_conf, ssl_enable),
+	{	.name = "ssl",
+		.type = WUY_CFLUA_TYPE_TABLE,
+		.offset = offsetof(struct h2d_upstream_conf, ssl),
+		.u.table = &h2d_ssl_client_conf_table,
 	},
 	{	.name = "failure",
 		.description = "Passive healthcheck",

@@ -130,8 +130,8 @@ static int64_t h2d_upstream_healthcheck_address_handler(int64_t at, void *data)
 		goto out;
 	}
 
-	if (address->upstream->ssl_enable) {
-		h2d_ssl_stream_set(s, upstream->ssl_ctx, false);
+	if (address->upstream->ssl != NULL) {
+		h2d_ssl_stream_set(s, upstream->ssl->ctx, false);
 	}
 
 	address->healthcheck.stream = s;

@@ -11,7 +11,6 @@
 #define H2D_VERSION "0.0.1"
 
 static bool opt_daemon = true;
-static const char *opt_pid_file = "h2tpd.pid";
 
 static pid_t *h2d_workers = NULL;
 
@@ -22,23 +21,19 @@ static const char *h2d_getopt(int argc, char *const *argv)
 	const char *help = "Usage: h2tpd [options] conf_file\n"
 		"Options:\n"
 		"    -p PREFIX   change directory\n"
-		"    -i FILE     set pid file [h2tpd.pid]\n"
 		"    -f          run in foreground, but not daemon\n"
 		"    -r          show configration reference and quit\n"
 		"    -v          show version and quit\n"
 		"    -h          show this help and quit\n";
 
 	int opt;
-	while ((opt = getopt(argc, argv, "p:i:rfvh")) != -1) {
+	while ((opt = getopt(argc, argv, "p:rfvh")) != -1) {
 		switch (opt) {
 		case 'p':
 			if (chdir(optarg) != 0) {
 				fprintf(stderr, "Fail to chdir to %s : %s\n", optarg, strerror(errno));
 				exit(H2D_EXIT_GETOPT);
 			}
-			break;
-		case 'i':
-			opt_pid_file = optarg;
 			break;
 		case 'f':
 			opt_daemon = false;
@@ -115,17 +110,11 @@ static void h2d_signal_nothing(int signo)
 
 static void h2d_signal_dispatch(int signo)
 {
-	/* Dispatch signals to all worker processes.
-	 * Since kill(0, signo) sends signal to this process self too.
-	 * we check time here to avoid loop. */
-	static time_t last = 0;
-	time_t now = time(NULL);
-	if (now - last <= 1) {
-		return;
+	for (int i = 0; h2d_workers[i] != -1; i++) {
+		if (h2d_workers[i] != 0) {
+			kill(h2d_workers[i], signo);
+		}
 	}
-	last = now;
-
-	kill(0, signo);
 }
 
 static pid_t h2d_worker_new(void)
@@ -197,7 +186,7 @@ static int h2d_run(const char *conf_file)
 	int worker_num = h2d_conf_runtime->worker.num;
 	if (worker_num < 0) {
 		h2d_worker_entry();
-		return 0;
+		exit(0);
 	}
 
 	pid_t *workers = malloc((worker_num + 1) * sizeof(pid_t));
@@ -256,6 +245,11 @@ int main(int argc, char * const *argv)
 		return ret;
 	}
 
+	/* this is not updated if reloading configration */
+	FILE *fp = fopen(h2d_conf_runtime->pid, "w");
+	fprintf(fp, "%d\n", getpid());
+	fclose(fp);
+
 	/* master */
 	while (1) {
 		h2d_conf_log(H2D_LOG_INFO, "master pause...");
@@ -272,6 +266,8 @@ int main(int argc, char * const *argv)
 			break;
 		}
 	}
+
+	unlink(h2d_conf_runtime->pid);
 
 	return 0;
 }

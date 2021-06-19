@@ -41,7 +41,7 @@ do
 		read -r sep
 	done
 
-	pkill h2tpd
+	kill -QUIT `cat h2tpd.pid`
 done
 
 # done

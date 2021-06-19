@@ -143,7 +143,8 @@ struct h2d_upstream_conf {
 	int				default_port;
 	int				resolve_interval;
 	int				resolved_addresses_max;
-	bool				ssl_enable;
+
+	struct h2d_ssl_client_conf	*ssl;
 
 	struct {
 		int			fails;
@@ -177,8 +178,6 @@ struct h2d_upstream_conf {
 	struct h2d_upstream_address_stats	*address_stats_start;
 
 	wuy_list_t			deleted_address_defer;
-
-	SSL_CTX				*ssl_ctx;
 
 	/* resolve */
 	int				resolve_index;

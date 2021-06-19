@@ -148,6 +148,8 @@ struct h2d_conf_listen {
 };
 
 struct h2d_conf_runtime {
+	const char		*pid;
+
 	struct h2d_conf_runtime_worker {
 		int	num;
 	} worker;

@@ -137,7 +137,6 @@ SSL_CTX *h2d_ssl_ctx_new_client(void)
 {
 	SSL_CTX *ctx = SSL_CTX_new(SSLv23_client_method());
 	SSL_CTX_set_ecdh_auto(ctx, 1);
-	SSL_CTX_set_verify(ctx, SSL_VERIFY_NONE, NULL); // TODO move this out as config
 	return ctx;
 }
 
@@ -290,10 +289,7 @@ static const char *h2d_ssl_conf_post(void *data)
 static void h2d_ssl_conf_free(void *data)
 {
 	struct h2d_ssl_conf *conf = data;
-
-	if (conf->ctx != NULL) {
-		SSL_CTX_free(conf->ctx);
-	}
+	SSL_CTX_free(conf->ctx);
 }
 
 static struct wuy_cflua_command h2d_ssl_conf_commands[] = {
@@ -336,4 +332,43 @@ struct wuy_cflua_table h2d_ssl_conf_table = {
 	.size = sizeof(struct h2d_ssl_conf),
 	.post = h2d_ssl_conf_post,
 	.free = h2d_ssl_conf_free,
+};
+
+
+/* for h2d_ssl_client */
+
+static const char *h2d_ssl_client_conf_post(void *data)
+{
+	struct h2d_ssl_client_conf *conf = data;
+
+	conf->ctx = h2d_ssl_ctx_new_client();
+
+	if (!conf->verify) {
+		SSL_CTX_set_verify(conf->ctx, SSL_VERIFY_NONE, NULL);
+	}
+	return WUY_CFLUA_OK;
+}
+
+static void h2d_ssl_client_conf_free(void *data)
+{
+	struct h2d_ssl_client_conf *conf = data;
+	SSL_CTX_free(conf->ctx);
+}
+
+static struct wuy_cflua_command h2d_ssl_client_conf_commands[] = {
+	// TODO add more commands, like CA, session cache
+	{	.name = "verify",
+		.type = WUY_CFLUA_TYPE_BOOLEAN,
+		.offset = offsetof(struct h2d_ssl_client_conf, verify),
+		.default_value.b = true,
+	},
+	{ NULL }
+};
+
+struct wuy_cflua_table h2d_ssl_client_conf_table = {
+	.commands = h2d_ssl_client_conf_commands,
+	.may_omit = true,
+	.size = sizeof(struct h2d_ssl_client_conf),
+	.post = h2d_ssl_client_conf_post,
+	.free = h2d_ssl_client_conf_free,
 };

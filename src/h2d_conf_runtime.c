@@ -44,6 +44,11 @@ static struct wuy_cflua_table h2d_conf_runtime_worker_table = {
 };
 
 static struct wuy_cflua_command h2d_conf_runtime_commands[] = {
+	{	.name = "pid",
+		.type = WUY_CFLUA_TYPE_STRING,
+		.offset = offsetof(struct h2d_conf_runtime, pid),
+		.default_value.s = "h2tpd.pid",
+	},
 	{	.name = "worker",
 		.type = WUY_CFLUA_TYPE_TABLE,
 		.offset = offsetof(struct h2d_conf_runtime, worker),

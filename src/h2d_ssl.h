@@ -13,6 +13,7 @@ struct h2d_ssl_stats {
 	atomic_long	ticket_sign;
 	atomic_long	ticket_reuse;
 };
+
 struct h2d_ssl_conf {
 	const char	*certificate;
 	const char	*private_key;
@@ -25,7 +26,13 @@ struct h2d_ssl_conf {
 	struct h2d_ssl_stats	*stats;
 };
 
+struct h2d_ssl_client_conf {
+	bool		verify;
+	SSL_CTX		*ctx;
+};
+
 extern struct wuy_cflua_table h2d_ssl_conf_table;
+extern struct wuy_cflua_table h2d_ssl_client_conf_table;
 
 SSL_CTX *h2d_ssl_ctx_empty_server(void);
 SSL_CTX *h2d_ssl_ctx_new_client(void);
