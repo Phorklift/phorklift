@@ -112,6 +112,47 @@ static int phl_req_set_header(lua_State *L)
 	return phl_req_add_header(L);
 }
 
+static int phl_req_get_cookie(lua_State *L)
+{
+	size_t name_len;
+	const char *name = lua_tolstring(L, -1, &name_len);
+	if (name == NULL) {
+		return 0;
+	}
+
+	struct phl_header *h;
+	wuy_slist_iter_type(&phl_lua_api_current->req.headers, h, list_node) {
+		if (strcasecmp(h->str, "Cookie") != 0) {
+			continue;
+		}
+		const char *p = phl_header_value(h);
+		int value_len = h->value_len;
+		while (1) {
+			if (memcmp(p, name, name_len) == 0 && p[name_len] == '=') {
+				/* find */
+				p += name_len + 1;
+				value_len -= name_len + 1;
+				const char *end = memchr(p, ';', value_len);
+				if (end != NULL) {
+					value_len = end - p;
+				}
+				lua_pushlstring(L, p, value_len);
+				return 1;
+			}
+
+			const char *end = memchr(p, ';', value_len);
+			if (end == NULL) {
+				break;
+			}
+			end++;
+			while (*end == ' ') end++;
+			value_len -= end - p;
+			p = end;
+		}
+	}
+	return 0;
+}
+
 static int phl_req_mm_index(lua_State *L)
 {
 	const char *key = lua_tostring(L, -1);
@@ -163,6 +204,7 @@ static const struct phl_lua_api_reg_func phl_req_functions[] = {
 	{ "add_header", phl_req_add_header },
 	{ "delete_header", phl_req_delete_header },
 	{ "set_header", phl_req_set_header },
+	{ "get_cookie", phl_req_get_cookie },
 
 	{ "__index", phl_req_mm_index },
 	{ NULL }  /* sentinel */

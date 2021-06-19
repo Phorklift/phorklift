@@ -64,13 +64,15 @@ or reacting slower than 1 second:
   }
   ```
 
+where `phl` is a [built-in Lua package](doc/5.lua_api.md).
+
 Another example on the request rate limit key. If the request is from a
 login user then use the user-id as a key, or use the client IP.
 
   ```lua
   limit_req = {
       key = function()
-          local user_id = phl.req.header_get_cookie("id")
+          local user_id = phl.req.get_cookie("id")
           return user_id and user_id or phl.get_client_ip()
       end
   }

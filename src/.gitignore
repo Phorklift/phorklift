@@ -2,4 +2,5 @@ phl_conf_predefs_lua.h
 phl_module_list.h
 *.o
 *.log
+phorklift.pid
 phorklift
