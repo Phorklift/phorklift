@@ -6,4 +6,4 @@
 	url = https://github.com/WuBingzheng/libloop.git
 [submodule "src/libhttp2"]
 	path = src/libhttp2
-	url = https://github.com/h2tpd/libhttp2.git
+	url = https://github.com/phorklift/libhttp2.git
