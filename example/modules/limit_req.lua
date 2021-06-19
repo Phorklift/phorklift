@@ -45,7 +45,7 @@
 -- REQUEST: curl -v 127.0.0.1:8080/key?id=456
 -- EXPECT: 503 Service Unavailable
 
-Runtime = {
+Runtime {
     worker = 1
 }
 

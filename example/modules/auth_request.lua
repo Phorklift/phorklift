@@ -9,7 +9,7 @@
 
 Listen "8080" {
     Path "/auth" {
-        lua = function()
+        script = function()
             local token = h2d.req.get_header("Token")
             if token == "twgdh" then
                 return "yes"

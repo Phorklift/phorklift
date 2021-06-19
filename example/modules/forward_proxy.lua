@@ -1,4 +1,14 @@
 -- Forward Proxy.
+--
+--
+-- REQUEST: curl -v http://127.0.0.1:8080/ -H'Host: www.baidu.com'
+-- EXPECT: 200 OK
+--
+-- REQUEST: curl -v http://127.0.0.1:8081/ -H'Host: www.baidu.com'
+-- EXPECT: 200 OK
+--
+-- REQUEST: curl -vk https://127.0.0.1:1443/ -H'Host: www.baidu.com'
+-- EXPECT: 200 OK
 
 local forward_proxy_dynamic = {
     get_name = function() return h2d.req.host end,
@@ -15,7 +25,7 @@ Listen "8080" {
 
 -- 2. define the upstream here, and be referred later
 local forward_proxy_ssl_backend = {
-    ssl_enable = true,
+    ssl = {},
     default_port = 443,
     dynamic = forward_proxy_dynamic,
 }
@@ -26,5 +36,10 @@ Listen "1443" {
         certificate = "../misc/unsafe-test-only.crt",
         private_key = "../misc/unsafe-test-only.key",
     },
+    proxy = { forward_proxy_ssl_backend },
+}
+
+-- plain downstream and SSL upstream
+Listen "8081" {
     proxy = { forward_proxy_ssl_backend },
 }
