@@ -1,4 +1,4 @@
-`h2tpd` is an HTTP server and proxy daemon, with clear, powerful and dynamic configuration.
+Phorklift is an HTTP server and proxy daemon, with clear, powerful and dynamic configuration.
 
 
 # Common Features
@@ -13,7 +13,7 @@
 
 - Static file service, proxy, ACL, gzip, etc.
 
-In short, h2tpd targets production-level.
+In short, Phorklift targets production-level.
 
 
 # Key Features
@@ -22,11 +22,11 @@ In short, h2tpd targets production-level.
 
 It's a very natural choice when [Lua](https://lua.org) is embed.
 
-Lua is simple and powerful. Correspondingly, h2tpd's configuration is
+Lua is simple and powerful. Correspondingly, Phorklift's configuration is
 always short and clear for most cases, while it can also provide powerful
 description capabilities for some specific cases.
 
-In order to highlight h2tpd configuration's feature, the examples in the
+In order to highlight Phorklift configuration's feature, the examples in the
 following sections mainly show the usage of Lua's function and look a bit
 complex. However usually you may not need that, and then Lua behaves like
 other configurations.
@@ -117,8 +117,8 @@ blocking mode. Let's see the `get_vip_level()` in last example:
   end
   ```
 
-`h2d.subrequest()` creates a h2tpd sub-request, and returns after it
-finishes. But h2tpd switches to process other events during this time.
+`h2d.subrequest()` creates a Phorklift sub-request, and returns after it
+finishes. But Phorklift switches to process other events during this time.
 So the script looks like blocking but the underlying is asynchronous.
 
 If you are used to Lua-nginx module, you will feel familiar.
@@ -132,14 +132,14 @@ applications.
 Dynamic configuration enables some components to be created/updated/deleted
 during running.
 
-This is h2tpd's killer!
+This is Phorklift's killer!
 
 By now, built-in Upstream and Path support dynamic configuration.
 You can make any components in you module to support dynamic easily if necessary.
 
 Let's take the forward proxy as example which uses upstream.
 Usually one upstream defines a group of static hostname or IP addresses,
-so it's suitable for reverse proxy:
+so it's suitable for _reverse_ proxy:
 
   ```lua
   local upstream_origin = {
@@ -148,7 +148,7 @@ so it's suitable for reverse proxy:
   }
   ```
 
-However for forward proxy, the addresses are not static but decided by the
+However for _forward_ proxy, the addresses are not static but decided by the
 request's Host header. You can not write the addresses into configuration
 file, but can only know them on receiving requests. So here is the dynamic:
 
@@ -168,7 +168,7 @@ according to the name.
 
 For example, for a request with header "Host: xxx.example.com", `get_name()`
 returns "xxx.example.com", and `get_conf()` returns `{"xxx.example.com"}`
-which is a valid upstream configuration. Then h2tpd creates a new sub-upstream
+which is a valid upstream configuration. Then Phorklift creates a new sub-upstream
 with this configuration to serve this request, and also cache it for later use.
 The following requests with same Host will hit the cache and need not to call
 `get_conf()` again.
@@ -179,7 +179,6 @@ functions can be achieved through more complex `get_name()` and `get_conf()`.
 Here is another example of dynamic upstream for service discovery:
 
   ```lua
-  local redis = require "luapkgs/h2d_redis"
   local upstream_service_discovery = {
       dynamic = {
           idle_timeout = 3600,
@@ -190,6 +189,7 @@ Here is another example of dynamic upstream for service discovery:
           end,
 
           get_conf = function(name)
+              local redis = require "luapkgs/h2d_redis"
               local conf = redis.query_once("127.0.0.1:6379", "get "..name)
               if not conf then  -- query failure
                   return h2d.HTTP_500
@@ -211,32 +211,32 @@ Redis, where should be an entry with key="img" and value is arbitrary valid
 upstream configuration string.
 The following requests with "/img/" prefix will use this sub-upstream
 directly in 60 seconds (defined by `check_interval=60` above). After
-60 seconds, h2tpd will query Redis again to check whether the configuration
+60 seconds, Phorklift will query Redis again to check whether the configuration
 is deleted or modified.
 Then the administrator only need to create, delete and modify the
 name-configuration entries in Redis to realize the service discovery.
 
 Compared to last forward proxy example, `get_conf()` return one more value,
 the status code, to indicate status. Besides, the returned `conf` is string
-but not Lua table, and h2tpd will load the string into Lua table.
+but not Lua table, and Phorklift will load the string into Lua table.
 
 Here the Redis is just an example. You can query the configuration from
 local file, another HTTP server, etc.
 
 Dynamic Upstream handles upstream configuration only, while dynamic Path 
-handles path configuration which includes most of h2tpd's commands, such as
+handles path configuration which includes most of Phorklift's commands, such as
 the `limit_req` in the above example. It's much more powerful.
 
 
 ## Feature: Clean Code.
 
 Probably all programers will think their codes are clean.
-But I really try my best to keep h2tpd's code clean.
+But I really try my best to keep Phorklift's code clean.
 
-In addition, h2tpd is written from the ground-up so there is no "legacy code" by now.
+In addition, Phorklift is written from the ground-up so there is no "legacy code" by now.
 
 Here is a [unfair comparison with Nignx](doc/topics/unfair_code_comparison_with_nginx.md).
-You will find that it's much easier to develop with h2tpd than nginx.
+You will find that it's much easier to develop with Phorklift than nginx.
 
 
 ## Feature: Detailed Statistics.
@@ -264,7 +264,7 @@ GPLv2.
 
 # Status
 
-h2tpd is still under development and not stable yet.
+Phorklift is still under development and not stable yet.
 
 The main functions and frames have been realized. At least the functions
 and configuration mentioned in this document have been realized.
