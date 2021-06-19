@@ -1,4 +1,4 @@
-auto_headers: phl_conf_predefs_lua.h phl_module_list.h
+AUTO_HEADERS = phl_conf_predefs_lua.h phl_module_list.h
 
 phl_conf_predefs_lua.h: phl_conf_predefs.lua
 	echo '/* read file phl_conf_predefs.lua into string */' > $@
@@ -16,6 +16,3 @@ phl_module_list.h: $(MOD_SRCS)
 	echo '#define H2D_LUAAPI_X_LIST \\' >> $@
 	@ls luaapis/*.c | sed 's@luaapis/@\tX(@' | sed 's/.c$$/_package) \\/' >> $@
 	@echo >> $@
-
-clean_auto_headers:
-	rm -f phl_conf_predefs_lua.h phl_module_list.h

@@ -1,2 +1,2 @@
 love:
-	make -C src
+	make all -C src
