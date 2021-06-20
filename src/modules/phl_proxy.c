@@ -220,6 +220,7 @@ static struct wuy_cflua_command phl_proxy_conf_commands[] = {
 		.u.table = &phl_upstream_conf_table,
 	},
 	{	.name = "x_forwarded_for",
+		.description = "Whether to update X-Forwarded-For header.",
 		.type = WUY_CFLUA_TYPE_BOOLEAN,
 		.offset = offsetof(struct phl_proxy_conf, x_forwarded_for),
 	},

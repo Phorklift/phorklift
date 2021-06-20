@@ -350,10 +350,18 @@ static void phl_dynamic_conf_free(void *data)
 static struct wuy_cflua_command phl_dynamic_conf_commands[] = {
 	/* father only */
 	{	.name = "get_name",
+		.description = "Set this and the following `get_conf` to enable dynamic. "
+			"This function should return a string as name of a sub-dynamic. "
+			"This function is called for each request, so it should be fast. "
+			"You can not call blocking APIs (such as `subrequest`) in this function.",
 		.type = WUY_CFLUA_TYPE_FUNCTION,
 		.offset = offsetof(struct phl_dynamic_conf, get_name),
 	},
 	{	.name = "get_conf",
+		.description = "This function accepts a argument as sub-dynamic's name, "
+			"and should return its configration, both string or Lua table type is OK. "
+			"This function is called only if the sub is not existed or expired, "
+			"so it need not be fast and can call blocking APIs.",
 		.type = WUY_CFLUA_TYPE_FUNCTION,
 		.offset = offsetof(struct phl_dynamic_conf, get_conf),
 	},

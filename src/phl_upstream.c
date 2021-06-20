@@ -648,6 +648,7 @@ static struct wuy_cflua_command phl_upstream_conf_commands[] = {
 		.limits.n = WUY_CFLUA_LIMITS_NON_NEGATIVE,
 	},
 	{	.name = "ssl",
+		.description = "Set to enable HTTPS, even to a empty table `{}`.",
 		.type = WUY_CFLUA_TYPE_TABLE,
 		.offset = offsetof(struct phl_upstream_conf, ssl),
 		.u.table = &phl_ssl_client_conf_table,

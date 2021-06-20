@@ -255,6 +255,7 @@ static const char *phl_conf_runtime_resolver_post(void *data)
 
 static struct wuy_cflua_command phl_conf_runtime_resovler_commands[] = {
 	{	.name = "ai_family",
+		.description = "Accepts `ipv4`, `ipv6`, `both46`.",
 		.type = WUY_CFLUA_TYPE_STRING,
 		.offset = offsetof(struct phl_conf_runtime_resolver, ai_family_str),
 		.default_value.s = "both46",

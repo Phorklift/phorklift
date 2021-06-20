@@ -43,6 +43,7 @@ static const char *phl_echo_conf_post(void *data)
 static struct wuy_cflua_command phl_echo_conf_commands[] = {
 	{	.type = WUY_CFLUA_TYPE_STRING,
 		.is_single_array = true,
+		.description = "Response body.",
 		.u.length_offset = offsetof(struct phl_echo_conf, len),
 		.offset = offsetof(struct phl_echo_conf, str),
 	},

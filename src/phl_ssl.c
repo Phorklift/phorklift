@@ -294,6 +294,7 @@ static void phl_ssl_conf_free(void *data)
 
 static struct wuy_cflua_command phl_ssl_conf_commands[] = {
 	{	.name = "certificate",
+		.description = "Set this and the following `private_key` to enable HTTPS.",
 		.type = WUY_CFLUA_TYPE_STRING,
 		.offset = offsetof(struct phl_ssl_conf, certificate),
 	},
