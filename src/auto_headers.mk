@@ -4,7 +4,9 @@ phl_conf_predefs_lua.h: phl_conf_predefs.lua
 	@sed 's/"/\\"/g' $^ | awk '{print $$0" \\n\\"}' >> $@
 	@echo '";' >> $@
 
-phl_module_list.h: $(MOD_SRCS)
+# phl_module_list.h does not depends on $(MOD_SRCS).
+# So if you add or remove modules, remove phl_module_list.h before running make again.
+phl_module_list.h: | $(MOD_SRCS)
 	echo '#define PHL_MODULE_X_LIST \\' > $@
 	@ls modules/*.c | sed 's@modules/@\tX(@' | sed 's/.c$$/_module) \\/' >> $@
 	@echo >> $@

@@ -93,7 +93,7 @@ Going further, different weight can be set for each request:
           end
 
           -- higher VIP level has higher limit
-          local user_id = phl.req.header_get_cookie("id")
+          local user_id = phl.req.get_cookie("id")
           local vip = get_vip_level(user_id)
           if vip then
               weight = weight / vip

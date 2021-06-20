@@ -24,7 +24,7 @@
 -- EXPECT: hello, all!
 
 Listen "8080" {
-    Host "*" { -- The Host level can not be omitted
+    Host "*" { -- The Host level can be omitted
         Path "=/img/" {
             echo = "hello, exact match!\n",
         },

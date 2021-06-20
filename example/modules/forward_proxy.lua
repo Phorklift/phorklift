@@ -8,7 +8,7 @@
 -- EXPECT: 200 OK
 --
 -- REQUEST: curl -vk https://127.0.0.1:1443/ -H'Host: www.baidu.com'
--- EXPECT: 200 OK
+-- EXPECT: 200
 
 local forward_proxy_dynamic = {
     get_name = function() return phl.req.host end,
