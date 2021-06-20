@@ -86,7 +86,7 @@ int phl_http1_request_headers(struct phl_request *r)
 int phl_http1_request_body(struct phl_request *r)
 {
 	/* no body */
-	if (r->req.content_length != PHL_CONTENT_LENGTH_INIT
+	if (r->req.content_length == PHL_CONTENT_LENGTH_INIT
 			&& !wuy_http_chunked_is_enabled(&r->req.chunked)) {
 		return PHL_OK;
 	}

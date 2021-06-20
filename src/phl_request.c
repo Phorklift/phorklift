@@ -19,6 +19,7 @@ struct phl_request *phl_request_new(struct phl_connection *c)
 	wuy_list_init(&r->subr_head);
 	wuy_slist_init(&r->req.headers);
 	wuy_slist_init(&r->resp.headers);
+	r->req.content_length = PHL_CONTENT_LENGTH_INIT;
 	r->resp.content_length = PHL_CONTENT_LENGTH_INIT;
 
 	r->id = c->request_id++;
