@@ -8,7 +8,8 @@ We must declare that this comparison is very unfair, because:
   still under development.
   This is mainly reflected in modules.
 
-- Nginx has been developed for many years, so many parts of the code may contain duplicates. As Phorklift has been developed from the ground up, it contains much less duplicated code.
+- Nginx has been developed for many years, so many parts of the code may contain duplicates.
+  As Phorklift has been developed from the ground up, it contains much less duplicated code.
 
 - Nginx supports several Operating Systems, but Phorklift currently supports Linux only.
   This is mainly reflected in Nginx's src/event/.

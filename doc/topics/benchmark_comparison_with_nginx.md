@@ -11,9 +11,13 @@ The result numbers have little meaning. The comparison is the point.
 
 # Test Cases
 
+Response:
+
 - echo, response a static string
 - static, response a file as static service
 - proxy, pass requests to backend as reverse-proxy
+
+Concurrent:
 
 - a), HTTP1, 10 concurrent connections
 - b), HTTP1, 100 connections connections

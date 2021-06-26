@@ -3,7 +3,7 @@ Phorklift is an HTTP server and proxy daemon, with clear, powerful and dynamic c
 
 # Common Features
 
-- High performance and low memory usage.
+- [High performance](doc/topics/benchmark_comparison_with_nginx.md) and low memory usage.
 
 - Modular mechanism, similar to [Nginx](https://nginx.org).
 
