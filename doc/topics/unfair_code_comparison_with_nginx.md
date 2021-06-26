@@ -8,17 +8,15 @@ We must declare that this comparison is very unfair, because:
   still under development.
   This is mainly reflected in modules.
 
-- Nginx has been developed for many years, so there are many duplicated
-  codes all around. While Phorklift is developed from the ground-up, so it's
-  clear by now.
+- Nginx has been developed for many years, so many parts of the code may contain duplicates. As Phorklift has been developed from the ground up, it contains much less duplicated code.
 
-- Nginx supports several OS but Phorklift supports Linux only by now.
+- Nginx supports several Operating Systems, but Phorklift currently supports Linux only.
   This is mainly reflected in Nginx's src/event/.
 
-So it's very reasonable that nginx has more code than Phorklift. But the
+So it's a very reasonable assumption that Nginx has more code than Phorklift, but the
 comparison still gives some information.
 
-This table shows lines of source code of nginx and Phorklift for each part.
+This table shows lines of source code for Nginx and Phorklift grouped by purpose.
 
     ----------+-------------------------+----------------------------
               |            nginx-1.14.0 | phorklift-git-xxxxxxxx
@@ -40,21 +38,20 @@ This table shows lines of source code of nginx and Phorklift for each part.
     -----------------------------------------------------------------
 
 
-# Some better points than nginx
+# Some advantages over Nginx
 
-Nginx's source code is very good. And I was greatly influenced by it,
-which you can see in Phorklift. But Phorklift still has some points
-better than nginx in my opinion.
+Nginx's source code is very good and I was greatly influenced by it,
+which you can see in Phorklift. But, Phorklift still has some advantages over Nginx in my opinion.
 
-1. Phorklift organizes some code in independent libraries, including
+1. Phorklift organizes some code into independent libraries, including
    `libwuya`, `libloop`, `libhttp2` and `libhpack`. The main
    code calls these libraries by API only, but can not access their
-   internal data. This makes the code clearer.
-   Besides, because these libraries do not depend on any Phorklift structure
+   internal data, thus making the code clearer.
+   Besides, because these libraries do not depend on any of Phorklift's structure
    or code, they can be used by other programs. In fact `libwuya` and
    `libloop` were used by other programs before Phorklift.
 
-2. Phorklift tries to avoid mutable function pointer.
+2. Phorklift tries to avoid using mutable function pointers.
    There are some mutable function pointers in Nginx such as the handlers
    in `ngx_http_request_t`, `ngx_http_upstream_t`, and `ngx_event_t`. It's
    very hard to understand and follow them when first reading the code.
@@ -64,5 +61,5 @@ better than nginx in my opinion.
    `ngx_http_request_t`. I think it's impossible to point out the meaning
    of each flag for most readers.
 
-4. Phorklift tries to avoid too long functions.
+4. Phorklift tries to avoid functions that are too long.
    There are many functions longer than 100 lines in Nginx, but none in Phorklift.
