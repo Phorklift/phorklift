@@ -1,4 +1,11 @@
-I know this comparison is unfair too. But let's do it anyway!
+On the one hand, high performance is one of the most basic requirements of all
+server programs. On the other hand, high performance is not what I strive for.
+So this document does not intend to prove how fast Phorklift is, but just to
+show Phorklift is not slow, at least not slower than Nginx.
+
+I know this comparison is a little unfair too because Nginx is much more
+complete. But let's do it anyway!
+
 
 # Machine
 
