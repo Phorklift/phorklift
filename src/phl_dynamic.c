@@ -1,4 +1,26 @@
-/* This file is for dynamic configration, but not dynamic module. */
+/* This file is for dynamic configration, but not dynamic module.
+ *
+ * Some configuration components can be created/updated/deleted by this.
+ * By now, built-in Upstream and Path support dynamic configuration.
+ * You can make any components in you module to support dynamic easily
+ * if necessary.
+ *
+ * All actions are triggered by user-requests. They are passive.
+ * You must have a clear rule (e.g. ../example/modules/forward_proxy.lua)
+ * or an admin-center (e.g. Redis in ../example/modules/service_discovery.lua).
+ * You can not create/update/delete the configration actively.
+ * There are 2 reasons:
+ *
+ * 1. For example, you could write a content module and manipulate this
+ *    by admin-requests actively. However the configration is not shared
+ *    amount worker processes, so you can manipulate the current work
+ *    process only. Share the configration is too complex. Besides, there
+ *    maybe multiple machines deployed.
+ *
+ * 2. Assume you can manipulate this actively. But after reloading
+ *    configration or restarting the process, all changes lose. You still
+ *    need some place to save the rules.
+ */
 
 #include "phl_main.h"
 
@@ -350,20 +372,20 @@ static void phl_dynamic_conf_free(void *data)
 static struct wuy_cflua_command phl_dynamic_conf_commands[] = {
 	/* father only */
 	{	.name = "get_name",
+		.type = WUY_CFLUA_TYPE_FUNCTION,
+		.offset = offsetof(struct phl_dynamic_conf, get_name),
 		.description = "Set this and the following `get_conf` to enable dynamic. "
 			"This function should return a string as name of a sub-dynamic. "
 			"This function is called for each request, so it should be fast. "
 			"You can not call blocking APIs (such as `subrequest`) in this function.",
-		.type = WUY_CFLUA_TYPE_FUNCTION,
-		.offset = offsetof(struct phl_dynamic_conf, get_name),
 	},
 	{	.name = "get_conf",
+		.type = WUY_CFLUA_TYPE_FUNCTION,
+		.offset = offsetof(struct phl_dynamic_conf, get_conf),
 		.description = "This function accepts a argument as sub-dynamic's name, "
 			"and should return its configration, both string or Lua table type is OK. "
 			"This function is called only if the sub is not existed or expired, "
 			"so it need not be fast and can call blocking APIs.",
-		.type = WUY_CFLUA_TYPE_FUNCTION,
-		.offset = offsetof(struct phl_dynamic_conf, get_conf),
 	},
 	{	.name = "sub_max",
 		.type = WUY_CFLUA_TYPE_INTEGER,
