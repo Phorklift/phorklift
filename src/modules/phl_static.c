@@ -107,8 +107,6 @@ static int phl_static_generate_response_headers(struct phl_request *r)
 {
 	struct phl_static_conf *conf = r->conf_path->module_confs[phl_static_module.index];
 
-	phl_header_add_lite(&r->resp.headers, "Server", "phorklift", 5, r->pool);
-
 	const char *filename = r->req.uri.path + 1;
 	if (filename[0] == '\0') { /* "/" */
 		filename = ".";

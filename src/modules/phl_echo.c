@@ -12,8 +12,6 @@ static int phl_echo_generate_response_headers(struct phl_request *r)
 {
 	struct phl_echo_conf *conf = r->conf_path->module_confs[phl_echo_module.index];
 
-	phl_header_add_lite(&r->resp.headers, "Server", "phorklift", 5, r->pool);
-
 	r->resp.status_code = conf->status_code;
 	r->resp.content_length = conf->len;
 	return PHL_OK;
