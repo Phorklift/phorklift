@@ -125,29 +125,13 @@ static int phl_req_get_cookie(lua_State *L)
 		if (strcasecmp(h->str, "Cookie") != 0) {
 			continue;
 		}
-		const char *p = phl_header_value(h);
-		int value_len = h->value_len;
-		while (1) {
-			if (memcmp(p, name, name_len) == 0 && p[name_len] == '=') {
-				/* find */
-				p += name_len + 1;
-				value_len -= name_len + 1;
-				const char *end = memchr(p, ';', value_len);
-				if (end != NULL) {
-					value_len = end - p;
-				}
-				lua_pushlstring(L, p, value_len);
-				return 1;
-			}
 
-			const char *end = memchr(p, ';', value_len);
-			if (end == NULL) {
-				break;
-			}
-			end++;
-			while (*end == ' ') end++;
-			value_len -= end - p;
-			p = end;
+		int value_len = h->value_len;
+		const char *value_str = wuy_http_cookie_get(phl_header_value(h),
+				&value_len, name, name_len);
+		if (value_str != NULL) {
+			lua_pushlstring(L, value_str, value_len);
+			return 1;
 		}
 	}
 	return 0;
