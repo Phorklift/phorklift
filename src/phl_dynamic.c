@@ -31,8 +31,6 @@
 
 static atomic_int *phl_dynamic_id;
 
-static int phl_dynamic_sandbox_env;
-
 static void *phl_dynamic_to_container(struct phl_dynamic_conf *sub_dyn)
 {
 	struct phl_dynamic_conf *dynamic = sub_dyn->father ? sub_dyn->father : sub_dyn;
@@ -130,8 +128,6 @@ static struct phl_dynamic_conf *phl_dynamic_parse_sub_dyn(lua_State *L,
 		return PHL_PTR_ERROR;
 	}
 
-	lua_xmove(L, phl_L, 1);
-
 	/* prepare shared-memory pool */
 	char pool_name[1000];
 	snprintf(pool_name, sizeof(pool_name), "/phorklift.pid.%d.%s",
@@ -142,18 +138,29 @@ static struct phl_dynamic_conf *phl_dynamic_parse_sub_dyn(lua_State *L,
 		return PHL_PTR_ERROR;
 	}
 
+	/* prepare the sandbox, which should be GCed automatically */
+	int sandbox_env = 0;
+	if (dynamic->enable_sandbox) {
+		sandbox_env = wuy_safelua_new(L);
+		wuy_safelua_add_package(L, "phl");
+		lua_insert(L, -2);
+		sandbox_env--;
+	}
+	wuy_cflua_setfenv(sandbox_env);
+
 	/* parse */
 	wuy_pool_t *pool = wuy_pool_new(1024);
 	void *container = NULL;
 	const void *father_container = phl_dynamic_to_container(dynamic);
 	wuy_cflua_function_t tmp_get_name = dynamic->get_name;
 	dynamic->get_name = 0; /* clear father_container->dynamic.get_name temporarily to avoid inherited */
-	wuy_cflua_setfenv(dynamic->enable_sandbox ? phl_dynamic_sandbox_env : 0);
-	const char *err = wuy_cflua_parse(phl_L, dynamic->sub_table, &container,
+	const char *err = wuy_cflua_parse(L, dynamic->sub_table, &container,
 			pool, &father_container);
 	dynamic->get_name = tmp_get_name; /* recover */
 	if (err != WUY_CFLUA_OK) {
 		_log(PHL_LOG_ERROR, "parse sub %s error: %s", name, err);
+		wuy_shmpool_destroy(shmpool);
+		wuy_pool_destroy(pool);
 		return PHL_PTR_ERROR;
 	}
 
@@ -165,6 +172,8 @@ static struct phl_dynamic_conf *phl_dynamic_parse_sub_dyn(lua_State *L,
 	struct phl_dynamic_conf *sub_dyn = phl_dynamic_from_container(container, dynamic);
 	if (dynamic->enable_sandbox && !sub_dyn->enable_sandbox) {
 		_log(PHL_LOG_ERROR, "can not disable sandbox");
+		wuy_shmpool_destroy(shmpool);
+		wuy_pool_destroy(pool);
 		return PHL_PTR_ERROR;
 	}
 
@@ -329,13 +338,6 @@ void phl_dynamic_init(void)
 	atomic_store(phl_dynamic_id, 1);
 
 	atexit(wuy_shmpool_cleanup);
-}
-
-void phl_dynamic_init_post(void)
-{
-	phl_dynamic_sandbox_env = wuy_luatab_safe_env(phl_L);
-	wuy_luatab_add(phl_L, "phl");
-	wuy_luatab_set_readonly(phl_L);
 }
 
 void phl_dynamic_set_container(struct phl_dynamic_conf *dynamic,

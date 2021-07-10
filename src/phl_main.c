@@ -170,7 +170,6 @@ static int phl_run(const char *conf_file)
 	}
 
 	phl_lua_api_init();
-	phl_dynamic_init_post();
 
 	phl_conf_log(PHL_LOG_INFO, "start!");
 

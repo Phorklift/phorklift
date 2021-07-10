@@ -29,7 +29,7 @@
 #include "libwuya/wuy_rand.h"
 #include "libwuya/wuy_vhash.h"
 #include "libwuya/wuy_luastr.h"
-#include "libwuya/wuy_luatab.h"
+#include "libwuya/wuy_safelua.h"
 
 #include "libloop/loop.h"
 
