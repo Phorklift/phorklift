@@ -333,8 +333,9 @@ void phl_dynamic_init(void)
 
 void phl_dynamic_init_post(void)
 {
-	phl_dynamic_sandbox_env = wuy_safelua_env(phl_L);
-	wuy_safelua_add(phl_L, "phl");
+	phl_dynamic_sandbox_env = wuy_luatab_safe_env(phl_L);
+	wuy_luatab_add(phl_L, "phl");
+	wuy_luatab_set_readonly(phl_L);
 }
 
 void phl_dynamic_set_container(struct phl_dynamic_conf *dynamic,
