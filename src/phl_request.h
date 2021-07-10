@@ -130,10 +130,14 @@ void phl_request_subr_close(struct phl_request *subr);
 
 int phl_request_subr_flush_connection(struct phl_connection *c);
 
+void phl_request_response_internal_error(struct phl_request *r, const char *fmt, ...);
+
 #define phl_request_do_log(r, log, level, fmt, ...) \
 	do { \
 		const char *_uri = (level >= PHL_LOG_ERROR) ? r->req.uri.raw : "-"; \
 		phl_log_level(log, level, "%lu:%u %s " fmt, r->c->id, r->id, _uri, ##__VA_ARGS__); \
+		if (level == PHL_LOG_ERROR && r->conf_path->response_internal_error) \
+			phl_request_response_internal_error(r, "INTERNAL ERROR: " fmt "\n", ##__VA_ARGS__); \
 	} while(0)
 
 #define phl_request_log(r, level, fmt, ...) \

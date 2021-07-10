@@ -130,8 +130,9 @@ static void phl_request_access_log(struct phl_request *r)
 #define PHL_DIFF(a, b) (a != 0) ? a - b : -1
 #define PHL_DIFF2(a, b) (b != 0) ? a - b : -1
 	long close_time = wuy_time_ms();
-	phl_log_file_write(log->file, log->max_line, "%s %s %d %lu %d %ld %ld %ld %ld %s",
+	phl_log_file_write(log->file, log->max_line, "%s %s %s %d %lu %d %ld %ld %ld %ld %s",
 			r->req.host ? r->req.host : "-",
+			wuy_http_string_method(r->req.method),
 			r->req.uri.raw,
 			r->resp.status_code,
 			r->resp.sent_length,
@@ -432,7 +433,19 @@ static int phl_request_process_body(struct phl_request *r) // TODO!!!
 	return r->conf_path->content->content.process_body(r);
 }
 
-static inline int phl_request_simple_response_body(enum wuy_http_status_code code,
+void phl_request_response_internal_error(struct phl_request *r, const char *fmt, ...)
+{
+	char tmpbuf[1024];
+	va_list ap;
+	va_start(ap, fmt);
+	int len = vsnprintf(tmpbuf, sizeof(tmpbuf), fmt, ap);
+	va_end(ap);
+
+	r->resp.easy_string = wuy_pool_strndup(r->pool, tmpbuf, len);
+	r->resp.easy_str_len = len;
+}
+
+static int phl_request_simple_response_body(enum wuy_http_status_code code,
 		char *buf, int len)
 {
 #define PHL_STATUS_CODE_RESPONSE_BODY_FORMAT \
