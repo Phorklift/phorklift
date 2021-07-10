@@ -321,6 +321,7 @@ int phl_request_append_body(struct phl_request *r, const void *buf, int len)
 
 static int phl_request_receive_headers(struct phl_request *r)
 {
+	printf("top %d\n", lua_gettop(phl_L));
 	if (r->c->is_http2) {
 		return PHL_AGAIN;
 	}
@@ -442,7 +443,7 @@ void phl_request_response_internal_error(struct phl_request *r, const char *fmt,
 	va_end(ap);
 
 	r->resp.easy_string = wuy_pool_strndup(r->pool, tmpbuf, len);
-	r->resp.easy_str_len = len;
+	r->resp.content_length = len;
 }
 
 static int phl_request_simple_response_body(enum wuy_http_status_code code,
@@ -475,7 +476,7 @@ static int phl_request_response_headers_1(struct phl_request *r)
 	if (!r->is_broken) {
 		ret = r->conf_path->content->content.response_headers(r);
 
-	} else if (r->resp.easy_str_len == 0 && r->resp.easy_fd == 0) {
+	} else if (r->resp.easy_string == NULL && r->resp.easy_fd == 0) {
 		r->resp.content_length = phl_request_simple_response_body(r->resp.status_code, NULL, 0);
 	}
 
@@ -539,8 +540,8 @@ static int phl_request_response_body(struct phl_request *r)
 	}
 
 	/* generate body */
-	if (r->resp.easy_str_len > 0) {
-		body_len = r->resp.easy_str_len - r->resp.content_generated_length;
+	if (r->resp.easy_string != NULL) {
+		body_len = r->resp.content_length - r->resp.content_generated_length;
 		if (body_len > buf_len) {
 			body_len = buf_len;
 		}

@@ -50,11 +50,10 @@ static int phl_static_dir_headers(struct phl_request *r, int fd)
 	phl_header_add_lite(&r->resp.headers, "Content-Type",
 			"application/text", 16, r->pool);
 
-	r->resp.easy_str_len = p - buffer;
-	r->resp.easy_string = wuy_pool_strndup(r->pool, buffer, r->resp.easy_str_len);
+	r->resp.content_length = p - buffer;
+	r->resp.easy_string = wuy_pool_strndup(r->pool, buffer, r->resp.content_length);
 
 	r->resp.status_code = WUY_HTTP_200;
-	r->resp.content_length = r->resp.easy_str_len;
 	return PHL_OK;
 }
 

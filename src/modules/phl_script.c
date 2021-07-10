@@ -34,18 +34,17 @@ static int phl_script_generate_response_headers(struct phl_request *r)
 	}
 
 	/* optional body */
-	r->resp.easy_str_len = 0;
+	r->resp.content_length = 0;
 	r->resp.easy_string = NULL;
 	if (lua_type(L, -1) == LUA_TSTRING) {
 		size_t len;
 		const char *body = lua_tolstring(L, -1, &len);
 
-		r->resp.easy_str_len = len;
+		r->resp.content_length = len;
 		r->resp.easy_string = wuy_pool_strndup(r->pool, body, len);
 	}
 
 	r->resp.status_code = status_code;
-	r->resp.content_length = r->resp.easy_str_len;
 	return PHL_OK;
 }
 

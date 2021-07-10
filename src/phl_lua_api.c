@@ -234,7 +234,7 @@ static int phl_lua_api_echo(lua_State *L)
 
 	struct phl_request *r = phl_lua_api_current;
 	r->resp.easy_string = wuy_pool_strndup(r->pool, s, len);
-	r->resp.easy_str_len = len;
+	r->resp.content_length = len;
 	return 0;
 }
 
