@@ -321,7 +321,6 @@ int phl_request_append_body(struct phl_request *r, const void *buf, int len)
 
 static int phl_request_receive_headers(struct phl_request *r)
 {
-	printf("top %d\n", lua_gettop(phl_L));
 	if (r->c->is_http2) {
 		return PHL_AGAIN;
 	}

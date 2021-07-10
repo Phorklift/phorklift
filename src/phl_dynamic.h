@@ -11,6 +11,7 @@ struct phl_dynamic_conf {
 	int			error_timeout;
 	int			sub_max;
 	bool			enable_sandbox;
+	bool			no_stale;
 	struct phl_log		*log;
 
 	/* runtime: father only */

@@ -326,7 +326,8 @@ get_conf:
 	return phl_dynamic_to_container(new_sub);
 
 fail:
-	if (sub_dyn->is_just_holder) {
+	if (sub_dyn->is_just_holder || dynamic->no_stale) {
+		phl_dynamic_delete(sub_dyn);
 		return PHL_PTR_ERROR;
 	}
 	return phl_dynamic_to_container(sub_dyn); /* use stale */
@@ -414,6 +415,11 @@ static struct wuy_cflua_command phl_dynamic_conf_commands[] = {
 		.type = WUY_CFLUA_TYPE_TABLE,
 		.offset = offsetof(struct phl_dynamic_conf, log),
 		.u.table = &phl_log_omit_conf_table,
+	},
+	{	.name = "no_stale",
+		.type = WUY_CFLUA_TYPE_BOOLEAN,
+		.offset = offsetof(struct phl_dynamic_conf, no_stale),
+		.description = "For debug only.",
 	},
 	{	.name = "enable_sandbox",
 		.type = WUY_CFLUA_TYPE_BOOLEAN,
