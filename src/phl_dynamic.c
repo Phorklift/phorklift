@@ -31,6 +31,8 @@
 
 static atomic_int *phl_dynamic_id;
 
+static int phl_dynamic_sandbox_env;
+
 static void *phl_dynamic_to_container(struct phl_dynamic_conf *sub_dyn)
 {
 	struct phl_dynamic_conf *dynamic = sub_dyn->father ? sub_dyn->father : sub_dyn;
@@ -146,6 +148,7 @@ static struct phl_dynamic_conf *phl_dynamic_parse_sub_dyn(lua_State *L,
 	const void *father_container = phl_dynamic_to_container(dynamic);
 	wuy_cflua_function_t tmp_get_name = dynamic->get_name;
 	dynamic->get_name = 0; /* clear father_container->dynamic.get_name temporarily to avoid inherited */
+	wuy_cflua_setfenv(dynamic->enable_sandbox ? phl_dynamic_sandbox_env : 0);
 	const char *err = wuy_cflua_parse(phl_L, dynamic->sub_table, &container,
 			pool, &father_container);
 	dynamic->get_name = tmp_get_name; /* recover */
@@ -158,8 +161,13 @@ static struct phl_dynamic_conf *phl_dynamic_parse_sub_dyn(lua_State *L,
 
 	_log(PHL_LOG_INFO, "sub %s get_conf() done", name);
 
-	/* init the sub-dyn */
+	/* check and init the sub-dyn */
 	struct phl_dynamic_conf *sub_dyn = phl_dynamic_from_container(container, dynamic);
+	if (dynamic->enable_sandbox && !sub_dyn->enable_sandbox) {
+		_log(PHL_LOG_ERROR, "can not disable sandbox");
+		return PHL_PTR_ERROR;
+	}
+
 	sub_dyn->name = wuy_pool_strdup(pool, name);
 	sub_dyn->father = dynamic;
 	sub_dyn->check_time = time(NULL);
@@ -323,6 +331,12 @@ void phl_dynamic_init(void)
 	atexit(wuy_shmpool_cleanup);
 }
 
+void phl_dynamic_init_post(void)
+{
+	phl_dynamic_sandbox_env = wuy_safelua_env(phl_L);
+	wuy_safelua_add(phl_L, "phl");
+}
+
 void phl_dynamic_set_container(struct phl_dynamic_conf *dynamic,
 		struct wuy_cflua_table *conf_table)
 {
@@ -397,6 +411,10 @@ static struct wuy_cflua_command phl_dynamic_conf_commands[] = {
 		.type = WUY_CFLUA_TYPE_TABLE,
 		.offset = offsetof(struct phl_dynamic_conf, log),
 		.u.table = &phl_log_omit_conf_table,
+	},
+	{	.name = "enable_sandbox",
+		.type = WUY_CFLUA_TYPE_BOOLEAN,
+		.offset = offsetof(struct phl_dynamic_conf, enable_sandbox),
 	},
 
 	/* sub */

@@ -10,6 +10,7 @@ struct phl_dynamic_conf {
 	int			idle_timeout;
 	int			error_timeout;
 	int			sub_max;
+	bool			enable_sandbox;
 	struct phl_log		*log;
 
 	/* runtime: father only */
@@ -53,6 +54,7 @@ static inline bool phl_dynamic_is_sub(struct phl_dynamic_conf *dynamic)
 }
 
 void phl_dynamic_init(void);
+void phl_dynamic_init_post(void);
 
 extern struct wuy_cflua_table phl_dynamic_conf_table;
 
