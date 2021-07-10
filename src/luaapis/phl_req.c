@@ -57,6 +57,20 @@ static void phl_req_queries(lua_State *L, const char *query_str, int query_len)
 	}
 }
 
+static int phl_req_set_uri_path(lua_State *L)
+{
+	size_t len;
+	const char *path = lua_tolstring(L, -1, &len);
+	if (path == NULL) {
+		return luaL_error(L, "invalid uri.path");
+	}
+
+	struct phl_request *r = phl_lua_api_current;
+	r->req.uri.path = wuy_pool_strndup(r->pool, path, len);
+	r->req.uri.is_rewrited = true;
+	return 0;
+}
+
 static int phl_req_get_uri_query(lua_State *L)
 {
 	struct phl_request *r = phl_lua_api_current;
@@ -182,6 +196,7 @@ static int phl_req_mm_index(lua_State *L)
 }
 
 static const struct phl_lua_api_reg_func phl_req_functions[] = {
+	{ "set_uri_path", phl_req_set_uri_path },
 	{ "get_uri_query", phl_req_get_uri_query },
 	{ "get_body_query", phl_req_get_body_query },
 	{ "get_header", phl_req_get_header },
