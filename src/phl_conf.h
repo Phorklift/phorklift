@@ -40,7 +40,7 @@ struct phl_conf_listen_stats {
 
 struct phl_conf_access_log {
 	const char		*filename;
-	double			sampling_rate;
+	float			sampling_rate;
 	bool			replace_format;
 	bool			enable_subrequest;
 	wuy_cflua_function_t	format;

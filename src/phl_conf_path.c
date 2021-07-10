@@ -189,7 +189,7 @@ static struct wuy_cflua_command phl_conf_path_access_log_commands[] = {
 	},
 	{	.name = "sampling_rate",
 		.description = "Set 0 to disable log.",
-		.type = WUY_CFLUA_TYPE_DOUBLE,
+		.type = WUY_CFLUA_TYPE_FLOAT,
 		.offset = offsetof(struct phl_conf_access_log, sampling_rate),
 		.limits.d = WUY_CFLUA_LIMITS(0, 1),
 		.default_value.d = 1,

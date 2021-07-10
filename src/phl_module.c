@@ -13,7 +13,7 @@ enum {
 	PHL_MODULE_FILTER_NUM,
 };
 struct phl_module_filters {
-	double			ranks[PHL_MODULE_FILTER_NUM][PHL_MODULE_MAX];
+	float			ranks[PHL_MODULE_FILTER_NUM][PHL_MODULE_MAX];
 	struct phl_module	*modules[PHL_MODULE_FILTER_NUM][PHL_MODULE_MAX];
 };
 
@@ -179,8 +179,8 @@ bool phl_module_command_is_set(struct wuy_cflua_command *cmd, void *conf)
 	switch (first->type) {
 	case WUY_CFLUA_TYPE_BOOLEAN:
 		return *(bool *)ptr;
-	case WUY_CFLUA_TYPE_DOUBLE:
-		return *(double *)ptr != 0;
+	case WUY_CFLUA_TYPE_FLOAT:
+		return *(float *)ptr != 0;
 	case WUY_CFLUA_TYPE_INTEGER:
 		return *(int *)ptr != 0;
 	case WUY_CFLUA_TYPE_STRING:
@@ -258,10 +258,10 @@ int phl_module_filter_response_body(struct phl_request *r, uint8_t *data,
 /* configuration */
 
 static int phl_module_filters_rank_index;
-static double *phl_module_filters_ranks;
-static double phl_module_filter_get_rank(const struct phl_module *m)
+static float *phl_module_filters_ranks;
+static float phl_module_filter_get_rank(const struct phl_module *m)
 {
-	double rank = phl_module_filters_ranks[m->index];
+	float rank = phl_module_filters_ranks[m->index];
 	if (!isnan(rank)) {
 		return rank;
 	}
@@ -271,8 +271,8 @@ static int phl_module_filter_cmp(const void *a, const void *b)
 {
 	const struct phl_module *ma = *(const struct phl_module **)a;
 	const struct phl_module *mb = *(const struct phl_module **)b;
-	double ranka = phl_module_filter_get_rank(ma);
-	double rankb = phl_module_filter_get_rank(mb);
+	float ranka = phl_module_filter_get_rank(ma);
+	float rankb = phl_module_filter_get_rank(mb);
 	if (ranka == rankb) {
 		return ma->index - mb->index;
 	} else {
