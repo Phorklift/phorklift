@@ -42,7 +42,7 @@ static bool phl_conf_path_name_match(const char *def, const char *req)
 	}
 }
 struct phl_conf_path *phl_conf_path_locate(struct phl_conf_host *conf_host,
-		const char *name)
+		const char *name, const char **p_pathname)
 {
 	if (conf_host->paths == NULL) {
 		return conf_host->default_path;
@@ -53,6 +53,7 @@ struct phl_conf_path *phl_conf_path_locate(struct phl_conf_host *conf_host,
 		char *pathname;
 		for (int j = 0; (pathname = conf_path->pathnames[j]) != NULL; j++) {
 			if (phl_conf_path_name_match(pathname, name)) {
+				*p_pathname = pathname;
 				return conf_path;
 			}
 		}
@@ -261,6 +262,11 @@ static struct wuy_cflua_command phl_conf_path_commands[] = {
 		.description = "If set, process the request only after receiving request body complete. "
 			"For example if you want to accept a big-file uploading to the server, "
 			"set this to false to write the request body to file in stream mode.",
+	},
+	{	.name = "remove_matched_prefix",
+		.type = WUY_CFLUA_TYPE_BOOLEAN,
+		.offset = offsetof(struct phl_conf_path, remove_matched_prefix),
+		.description = "Only if pathname starts and ends with `/`.",
 	},
 	{	.name = "response_internal_error",
 		.type = WUY_CFLUA_TYPE_BOOLEAN,

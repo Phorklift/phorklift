@@ -63,6 +63,7 @@ struct phl_conf_path {
 
 	bool			(*req_hook)(void);
 
+	bool			remove_matched_prefix;
 	bool			response_internal_error;
 
 	struct phl_log		*error_log;
@@ -179,7 +180,7 @@ struct phl_conf_host *phl_conf_host_locate(struct phl_conf_listen *conf_listen,
 		const char *name);
 
 struct phl_conf_path *phl_conf_path_locate(struct phl_conf_host *conf_host,
-		const char *name);
+		const char *name, const char **p_pathname);
 
 void phl_conf_listen_init_worker(void);
 

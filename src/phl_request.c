@@ -360,6 +360,19 @@ static int phl_request_locate_conf_host(struct phl_request *r)
 	return PHL_OK;
 }
 
+static void phl_request_remove_matched_prefix(struct phl_request *r, const char *pathname)
+{
+	if (pathname == NULL || pathname[0] != '/') {
+		return;
+	}
+	int len = strlen(pathname);
+	if (pathname[len-1] != '/') {
+		return;
+	}
+	r->req.uri.path_pos += len-1;
+	r->req.uri.path_len -= len-1;
+}
+
 static int phl_request_locate_conf_path(struct phl_request *r)
 {
 	if (r->conf_path != r->conf_host->default_path) {
@@ -371,11 +384,16 @@ static int phl_request_locate_conf_path(struct phl_request *r)
 		phl_request_log(r, PHL_LOG_INFO, "no request path");
 		return PHL_ERROR;
 	}
-	r->conf_path = phl_conf_path_locate(r->conf_host, uri_path);
+
+	const char *pathname = NULL;
+	r->conf_path = phl_conf_path_locate(r->conf_host, uri_path, &pathname);
 	if (r->conf_path == NULL) {
 		r->conf_path = r->conf_host->default_path;
 		phl_request_log(r, PHL_LOG_DEBUG, "no path matched: %s", uri_path);
 		return WUY_HTTP_404;
+	}
+	if (r->conf_path->remove_matched_prefix) {
+		phl_request_remove_matched_prefix(r, pathname);
 	}
 
 dynamic_get:
