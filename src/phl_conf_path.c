@@ -255,12 +255,17 @@ static struct wuy_cflua_command phl_conf_path_commands[] = {
 		.u.table = &phl_module_filters_conf_table,
 	},
 	{	.name = "req_body_sync",
-		.description = "If set, process the request only after receiving request body complete. "
-			"For example if you want to accept a big-file uploading to the server, "
-			"set this to false to write the request body to file in stream mode.",
 		.type = WUY_CFLUA_TYPE_BOOLEAN,
 		.offset = offsetof(struct phl_conf_path, req_body_sync),
 		.default_value.b = true,
+		.description = "If set, process the request only after receiving request body complete. "
+			"For example if you want to accept a big-file uploading to the server, "
+			"set this to false to write the request body to file in stream mode.",
+	},
+	{	.name = "response_internal_error",
+		.type = WUY_CFLUA_TYPE_BOOLEAN,
+		.offset = offsetof(struct phl_conf_path, response_internal_error),
+		.description = "For debug.",
 	},
 	{	.name = "req_body_max",
 		.description = "Max memory buffer for request body.",

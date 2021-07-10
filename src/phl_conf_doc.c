@@ -21,6 +21,7 @@ void phl_conf_doc(void)
 		"  - table\n"
 		"  - integer\n"
 		"  - float\n"
+		"  - enumstr\n"
 		"  - string\n"
 		"  - boolean\n"
 		"  - function\n"

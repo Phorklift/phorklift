@@ -63,6 +63,8 @@ struct phl_conf_path {
 
 	bool			(*req_hook)(void);
 
+	bool			response_internal_error;
+
 	struct phl_log		*error_log;
 
 	struct phl_conf_access_log	*access_log;
@@ -155,8 +157,7 @@ struct phl_conf_runtime {
 	} worker;
 
 	struct phl_conf_runtime_resolver {
-		const char *	ai_family_str;
-		int		ai_family;
+		int	ai_family;
 	} resolver;
 
 	struct phl_log		*error_log;

@@ -1,7 +1,11 @@
 #include "phl_main.h"
 
 struct phl_set_cookie_id_conf {
-	const char	*type;
+	enum {
+		COOKIE_TYPE_RANDOM32 = 0,
+		COOKIE_TYPE_RANDOM64,
+		COOKIE_TYPE_UUID,
+	} type;
 	const char	*domain;
 	const char	*path;
 	const char	*key;
@@ -15,7 +19,7 @@ struct phl_module phl_set_cookie_id_module;
 static int phl_set_cookie_id_response_headers(struct phl_request *r)
 {
 	struct phl_set_cookie_id_conf *conf = r->conf_path->module_confs[phl_set_cookie_id_module.index];
-	if (conf == NULL || conf->type == NULL) {
+	if (conf == NULL) {
 		return PHL_OK;
 	}
 
@@ -38,12 +42,18 @@ static int phl_set_cookie_id_response_headers(struct phl_request *r)
 	char buffer[4096], *p = buffer, *end = p + sizeof(buffer);
 	p += snprintf(p, end - p, "%s=", conf->key);
 
-	if (strcmp(conf->type, "random32") == 0) {
+	switch (conf->type) {
+	case COOKIE_TYPE_RANDOM32:
 		p += snprintf(p, end - p, "%ld", random());
-	} else if (strcmp(conf->type, "random64") == 0) {
+		break;
+	case COOKIE_TYPE_RANDOM64:
 		p += snprintf(p, end - p, "%lx", (random() << 32) | random());
-	} else if (strcmp(conf->type, "UUID") == 0) { // TODO
+		break;
+	case COOKIE_TYPE_UUID: // TODO
 		p += snprintf(p, end - p, "%lx", (random() << 32) | random());
+		break;
+	default:
+		abort();
 	}
 
 	if (conf->domain != NULL) {
@@ -69,25 +79,11 @@ static int phl_set_cookie_id_response_headers(struct phl_request *r)
 
 /* configuration */
 
-static const char *phl_set_cookie_id_conf_post(void *data)
-{
-	struct phl_set_cookie_id_conf *conf = data;
-	if (conf->type == NULL) {
-		return WUY_CFLUA_OK;
-	}
-	if (strcmp(conf->type, "random32") != 0 &&
-			strcmp(conf->type, "random64") != 0 &&
-			strcmp(conf->type, "UUID") != 0) {
-		return "Only support types: `random32`, `random64` and `UUID`";
-	}
-	return WUY_CFLUA_OK;
-}
-
 static struct wuy_cflua_command phl_set_cookie_id_conf_commands[] = {
-	{	.type = WUY_CFLUA_TYPE_STRING,
+	{	.type = WUY_CFLUA_TYPE_ENUMSTR,
 		.is_single_array = true,
 		.offset = offsetof(struct phl_set_cookie_id_conf, type),
-		.description = "Support: `random32`, `random64` and `UUID`."
+		.limits.e = (const char *[]) {"random32", "random64", "UUID"},
 	},
 	{	.name = "key",
 		.type = WUY_CFLUA_TYPE_STRING,
@@ -126,7 +122,6 @@ struct phl_module phl_set_cookie_id_module = {
 		.u.table = &(struct wuy_cflua_table) {
 			.commands = phl_set_cookie_id_conf_commands,
 			.size = sizeof(struct phl_set_cookie_id_conf),
-			.post = phl_set_cookie_id_conf_post,
 			.may_omit = true,
 		}
 	},

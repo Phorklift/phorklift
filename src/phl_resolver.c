@@ -235,34 +235,15 @@ int phl_resolver_connect(void)
 	return fd;
 }
 
-static const char *phl_conf_runtime_resolver_post(void *data)
-{
-	struct phl_conf_runtime_resolver *conf = data;
-	const char *str = conf->ai_family_str;
-
-	if (strcmp(str, "both46") == 0) {
-		conf->ai_family = AF_UNSPEC;
-	} else if (strcmp(str, "ipv4") == 0) {
-		conf->ai_family = AF_INET;
-	} else if (strcmp(str, "ipv6") == 0) {
-		conf->ai_family = AF_INET6;
-	} else {
-		return "only accept: 'ipv4', 'ipv6' and 'both46' for IPv4, IPv6 and both.";
-	}
-
-	return WUY_CFLUA_OK;
-}
-
 static struct wuy_cflua_command phl_conf_runtime_resovler_commands[] = {
 	{	.name = "ai_family",
-		.description = "Accepts `ipv4`, `ipv6`, `both46`.",
-		.type = WUY_CFLUA_TYPE_STRING,
-		.offset = offsetof(struct phl_conf_runtime_resolver, ai_family_str),
-		.default_value.s = "both46",
+		.type = WUY_CFLUA_TYPE_ENUMSTR,
+		.offset = offsetof(struct phl_conf_runtime_resolver, ai_family),
+		.limits.e = (const char *[]) {"both46", "ipv4", "ipv6", NULL },
+		.enum_values = (int[]) {AF_UNSPEC, AF_INET, AF_INET6 },
 	},
 	{ NULL },
 };
 struct wuy_cflua_table phl_conf_runtime_resolver_table = {
 	.commands = phl_conf_runtime_resovler_commands,
-	.post = phl_conf_runtime_resolver_post,
 };

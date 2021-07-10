@@ -38,12 +38,11 @@ static inline const char *phl_log_strlevel(enum phl_log_level level)
 
 struct phl_log {
 	const char		*filename;
-	const char		*level_str;
+	enum phl_log_level	level;
 	int			buf_size;
 	int			max_line;
 	bool			is_line_buffer;
 
-	enum phl_log_level	level;
 	struct phl_log_file	*file;
 };
 

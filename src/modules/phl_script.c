@@ -27,7 +27,8 @@ static int phl_script_generate_response_headers(struct phl_request *r)
 	int status_code = WUY_HTTP_200;
 	if (lua_type(L, 1) == LUA_TNUMBER) {
 		status_code = lua_tointeger(L, 1);
-		if (status_code <= WUY_HTTP_200 || status_code >= WUY_HTTP_504) {
+		if (status_code < WUY_HTTP_200 || status_code > WUY_HTTP_504) {
+			phl_request_log(r, PHL_LOG_ERROR, "script: invalid status_code %d", status_code);
 			status_code = WUY_HTTP_500;
 		}
 	}
@@ -35,7 +36,7 @@ static int phl_script_generate_response_headers(struct phl_request *r)
 	/* optional body */
 	r->resp.easy_str_len = 0;
 	r->resp.easy_string = NULL;
-	if (lua_type(L, 1) == LUA_TSTRING) {
+	if (lua_type(L, -1) == LUA_TSTRING) {
 		size_t len;
 		const char *body = lua_tolstring(L, -1, &len);
 

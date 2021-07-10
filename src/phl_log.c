@@ -105,22 +105,10 @@ void phl_log_init(void)
 
 /* error log */
 
-static enum phl_log_level phl_log_parse_level(const char *str)
-{
-#define X(c, l)	if (strcmp(str, #l) == 0) return PHL_LOG_##c;
-	PHL_LOG_LEVEL_TABLE
-#undef X
-	return -1;
-}
-
 static const char *phl_log_conf_post(void *data)
 {
 	struct phl_log *log = data;
 
-	log->level = phl_log_parse_level(log->level_str);
-	if (log->level == -1) {
-		return "invalid log level";
-	}
 	if (log->buf_size == 0) {
 		log->is_line_buffer = true;
 		log->buf_size = 16 * 1024;
@@ -153,6 +141,17 @@ static struct wuy_cflua_command phl_log_conf_commands[] = {
 		.is_single_array = true,
 		.offset = offsetof(struct phl_log, filename),
 	},
+	{	.name = "level",
+		.type = WUY_CFLUA_TYPE_ENUMSTR,
+		.offset = offsetof(struct phl_log, level),
+		.limits.e = (const char *[]) {
+			#define X(c, l)	#l,
+			PHL_LOG_LEVEL_TABLE
+			#undef X
+			NULL,
+		},
+		.default_value.n = 3, /* "error" */
+	},
 	{	.name = "buffer_size",
 		.type = WUY_CFLUA_TYPE_INTEGER,
 		.offset = offsetof(struct phl_log, buf_size),
@@ -164,11 +163,6 @@ static struct wuy_cflua_command phl_log_conf_commands[] = {
 		.offset = offsetof(struct phl_log, max_line),
 		.limits.n = WUY_CFLUA_LIMITS_LOWER(80),
 		.default_value.n = 4 * 1024,
-	},
-	{	.name = "level",
-		.type = WUY_CFLUA_TYPE_STRING,
-		.offset = offsetof(struct phl_log, level_str),
-		.default_value.s = "error",
 	},
 	{ NULL },
 };
