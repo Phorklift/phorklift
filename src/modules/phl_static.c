@@ -11,6 +11,7 @@ struct phl_static_conf {
 	const char	*index;
 	struct phl_log	*log;
 	bool		list_dir;
+	bool		enable_upload;
 
 	int		dirfd;
 };
@@ -23,12 +24,37 @@ static const char *phl_static_mime_type(const char *filename)
 	return "TODO";
 }
 
-static int phl_static_process_request_headers(struct phl_request *r)
+static int phl_static_generate_response_headers_post(struct phl_request *r)
 {
-	if (r->req.method != WUY_HTTP_GET && r->req.method != WUY_HTTP_HEAD) {
+	struct phl_static_conf *conf = r->conf_path->module_confs[phl_static_module.index];
+
+	if (!conf->enable_upload) {
 		return WUY_HTTP_405;
 	}
-	return PHL_OK;
+
+	const char *filename = r->req.uri.path + 1;
+	if (filename[strlen(filename)-1] == '/') {
+		return WUY_HTTP_405;
+	}
+
+	phl_request_log_at(r, conf->log, PHL_LOG_DEBUG, "open/w file %s", filename);
+
+	int fd = openat(conf->dirfd, filename, O_WRONLY | O_CREAT, 0644);
+	if (fd < 0) {
+		phl_request_log_at(r, conf->log, PHL_LOG_INFO, "error to open/w file %s %s",
+				filename, strerror(errno));
+		return WUY_HTTP_404;
+	}
+
+	if (write(fd, r->req.body_buf, r->req.body_len) < 0) {
+		phl_request_log_at(r, conf->log, PHL_LOG_INFO, "error to write file %s %s",
+				filename, strerror(errno));
+		return WUY_HTTP_500;
+	}
+	close(fd);
+
+	r->resp.content_length = 0;
+	return WUY_HTTP_201;
 }
 
 static int phl_static_dir_headers(struct phl_request *r, int fd)
@@ -104,6 +130,10 @@ static int phl_static_range_headers(struct phl_request *r, struct phl_header *h,
 
 static int phl_static_generate_response_headers(struct phl_request *r)
 {
+	if (r->req.method == WUY_HTTP_POST || r->req.method == WUY_HTTP_PUT) {
+		return phl_static_generate_response_headers_post(r);
+	}
+
 	struct phl_static_conf *conf = r->conf_path->module_confs[phl_static_module.index];
 
 	const char *filename = r->req.uri.path + 1;
@@ -231,6 +261,10 @@ static struct wuy_cflua_command phl_static_conf_commands[] = {
 		.type = WUY_CFLUA_TYPE_BOOLEAN,
 		.offset = offsetof(struct phl_static_conf, list_dir),
 	},
+	{	.name = "enable_upload",
+		.type = WUY_CFLUA_TYPE_BOOLEAN,
+		.offset = offsetof(struct phl_static_conf, enable_upload),
+	},
 	{	.name = "index",
 		.description = "Set the index file if directory is queried. Only if list_dir not set.",
 		.type = WUY_CFLUA_TYPE_STRING,
@@ -260,7 +294,6 @@ struct phl_module phl_static_module = {
 	},
 
 	.content = {
-		.process_headers = phl_static_process_request_headers,
 		.response_headers = phl_static_generate_response_headers,
 	},
 
