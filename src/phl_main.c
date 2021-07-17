@@ -81,6 +81,10 @@ static void phl_worker_entry(void)
 	phl_in_worker = true;
 	phl_pid = getpid();
 
+	if (phl_conf_runtime->worker.uid != 0) {
+		assert(setuid(phl_conf_runtime->worker.uid) == 0);
+	}
+
 	phl_conf_log(PHL_LOG_INFO, "worker starts!");
 
 	signal(SIGHUP, SIG_IGN);

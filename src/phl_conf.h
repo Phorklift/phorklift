@@ -154,7 +154,9 @@ struct phl_conf_runtime {
 	const char		*pid;
 
 	struct phl_conf_runtime_worker {
-		int	num;
+		int		num;
+		const char	*user;
+		uid_t		uid;
 	} worker;
 
 	struct phl_conf_runtime_resolver {

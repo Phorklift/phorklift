@@ -39,11 +39,11 @@ static int phl_static_generate_response_headers_post(struct phl_request *r)
 
 	phl_request_log_at(r, conf->log, PHL_LOG_DEBUG, "open/w file %s", filename);
 
-	int fd = openat(conf->dirfd, filename, O_WRONLY | O_CREAT, 0644);
+	int fd = openat(conf->dirfd, filename, O_WRONLY | O_TRUNC | O_CREAT, 0644);
 	if (fd < 0) {
 		phl_request_log_at(r, conf->log, PHL_LOG_INFO, "error to open/w file %s %s",
 				filename, strerror(errno));
-		return WUY_HTTP_404;
+		return errno == EACCES ? WUY_HTTP_403 : WUY_HTTP_404;
 	}
 
 	if (write(fd, r->req.body_buf, r->req.body_len) < 0) {

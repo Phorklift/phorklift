@@ -1,4 +1,6 @@
 #include "phl_main.h"
+#include <sys/types.h>
+#include <pwd.h>
 
 static int phl_conf_runtime_name(void *data, char *buf, int size)
 {
@@ -19,6 +21,16 @@ static const char *phl_conf_runtime_worker_post(void *data)
 		}
 	}
 
+	if (geteuid() == 0) {
+		struct passwd *pwd = getpwnam(worker->user != NULL ? worker->user : "nobody");
+		if (pwd == NULL) {
+			return "fail to get worker user-id";
+		}
+		worker->uid = pwd->pw_uid;
+	} else if (worker->user != NULL) {
+		return "only root can change worker's user";
+	}
+
 	return WUY_CFLUA_OK;
 }
 
@@ -35,6 +47,10 @@ static struct wuy_cflua_command phl_conf_runtime_worker_commands[] = {
 			"Set 0 for #CPU. Set -1 to disable master-worker mode.",
 		.is_single_array = true,
 		.offset = offsetof(struct phl_conf_runtime_worker, num),
+	},
+	{	.name = "user",
+		.type = WUY_CFLUA_TYPE_STRING,
+		.offset = offsetof(struct phl_conf_runtime_worker, user),
 	},
 	{ NULL },
 };
