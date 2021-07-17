@@ -9,4 +9,7 @@ const char *phl_lua_call_lstring(struct phl_request *r,
 int phl_lua_call_boolean(struct phl_request *r,
 		wuy_cflua_function_t f);
 
+float phl_lua_call_float(struct phl_request *r,
+		wuy_cflua_function_t f);
+
 #endif

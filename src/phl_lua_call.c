@@ -42,8 +42,25 @@ int phl_lua_call_boolean(struct phl_request *r, wuy_cflua_function_t f)
 	if (!phl_lua_call(r, f)) {
 		return -1;
 	}
+	if (!lua_isboolean(phl_L, -1)) {
+		return -1;
+	}
 
 	int ret = lua_toboolean(phl_L, -1);
+	lua_pop(phl_L, -1);
+	return ret;
+}
+
+float phl_lua_call_float(struct phl_request *r, wuy_cflua_function_t f)
+{
+	if (!phl_lua_call(r, f)) {
+		return -1;
+	}
+	if (!lua_isnumber(phl_L, -1)) {
+		return -1;
+	}
+
+	float ret = lua_tonumber(phl_L, -1);
 	lua_pop(phl_L, -1);
 	return ret;
 }

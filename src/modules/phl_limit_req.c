@@ -16,23 +16,28 @@ struct phl_limit_req_shared {
 	wuy_nop_list_t		lru_list;
 	wuy_nop_list_t		free_list;
 
-	struct phl_limit_req_node	*used_pos;
+	struct phl_limit_req_node	*nodes_begin;
 	const struct phl_limit_req_node	*nodes_end;
 
 	long			stats_total;
 	long			stats_limited;
 
+	int			hash_bucket_size;
 	wuy_nop_hlist_t		hash_buckets[0];
 };
 
 struct phl_limit_req_conf {
+	wuy_cflua_function_t	weight;
 	wuy_cflua_function_t	key;
 	int			key_max_len;
 	struct wuy_meter_conf	meter;
 	struct phl_log		*log;
 	int			size;
-	int			hash_buckets;
-	int			log_mod;
+
+	bool			add_headers;
+	int			status_code;
+	int			page_len;
+	const char		*page;
 
 	struct phl_limit_req_shared	*shared;
 };
@@ -46,9 +51,12 @@ static void phl_limit_req_expire(struct phl_limit_req_conf *conf)
 {
 	struct phl_limit_req_shared *shared = conf->shared;
 
+	double now = wuy_meter_now();
+	double expire = conf->meter.burst / conf->meter.rate;
+
 	struct phl_limit_req_node *node;
 	while (wuy_nop_list_first_type(&shared->lru_list, node, list_node)) {
-		if (!wuy_meter_is_expired(&conf->meter, &node->meter)) {
+		if (now - node->meter.reset < expire) {
 			break;
 		}
 
@@ -72,9 +80,9 @@ static struct phl_limit_req_node *phl_limit_req_alloc_node(struct phl_limit_req_
 	}
 
 	/* allocate new node */
-	if (shared->used_pos < shared->nodes_end) {
-		node = shared->used_pos++;
-		shared->used_pos = (void *)((char *)shared->used_pos + conf->key_max_len);
+	if (shared->nodes_begin < shared->nodes_end) {
+		node = shared->nodes_begin++;
+		shared->nodes_begin = (void *)((char *)shared->nodes_begin + conf->key_max_len);
 		return node;
 	}
 
@@ -92,6 +100,19 @@ static int phl_limit_req_process_headers(struct phl_request *r)
 
 	if (shared == NULL) {
 		return PHL_OK;
+	}
+
+	/* weight */
+	float weight = 1;
+	if (wuy_cflua_is_function_set(conf->weight)) {
+		weight = phl_lua_call_float(r, conf->weight);
+		if (weight == -1) {
+			_log(PHL_LOG_ERROR, "fail in weight()");
+			return PHL_ERROR;
+		}
+		if (weight == 0) {
+			return PHL_OK;
+		}
 	}
 
 	/* generate key */
@@ -115,7 +136,7 @@ static int phl_limit_req_process_headers(struct phl_request *r)
 	}
 
 	/* hash search */
-	uint64_t hash = wuy_vhash64(key, len) % conf->hash_buckets;
+	uint64_t hash = wuy_vhash64(key, len) % shared->hash_bucket_size;
 	wuy_nop_hlist_t *bucket = &shared->hash_buckets[hash];
 
 	pthread_mutex_lock(&shared->lock); /* lock here */
@@ -124,33 +145,58 @@ static int phl_limit_req_process_headers(struct phl_request *r)
 	bool found = false;
 	struct phl_limit_req_node *node;
 	wuy_nop_hlist_iter_type(bucket, node, hash_node, shared) {
-		if (strcmp(node->key, key) == 0) {
+		if (memcmp(node->key, key, len) == 0 && node->key[len] == '\0') {
 			found = true;
 			break;
 		}
 	}
 
-	/* not found, create new meter */
-	if (!found) {
+	if (!found) { /* not found, create new meter */
 		_log(PHL_LOG_DEBUG, "new meter. %d", shared->stats_total);
 
 		node = phl_limit_req_alloc_node(conf);
-		strcpy(node->key, key);
-		wuy_meter_init(&node->meter);
+		memcpy(node->key, key, len);
+		node->key[len] = '\0';
+		bzero(&node->meter, sizeof(struct wuy_meter_node));
 		wuy_nop_hlist_insert(bucket, &node->hash_node, shared);
-		wuy_nop_list_insert(&shared->lru_list, &node->list_node);
 
-	/* found and limited */
-	} else if (!wuy_meter_check(&conf->meter, &node->meter)) {
-
-		shared->stats_limited++;
-		pthread_mutex_unlock(&shared->lock); /* unlock here */
-		_log(PHL_LOG_INFO, "limited!");
-		return WUY_HTTP_503;
+		wuy_nop_list_append(&shared->lru_list, &node->list_node);
+	} else {
+		wuy_nop_list_delete(&shared->lru_list, &node->list_node);
+		wuy_nop_list_append(&shared->lru_list, &node->list_node);
 	}
 
-	pthread_mutex_unlock(&shared->lock); /* unlock here */
-	return PHL_OK;
+	bool ok = wuy_meter_check(&conf->meter, &node->meter, weight);
+	if (!ok) {
+		shared->stats_limited++;
+	}
+
+	pthread_mutex_unlock(&shared->lock);
+
+	if (conf->add_headers) {
+		char buf[20];
+		int len = sprintf(buf, "%g", conf->meter.rate);
+		phl_header_add_lite(&r->resp.headers, "X-RateLimit-Limit", buf, len, r->pool);
+
+		len = sprintf(buf, "%d", (int)node->meter.tokens);
+		phl_header_add_lite(&r->resp.headers, "X-RateLimit-Remaining", buf, len, r->pool);
+
+		len = sprintf(buf, "%ld", (long)node->meter.reset);
+		phl_header_add_lite(&r->resp.headers, "X-RateLimit-Reset", buf, len, r->pool);
+	}
+
+	if (ok) {
+		return PHL_OK;
+	}
+
+	/* limited */
+	_log(PHL_LOG_INFO, "limited!");
+
+	if (conf->page != NULL) {
+		r->resp.easy_string = conf->page;
+		r->resp.content_length = conf->page_len;
+	}
+	return conf->status_code;
 }
 
 static const char *phl_limit_req_conf_post(void *data)
@@ -175,11 +221,15 @@ static const char *phl_limit_req_conf_post(void *data)
 
 		shared->has_inited = true;
 
-		shared->used_pos = (void *)((char *)shared + sizeof(wuy_nop_hlist_t) * conf->hash_buckets);
-		shared->nodes_end = (void *)((char *)shared + conf->size
-				- (sizeof(struct phl_limit_req_node) + conf->key_max_len));
+		/* calculate shared->hash_bucket_size */
+		size_t node_size = sizeof(struct phl_limit_req_node) + conf->key_max_len;
+		shared->hash_bucket_size = conf->size / node_size / 4;
 
-		if (shared->nodes_end <= shared->used_pos) {
+		/* calculate shared->nodes_begin/nodes_end */
+		shared->nodes_begin = (void *)((char *)(shared + 1) + sizeof(wuy_nop_hlist_t) * shared->hash_bucket_size);
+		shared->nodes_end = (void *)((char *)shared + conf->size - node_size);
+
+		if (shared->nodes_end <= shared->nodes_begin) {
 			//pthread_mutex_unlock(&phl_limit_req_conf_lock);
 			return "too small size";
 		}
@@ -196,46 +246,57 @@ static const char *phl_limit_req_conf_post(void *data)
 }
 
 static struct wuy_cflua_command phl_limit_req_conf_commands[] = {
-	{	.type = WUY_CFLUA_TYPE_INTEGER,
-		.description = "Limit rate per second.",
+	{	.type = WUY_CFLUA_TYPE_FLOAT,
 		.is_single_array = true,
 		.offset = offsetof(struct phl_limit_req_conf, meter.rate),
 		.limits.n = WUY_CFLUA_LIMITS_NON_NEGATIVE,
+		.description = "Limit rate per second.",
 	},
 	{	.name = "burst",
-		.type = WUY_CFLUA_TYPE_INTEGER,
+		.type = WUY_CFLUA_TYPE_FLOAT,
 		.offset = offsetof(struct phl_limit_req_conf, meter.burst),
 		.limits.n = WUY_CFLUA_LIMITS_NON_NEGATIVE,
-	},
-	{	.name = "punish",
-		.description = "Deny for such long time if limited.",
-		.type = WUY_CFLUA_TYPE_INTEGER,
-		.offset = offsetof(struct phl_limit_req_conf, meter.punish_sec),
-		.limits.n = WUY_CFLUA_LIMITS_NON_NEGATIVE,
+		.description = "Burst rate per second.",
 	},
 	{	.name = "key",
-		.description = "Return a string key. Client IP address is used if not set.",
 		.type = WUY_CFLUA_TYPE_FUNCTION,
 		.offset = offsetof(struct phl_limit_req_conf, key),
+		.description = "Return a string key. Client IP address is used if not set.",
+	},
+	{	.name = "weight",
+		.type = WUY_CFLUA_TYPE_FUNCTION,
+		.offset = offsetof(struct phl_limit_req_conf, weight),
+		.description = "Return a weight float number. Return 0 to skip the limit. 1 is used if not set.",
 	},
 	{	.name = "key_max_len",
 		.type = WUY_CFLUA_TYPE_FUNCTION,
 		.offset = offsetof(struct phl_limit_req_conf, key_max_len),
 		.default_value.n = 40, /* UUID=36, IPv6=39 */
-		.limits.n = WUY_CFLUA_LIMITS(8, 255),
+		.limits.n = WUY_CFLUA_LIMITS(8, 127),
 	},
 	{	.name = "size",
-		.description = "Size of shared-memory.",
 		.type = WUY_CFLUA_TYPE_INTEGER,
 		.offset = offsetof(struct phl_limit_req_conf, size),
-		.default_value.n = 1024*1024, /* 1 MiB*/
+		.default_value.n = 64*1024, /* 64K */
 		.limits.n = WUY_CFLUA_LIMITS_LOWER(16*1024),
+		.description = "Size of shared-memory.",
 	},
-	{	.name = "hash_buckets",
+	{	.name = "add_headers",
+		.type = WUY_CFLUA_TYPE_BOOLEAN,
+		.offset = offsetof(struct phl_limit_req_conf, add_headers),
+		.default_value.n = true,
+		.description = "Add `X-RateLimit-*` response headers."
+	},
+	{	.name = "status_code",
 		.type = WUY_CFLUA_TYPE_INTEGER,
-		.offset = offsetof(struct phl_limit_req_conf, hash_buckets),
-		.default_value.n = 1024,
-		.limits.n = WUY_CFLUA_LIMITS_LOWER(64),
+		.offset = offsetof(struct phl_limit_req_conf, status_code),
+		.default_value.n = WUY_HTTP_503,
+		.limits.n = WUY_CFLUA_LIMITS(WUY_HTTP_200, 599),
+	},
+	{	.name = "page",
+		.type = WUY_CFLUA_TYPE_STRING,
+		.offset = offsetof(struct phl_limit_req_conf, page),
+		.u.length_offset = offsetof(struct phl_limit_req_conf, page_len),
 	},
 	{	.name = "log",
 		.type = WUY_CFLUA_TYPE_TABLE,
