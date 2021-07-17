@@ -3,6 +3,8 @@
 struct phl_auth_basic_conf {
 	const char	**users;
 	const char	*realm;
+	const char	*page;
+	int		page_len;
 };
 
 struct phl_module phl_auth_basic_module;
@@ -15,6 +17,11 @@ static int phl_auth_basic_fail(struct phl_request *r)
 	int len = sprintf(resp_header, "Basic realm=\"%s\"", conf->realm);
 	phl_header_add(&r->resp.headers, "WWW-Authenticate",
 			sizeof("WWW-Authenticate")-1, resp_header, len, r->pool);
+
+	if (conf->page != NULL) {
+		r->resp.easy_string = conf->page;
+		r->resp.content_length = conf->page_len;
+	}
 
 	return WUY_HTTP_401;
 }
@@ -79,6 +86,11 @@ static struct wuy_cflua_command phl_auth_basic_conf_commands[] = {
 		.type = WUY_CFLUA_TYPE_STRING,
 		.offset = offsetof(struct phl_auth_basic_conf, realm),
 		.default_value.s = "hello",
+	},
+	{	.name = "page",
+		.type = WUY_CFLUA_TYPE_STRING,
+		.offset = offsetof(struct phl_auth_basic_conf, page),
+		.u.length_offset = offsetof(struct phl_auth_basic_conf, page_len),
 	},
 	{ NULL }
 };

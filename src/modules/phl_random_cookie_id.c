@@ -1,60 +1,96 @@
 #include "phl_main.h"
 
-struct phl_set_cookie_id_conf {
-	enum {
-		COOKIE_TYPE_RANDOM32 = 0,
-		COOKIE_TYPE_RANDOM64,
-		COOKIE_TYPE_UUID,
-	} type;
+struct phl_random_cookie_id_conf {
+	bool		check_mode;
+	const char	*secret;
+	uint64_t	secret_hash;
+	const char	*name;
+
 	const char	*domain;
 	const char	*path;
-	const char	*key;
 	int		max_age;
 	bool		secure;
 	bool		HttpOnly;
 };
 
-struct phl_module phl_set_cookie_id_module;
+struct phl_module phl_random_cookie_id_module;
 
-static int phl_set_cookie_id_response_headers(struct phl_request *r)
+static const char *phl_random_cookie_id_get(struct phl_request *r, int *p_len)
 {
-	struct phl_set_cookie_id_conf *conf = r->conf_path->module_confs[phl_set_cookie_id_module.index];
-	if (conf == NULL) {
-		return PHL_OK;
-	}
+	struct phl_random_cookie_id_conf *conf = r->conf_path->module_confs[phl_random_cookie_id_module.index];
 
-	/* search request Cookie headers */
 	struct phl_header *h;
 	wuy_slist_iter_type(&r->req.headers, h, list_node) {
 		if (strcasecmp(h->str, "Cookie") != 0) {
 			continue;
 		}
 
-		int value_len = h->value_len;
+		*p_len = h->value_len;
 		const char *value_str = wuy_http_cookie_get(phl_header_value(h),
-				&value_len, conf->key, strlen(conf->key));
+				p_len, conf->name, strlen(conf->name));
 		if (value_str != NULL) {
-			return PHL_OK;
+			return value_str;
+		}
+	}
+	return NULL;
+}
+
+static int phl_random_cookie_id_process_headers(struct phl_request *r)
+{
+	struct phl_random_cookie_id_conf *conf = r->conf_path->module_confs[phl_random_cookie_id_module.index];
+	if (conf == NULL || !conf->check_mode) {
+		return PHL_OK;
+	}
+
+	int len;
+	const char *str = phl_random_cookie_id_get(r, &len);
+	if (str == NULL) {
+		return WUY_HTTP_401;
+	}
+
+	char *end;
+	long rand = strtol(str, &end, 16);
+	if (rand == 0 || *end != '-') {
+		return WUY_HTTP_401;
+	}
+
+	uint16_t checksum_req = strtol(end + 1, &end, 16);
+	if (*end != '\0') {
+		return WUY_HTTP_401;
+	}
+
+	if (conf->secret != NULL) {
+		uint16_t checksum_calc = wuy_vhash64(&rand, sizeof(long)) ^ conf->secret_hash;
+		if (checksum_calc != checksum_req) {
+			return WUY_HTTP_401;
 		}
 	}
 
-	/* Not found in Cookie, so add the ID */
-	char buffer[4096], *p = buffer, *end = p + sizeof(buffer);
-	p += snprintf(p, end - p, "%s=", conf->key);
+	return PHL_OK;
+}
 
-	switch (conf->type) {
-	case COOKIE_TYPE_RANDOM32:
-		p += snprintf(p, end - p, "%ld", random());
-		break;
-	case COOKIE_TYPE_RANDOM64:
-		p += snprintf(p, end - p, "%lx", (random() << 32) | random());
-		break;
-	case COOKIE_TYPE_UUID: // TODO
-		p += snprintf(p, end - p, "%lx", (random() << 32) | random());
-		break;
-	default:
-		abort();
+static int phl_random_cookie_id_response_headers(struct phl_request *r)
+{
+	struct phl_random_cookie_id_conf *conf = r->conf_path->module_confs[phl_random_cookie_id_module.index];
+	if (conf == NULL || conf->check_mode) {
+		return PHL_OK;
 	}
+
+	int len;
+	if (phl_random_cookie_id_get(r, &len) != NULL) { /* exist */
+		return PHL_OK;
+	}
+
+	/* Not found in Cookie, so add it */
+	char buffer[4096], *p = buffer, *end = p + sizeof(buffer);
+
+	long rand = random();
+	uint16_t checksum = 0;
+	if (conf->secret != NULL) {
+		checksum = wuy_vhash64(&rand, sizeof(long)) ^ conf->secret_hash;
+	}
+
+	p += snprintf(p, end - p, "%s=%lx-%x", conf->name, rand, checksum);
 
 	if (conf->domain != NULL) {
 		p += snprintf(p, end - p, ";Domain=%s", conf->domain);
@@ -79,54 +115,69 @@ static int phl_set_cookie_id_response_headers(struct phl_request *r)
 
 /* configuration */
 
-static struct wuy_cflua_command phl_set_cookie_id_conf_commands[] = {
-	{	.type = WUY_CFLUA_TYPE_ENUMSTR,
-		.is_single_array = true,
-		.offset = offsetof(struct phl_set_cookie_id_conf, type),
-		.limits.e = (const char *[]) {"random32", "random64", "UUID"},
+static const char *phl_random_cookie_id_conf_post(void *data)
+{
+	struct phl_random_cookie_id_conf *conf = data;
+	if (conf->secret != NULL) {
+		conf->secret_hash = wuy_vhash64(conf->secret, strlen(conf->secret));
+	}
+	return WUY_CFLUA_OK;
+}
+
+static struct wuy_cflua_command phl_random_cookie_id_conf_commands[] = {
+	{	.name = "check_mode",
+		.type = WUY_CFLUA_TYPE_BOOLEAN,
+		.offset = offsetof(struct phl_random_cookie_id_conf, check_mode),
+		.description = "If set, check the request Cookie header. Otherwise add Set-cookie header if need."
 	},
-	{	.name = "key",
+	{	.name = "secret",
 		.type = WUY_CFLUA_TYPE_STRING,
-		.offset = offsetof(struct phl_set_cookie_id_conf, key),
+		.offset = offsetof(struct phl_random_cookie_id_conf, secret),
+	},
+	{	.name = "name",
+		.type = WUY_CFLUA_TYPE_STRING,
+		.offset = offsetof(struct phl_random_cookie_id_conf, name),
 		.default_value.s = "ID",
 	},
 	{	.name = "domain",
 		.type = WUY_CFLUA_TYPE_STRING,
-		.offset = offsetof(struct phl_set_cookie_id_conf, domain),
+		.offset = offsetof(struct phl_random_cookie_id_conf, domain),
 	},
 	{	.name = "path",
 		.type = WUY_CFLUA_TYPE_STRING,
-		.offset = offsetof(struct phl_set_cookie_id_conf, path),
+		.offset = offsetof(struct phl_random_cookie_id_conf, path),
 	},
 	{	.name = "max_age",
 		.type = WUY_CFLUA_TYPE_INTEGER,
-		.offset = offsetof(struct phl_set_cookie_id_conf, max_age),
+		.offset = offsetof(struct phl_random_cookie_id_conf, max_age),
 	},
 	{	.name = "secure",
 		.type = WUY_CFLUA_TYPE_BOOLEAN,
-		.offset = offsetof(struct phl_set_cookie_id_conf, secure),
+		.offset = offsetof(struct phl_random_cookie_id_conf, secure),
 	},
 	{	.name = "HttpOnly",
 		.type = WUY_CFLUA_TYPE_BOOLEAN,
-		.offset = offsetof(struct phl_set_cookie_id_conf, HttpOnly),
+		.offset = offsetof(struct phl_random_cookie_id_conf, HttpOnly),
 	},
 	{ NULL }
 };
 
-struct phl_module phl_set_cookie_id_module = {
-	.name = "set_cookie_id",
+struct phl_module phl_random_cookie_id_module = {
+	.name = "random_cookie_id",
 	.command_path = {
-		.name = "set_cookie_id",
+		.name = "random_cookie_id",
 		.description = "Set cookie ID in response header",
 		.type = WUY_CFLUA_TYPE_TABLE,
 		.u.table = &(struct wuy_cflua_table) {
-			.commands = phl_set_cookie_id_conf_commands,
-			.size = sizeof(struct phl_set_cookie_id_conf),
+			.commands = phl_random_cookie_id_conf_commands,
+			.size = sizeof(struct phl_random_cookie_id_conf),
+			.post = phl_random_cookie_id_conf_post,
 			.may_omit = true,
 		}
 	},
 
 	.filters = {
-		.response_headers = phl_set_cookie_id_response_headers,
+		.process_headers = phl_random_cookie_id_process_headers,
+		.response_headers = phl_random_cookie_id_response_headers,
 	},
 };
