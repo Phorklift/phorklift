@@ -10,7 +10,7 @@ struct phl_static_conf {
 	const char	*dir_name;
 	const char	*index;
 	struct phl_log	*log;
-	bool		list_dir;
+	bool		enable_list_dir;
 	bool		enable_upload;
 
 	int		dirfd;
@@ -156,12 +156,8 @@ static int phl_static_generate_response_headers(struct phl_request *r)
 	/* if directory */
 	mode_t ftype = st_buf.st_mode & S_IFMT;
 	if (ftype == S_IFDIR) {
-		if (conf->list_dir) {
+		if (conf->enable_list_dir) {
 			return phl_static_dir_headers(r, fd);
-		}
-		if (conf->index == NULL) {
-			phl_request_log_at(r, conf->log, PHL_LOG_INFO, "request directory");
-			return WUY_HTTP_404;
 		}
 
 		int index_fd = openat(fd, conf->index, O_RDONLY);
@@ -241,6 +237,11 @@ static const char *phl_static_conf_post(void *data)
 		return WUY_CFLUA_OK;
 	}
 
+	if (conf->enable_upload && wuy_cflua_fenv != 0) {
+		/* wuy_cflua_fenv was set in phl_dynamic.c before parsing */
+		return "can not enable_upload in sandbox of dynamic configuration";
+	}
+
 	conf->dirfd = open(conf->dir_name, O_RDONLY|O_DIRECTORY);
 	if (conf->dirfd < 0) {
 		wuy_cflua_post_arg = conf->dir_name;
@@ -256,19 +257,20 @@ static struct wuy_cflua_command phl_static_conf_commands[] = {
 		.is_single_array = true,
 		.offset = offsetof(struct phl_static_conf, dir_name),
 	},
-	{	.name = "list_dir",
-		.description = "List the directory if set.",
+	{	.name = "index",
+		.type = WUY_CFLUA_TYPE_STRING,
+		.offset = offsetof(struct phl_static_conf, index),
+		.default_value.s = "index.html",
+		.description = "Set the index file if directory is queried. Only if enable_list_dir not set.",
+	},
+	{	.name = "enable_list_dir",
 		.type = WUY_CFLUA_TYPE_BOOLEAN,
-		.offset = offsetof(struct phl_static_conf, list_dir),
+		.offset = offsetof(struct phl_static_conf, enable_list_dir),
+		.description = "List the directory if set.",
 	},
 	{	.name = "enable_upload",
 		.type = WUY_CFLUA_TYPE_BOOLEAN,
 		.offset = offsetof(struct phl_static_conf, enable_upload),
-	},
-	{	.name = "index",
-		.description = "Set the index file if directory is queried. Only if list_dir not set.",
-		.type = WUY_CFLUA_TYPE_STRING,
-		.offset = offsetof(struct phl_static_conf, index),
 	},
 	{	.name = "log",
 		.type = WUY_CFLUA_TYPE_TABLE,

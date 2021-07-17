@@ -138,7 +138,7 @@ static struct phl_dynamic_conf *phl_dynamic_parse_sub_dyn(lua_State *L,
 		return PHL_PTR_ERROR;
 	}
 
-	/* prepare the sandbox, which should be GCed automatically */
+	/* prepare the sandbox, which would be GCed automatically */
 	int sandbox_env = 0;
 	if (dynamic->enable_sandbox) {
 		sandbox_env = wuy_safelua_new(L);
@@ -146,7 +146,7 @@ static struct phl_dynamic_conf *phl_dynamic_parse_sub_dyn(lua_State *L,
 		lua_insert(L, -2);
 		sandbox_env--;
 	}
-	wuy_cflua_setfenv(sandbox_env);
+	wuy_cflua_fenv = sandbox_env;
 
 	/* parse */
 	wuy_pool_t *pool = wuy_pool_new(1024);
