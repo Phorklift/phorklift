@@ -170,13 +170,11 @@ static struct phl_dynamic_conf *phl_dynamic_parse_sub_dyn(lua_State *L,
 		return PHL_PTR_ERROR;
 	}
 
-	/* sandbox ENV*/
-	if (dynamic->enable_sandbox) {
+	/* prepare sandbox ENV. phl_dynamic_sandbox_index!=0 in recursive dynamic */
+	if (dynamic->enable_sandbox && phl_dynamic_sandbox_index == 0) {
 		lua_pushnil(L); /* generated lazy */
 		lua_insert(L, -2);
 		phl_dynamic_sandbox_index = lua_gettop(L) - 1;
-	} else {
-		phl_dynamic_sandbox_index = 0;
 	}
 
 	/* clear dynamic.get_name/conf temporarily to avoid inherited */
@@ -192,8 +190,10 @@ static struct phl_dynamic_conf *phl_dynamic_parse_sub_dyn(lua_State *L,
 			.inherit_from = &father_container,
 			.function_hook = phl_dynamic_cflua_function_hook);
 
-	dynamic->get_name = tmp_get_name; /* recover */
-	dynamic->get_conf = tmp_get_conf; /* recover */
+	/* recover something */
+	dynamic->get_name = tmp_get_name;
+	dynamic->get_conf = tmp_get_conf;
+	phl_dynamic_sandbox_index = 0;
 	wuy_shmpool_finish(shmpool);
 
 	if (err != WUY_CFLUA_OK) {
