@@ -19,7 +19,7 @@ static int phl_rewrite_process_headers(struct phl_request *r)
 		const char *repl = conf->strs[i + 1];
 		const char *new = wuy_luastr_gsub(r->req.uri.path, pattern, repl);
 		if (new != NULL) {
-			printf("rewrite %s %s\n", r->req.uri.path, new);
+			phl_request_log(r, PHL_LOG_DEBUG, "rewrite %s %s\n", r->req.uri.path, new);
 			r->req.uri.path = wuy_pool_strdup(r->pool, new);
 			r->req.uri.is_rewrited = true;
 			break;
