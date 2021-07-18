@@ -19,7 +19,7 @@
 -- EXPECT: hello, HTTPS world!
 
 Listen "8080" {
-    static = { "good_confs/", list_dir=true }
+    static = { "good_confs/", enable_list_dir=true }
 }
 Listen "8081" {
     static = { "good_confs/", index="03.ssl.lua" }

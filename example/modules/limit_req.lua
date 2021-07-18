@@ -6,10 +6,10 @@
 -- REQUEST: curl 127.0.0.1:8080/1
 -- EXPECT: hello, world!
 --
--- REQUEST: curl -v 127.0.0.1:8080/1
--- EXPECT: 503 Service Unavailable
+-- REQUEST: curl 127.0.0.1:8080/1
+-- EXPECT: limited
 --
--- REQUEST: sleep 1.1; curl 127.0.0.1:8080/1
+-- REQUEST: sleep 2.1; curl 127.0.0.1:8080/1
 -- EXPECT: hello, world!
 --
 --
@@ -19,21 +19,8 @@
 -- REQUEST: curl 127.0.0.1:8080/burst2
 -- EXPECT: hello, world!
 --
--- REQUEST: curl -v 127.0.0.1:8080/burst2
--- EXPECT: 503 Service Unavailable
---
---
--- REQUEST: curl 127.0.0.1:8080/punish2
--- EXPECT: hello, world!
---
--- REQUEST: curl -v 127.0.0.1:8080/punish2
--- EXPECT: 503 Service Unavailable
---
--- REQUEST: sleep 1.1; curl -v 127.0.0.1:8080/punish2
--- EXPECT: 503 Service Unavailable
---
--- REQUEST: sleep 1.1; curl 127.0.0.1:8080/punish2
--- EXPECT: hello, world!
+-- REQUEST: curl 127.0.0.1:8080/burst2
+-- EXPECT: limited
 --
 --
 -- REQUEST: curl 127.0.0.1:8080/key?id=123
@@ -42,8 +29,8 @@
 -- REQUEST: curl 127.0.0.1:8080/key?id=456
 -- EXPECT: hello, world!
 --
--- REQUEST: curl -v 127.0.0.1:8080/key?id=456
--- EXPECT: 503 Service Unavailable
+-- REQUEST: curl 127.0.0.1:8080/key?id=456
+-- EXPECT: limited
 
 Runtime {
     worker = 1
@@ -51,15 +38,12 @@ Runtime {
 
 Listen "8080" {
     echo = "hello, world!\n",
-    limit_req = 1, -- 1 r/s, default for all Path()
+    limit_req = { 1, page="limited!\n" }, -- 1 r/s, default for all Path()
 
     Path "/1" {
     },
     Path "/burst2" {
         limit_req = { burst = 2 }
-    },
-    Path "/punish2" {
-        limit_req = { punish = 2 }
     },
     Path "/key" {
         limit_req = { key = function() return phl.req.get_uri_query("id") end }
