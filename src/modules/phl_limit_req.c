@@ -27,7 +27,6 @@ struct phl_limit_req_shared {
 };
 
 struct phl_limit_req_conf {
-	wuy_cflua_function_t	weight;
 	wuy_cflua_function_t	key;
 	int			key_max_len;
 	struct wuy_meter_conf	meter;
@@ -102,28 +101,31 @@ static int phl_limit_req_process_headers(struct phl_request *r)
 		return PHL_OK;
 	}
 
-	/* weight */
-	float weight = 1;
-	if (wuy_cflua_is_function_set(conf->weight)) {
-		weight = phl_lua_call_float(r, conf->weight);
-		if (weight == -1) {
-			_log(PHL_LOG_ERROR, "fail in weight()");
-			return PHL_ERROR;
-		}
-		if (weight == 0) {
-			return PHL_OK;
-		}
-	}
-
 	/* generate key */
 	int len;
 	const void *key;
+	float weight = 1;
 	if (wuy_cflua_is_function_set(conf->key)) {
-		key = phl_lua_call_lstring(r, conf->key, &len);
+		lua_State *L = phl_lua_thread_run(r, conf->key, NULL);
+		if (!PHL_PTR_IS_OK(L)) {
+			return PHL_PTR2RET(L);
+		}
+
+		key = lua_tostring(L, 1);
 		if (key == NULL) {
 			_log(PHL_LOG_ERROR, "fail in key()");
 			return PHL_ERROR;
 		}
+
+		/* optional weigth */
+		if (lua_gettop(L) == 2) {
+			if (!lua_isnumber(L, 2)) {
+				_log(PHL_LOG_ERROR, "invalid weight");
+				return PHL_ERROR;
+			}
+			weight = lua_tonumber(L, 2);
+		}
+
 	} else {
 		// TODO ipv6
 		key = &((struct sockaddr_in *)(&r->c->client_addr))->sin_addr;
@@ -261,12 +263,7 @@ static struct wuy_cflua_command phl_limit_req_conf_commands[] = {
 	{	.name = "key",
 		.type = WUY_CFLUA_TYPE_FUNCTION,
 		.offset = offsetof(struct phl_limit_req_conf, key),
-		.description = "Return a string key. Client IP address is used if not set.",
-	},
-	{	.name = "weight",
-		.type = WUY_CFLUA_TYPE_FUNCTION,
-		.offset = offsetof(struct phl_limit_req_conf, weight),
-		.description = "Return a weight float number. Return 0 to skip the limit. 1 is used if not set.",
+		.description = "Return a string key and optional weight. Client IP address is used if not set.",
 	},
 	{	.name = "key_max_len",
 		.type = WUY_CFLUA_TYPE_FUNCTION,
