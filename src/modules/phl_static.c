@@ -237,8 +237,7 @@ static const char *phl_static_conf_post(void *data)
 		return WUY_CFLUA_OK;
 	}
 
-	if (conf->enable_upload && wuy_cflua_fenv != 0) {
-		/* wuy_cflua_fenv was set in phl_dynamic.c before parsing */
+	if (conf->enable_upload && phl_dynamic_in_sandbox()) {
 		return "can not enable_upload in sandbox of dynamic configuration";
 	}
 

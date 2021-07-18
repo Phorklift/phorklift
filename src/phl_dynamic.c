@@ -31,6 +31,8 @@
 
 static atomic_int *phl_dynamic_id;
 
+static int phl_dynamic_sandbox_index;
+
 static void *phl_dynamic_to_container(struct phl_dynamic_conf *sub_dyn)
 {
 	struct phl_dynamic_conf *dynamic = sub_dyn->father ? sub_dyn->father : sub_dyn;
@@ -40,6 +42,11 @@ static struct phl_dynamic_conf *phl_dynamic_from_container(void *container,
 		struct phl_dynamic_conf *dynamic)
 {
 	return (void *)(((char *)container) + dynamic->container_offset);
+}
+
+bool phl_dynamic_in_sandbox(void)
+{
+	return phl_dynamic_sandbox_index != 0;
 }
 
 static void phl_dynamic_delete(struct phl_dynamic_conf *sub_dyn)
@@ -114,6 +121,31 @@ static bool phl_dynamic_load_str_conf(lua_State *L)
 	return true;
 }
 
+static void phl_dynamic_cflua_function_free(void *data)
+{
+	wuy_cflua_function_t *pf = data;
+	luaL_unref(phl_L, LUA_REGISTRYINDEX, *pf);
+}
+
+static void phl_dynamic_cflua_function_hook(lua_State *L, wuy_cflua_function_t f)
+{
+	/* task 1: sandbox */
+	if (phl_dynamic_sandbox_index != 0) {
+		if (lua_isnil(L, phl_dynamic_sandbox_index)) {
+			wuy_safelua_new(L);
+			wuy_safelua_add_package(L, "phl");
+			lua_replace(L, phl_dynamic_sandbox_index);
+		}
+		lua_pushvalue(L, phl_dynamic_sandbox_index);
+		lua_setfenv(L, -2);
+	}
+
+	/* task 2: free function register */
+	wuy_cflua_function_t *pf = wuy_pool_alloc(wuy_cflua_pool, sizeof(wuy_cflua_function_t));
+	wuy_pool_add_free(wuy_cflua_pool, phl_dynamic_cflua_function_free, pf);
+	*pf = f;
+}
+
 static struct phl_dynamic_conf *phl_dynamic_parse_sub_dyn(lua_State *L,
 		struct phl_dynamic_conf *dynamic,
 		const char *name, struct phl_request *r)
@@ -138,50 +170,47 @@ static struct phl_dynamic_conf *phl_dynamic_parse_sub_dyn(lua_State *L,
 		return PHL_PTR_ERROR;
 	}
 
-	/* prepare the sandbox, which would be GCed automatically */
-	int sandbox_env = 0;
+	/* sandbox ENV*/
 	if (dynamic->enable_sandbox) {
-		sandbox_env = wuy_safelua_new(L);
-		wuy_safelua_add_package(L, "phl");
+		lua_pushnil(L); /* generated lazy */
 		lua_insert(L, -2);
-		sandbox_env--;
+		phl_dynamic_sandbox_index = lua_gettop(L) - 1;
+	} else {
+		phl_dynamic_sandbox_index = 0;
 	}
-	wuy_cflua_fenv = sandbox_env;
+
+	/* clear dynamic.get_name/conf temporarily to avoid inherited */
+	wuy_cflua_function_t tmp_get_name = dynamic->get_name;
+	wuy_cflua_function_t tmp_get_conf = dynamic->get_conf;
+	dynamic->get_name = 0;
+	dynamic->get_conf = 0;
 
 	/* parse */
-	wuy_pool_t *pool = wuy_pool_new(1024);
 	void *container = NULL;
 	const void *father_container = phl_dynamic_to_container(dynamic);
-	wuy_cflua_function_t tmp_get_name = dynamic->get_name;
-	dynamic->get_name = 0; /* clear father_container->dynamic.get_name temporarily to avoid inherited */
 	const char *err = wuy_cflua_parse(L, dynamic->sub_table, &container,
-			pool, &father_container);
+			.inherit_from = &father_container,
+			.function_hook = phl_dynamic_cflua_function_hook);
+
 	dynamic->get_name = tmp_get_name; /* recover */
+	dynamic->get_conf = tmp_get_conf; /* recover */
+	wuy_shmpool_finish(shmpool);
+
 	if (err != WUY_CFLUA_OK) {
 		_log(PHL_LOG_ERROR, "parse sub %s error: %s", name, err);
 		wuy_shmpool_destroy(shmpool);
-		wuy_pool_destroy(pool);
 		return PHL_PTR_ERROR;
 	}
-
-	wuy_shmpool_finish(shmpool);
 
 	_log(PHL_LOG_INFO, "sub %s get_conf() done", name);
 
 	/* check and init the sub-dyn */
 	struct phl_dynamic_conf *sub_dyn = phl_dynamic_from_container(container, dynamic);
-	if (dynamic->enable_sandbox && !sub_dyn->enable_sandbox) {
-		_log(PHL_LOG_ERROR, "can not disable sandbox");
-		wuy_shmpool_destroy(shmpool);
-		wuy_pool_destroy(pool);
-		return PHL_PTR_ERROR;
-	}
-
-	sub_dyn->name = wuy_pool_strdup(pool, name);
+	sub_dyn->pool = wuy_cflua_pool;
+	sub_dyn->name = wuy_pool_strdup(sub_dyn->pool, name);
 	sub_dyn->father = dynamic;
 	sub_dyn->check_time = time(NULL);
 	sub_dyn->shmpool = shmpool;
-	sub_dyn->pool = pool;
 	wuy_dict_add(dynamic->sub_dict, sub_dyn);
 
 	sub_dyn->timer = loop_timer_new(phl_loop, phl_dynamic_timeout_handler, sub_dyn);
@@ -365,6 +394,10 @@ static const char *phl_dynamic_conf_post(void *data)
 	if (!wuy_cflua_is_function_set(dynamic->get_conf)) {
 		return "dynamic get_conf must be set too";
 	}
+	if (dynamic->enable_sandbox && phl_dynamic_in_sandbox()) {
+		return "can not disable sandbox";
+	}
+
 	dynamic->sub_dict = wuy_dict_new_type(WUY_DICT_KEY_STRING,
 			offsetof(struct phl_dynamic_conf, name),
 			offsetof(struct phl_dynamic_conf, dict_node));

@@ -54,6 +54,8 @@ static inline bool phl_dynamic_is_sub(struct phl_dynamic_conf *dynamic)
 	return dynamic->father != NULL;
 }
 
+bool phl_dynamic_in_sandbox(void);
+
 void phl_dynamic_init(void);
 
 extern struct wuy_cflua_table phl_dynamic_conf_table;

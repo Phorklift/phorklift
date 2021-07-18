@@ -44,13 +44,10 @@ bool phl_conf_parse(const char *conf_file)
 		return false;
 	}
 
-	wuy_pool_t *new_pool = wuy_pool_new(4096);
-
 	/* 0. check mistake usage: `Runtime = {...}` */
 	lua_getglobal(L, "Runtime");
 	if (lua_type(L, -1) != LUA_TFUNCTION) {
 		phl_conf_log(PHL_LOG_ERROR, "do not use `=` after Runtime");
-		wuy_pool_destroy(new_pool);
 		lua_close(L);
 		return false;
 	}
@@ -60,10 +57,9 @@ bool phl_conf_parse(const char *conf_file)
 	lua_getglobal(L, "phl_conf_runtime");
 
 	struct phl_conf_runtime *new_runtime;
-	const char *err = wuy_cflua_parse(L, &phl_conf_runtime_table, &new_runtime, new_pool, NULL);
+	const char *err = wuy_cflua_parse(L, &phl_conf_runtime_table, &new_runtime);
 	if (err != WUY_CFLUA_OK) {
 		phl_conf_log(PHL_LOG_ERROR, "Fail to parse configuration: %s", err);
-		wuy_pool_destroy(new_pool);
 		lua_close(L);
 		return false;
 	}
@@ -87,18 +83,17 @@ bool phl_conf_parse(const char *conf_file)
 
 	lua_getglobal(L, "phl_conf_listens");
 	struct phl_conf_listen **new_listens;
-	err = wuy_cflua_parse(L, &global, &new_listens, new_pool, NULL);
+	err = wuy_cflua_parse(L, &global, &new_listens);
 	if (err != WUY_CFLUA_OK) {
 		phl_conf_runtime = backup_runtime; /* rollback */
 		phl_conf_log(PHL_LOG_ERROR, "Fail to parse configuration: %s", err);
-		wuy_pool_destroy(new_pool);
 		lua_close(L);
 		return false;
 	}
 	if (new_listens == NULL) {
 		phl_conf_runtime = backup_runtime; /* rollback */
 		phl_conf_log(PHL_LOG_ERROR, "No Listen is defined in configuration.");
-		wuy_pool_destroy(new_pool);
+		wuy_pool_destroy(wuy_cflua_pool);
 		lua_close(L);
 		return false;
 	}
@@ -111,7 +106,7 @@ bool phl_conf_parse(const char *conf_file)
 		wuy_pool_destroy(phl_conf_pool);
 		lua_close(phl_L);
 	}
-	phl_conf_pool = new_pool;
+	phl_conf_pool = wuy_cflua_pool;
 	phl_L = L;
 	return true;
 }

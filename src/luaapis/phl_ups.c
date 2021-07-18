@@ -8,7 +8,6 @@
 
 static wuy_dict_t *phl_ups_string_dict;
 static wuy_dict_t *phl_ups_table_dict;
-static wuy_pool_t *phl_ups_pool;
 static int phl_ups_meta_ref;
 
 struct phl_ups_dict_entry {
@@ -25,7 +24,6 @@ static void phl_ups_init(void)
 	phl_ups_table_dict = wuy_dict_new_type(WUY_DICT_KEY_POINTER,
 			offsetof(struct phl_ups_dict_entry, key),
 			offsetof(struct phl_ups_dict_entry, dict_node));
-	phl_ups_pool = wuy_pool_new(4096);
 }
 
 static struct phl_upstream_conf *phl_ups_get_upstream_string(lua_State *L)
@@ -42,15 +40,14 @@ static struct phl_upstream_conf *phl_ups_get_upstream_string(lua_State *L)
 	lua_rawseti(L, -2, 1);
 
 	struct phl_upstream_conf *upstream;
-	const char *err = wuy_cflua_parse(L, &phl_upstream_conf_table,
-			&upstream, phl_ups_pool, NULL);
+	const char *err = wuy_cflua_parse(L, &phl_upstream_conf_table, &upstream);
 	if (err != WUY_CFLUA_OK) {
 		luaL_error(L, "parse error %s", err);
 		return NULL;
 	}
 
-	entry = wuy_pool_alloc(phl_ups_pool, sizeof(struct phl_ups_dict_entry));
-	entry->key = wuy_pool_strdup(phl_ups_pool, key);
+	entry = malloc(sizeof(struct phl_ups_dict_entry));
+	entry->key = strdup(key);
 	entry->upstream = upstream;
 	wuy_dict_add(phl_ups_string_dict, entry);
 
@@ -68,14 +65,13 @@ static struct phl_upstream_conf *phl_ups_get_upstream_table(lua_State *L)
 	}
 
 	struct phl_upstream_conf *upstream;
-	const char *err = wuy_cflua_parse(L, &phl_upstream_conf_table,
-			&upstream, phl_ups_pool, NULL);
+	const char *err = wuy_cflua_parse(L, &phl_upstream_conf_table, &upstream);
 	if (err != WUY_CFLUA_OK) {
 		luaL_error(L, "parse error %s", err);
 		return NULL;
 	}
 
-	entry = wuy_pool_alloc(phl_ups_pool, sizeof(struct phl_ups_dict_entry));
+	entry = malloc(sizeof(struct phl_ups_dict_entry));
 	entry->key = key;
 	entry->upstream = upstream;
 	wuy_dict_add(phl_ups_table_dict, entry);
