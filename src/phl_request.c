@@ -40,12 +40,14 @@ void phl_request_reset_response(struct phl_request *r)
 		return;
 	}
 
-	phl_request_log(r, PHL_LOG_DEBUG, "reset response code=%d", r->resp.status_code);
+	phl_request_log(r, PHL_LOG_DEBUG, "reset response from status=%d", r->resp.status_code);
 
 	r->resp.status_code = 0;
 	r->resp.content_generated_length = 0;
 	r->resp.sent_length = 0;
 	r->resp.content_length = PHL_CONTENT_LENGTH_INIT;
+	r->resp.easy_string = NULL;
+	r->resp.easy_fd = 0;
 	wuy_slist_init(&r->resp.headers);
 }
 
@@ -224,7 +226,7 @@ int phl_request_redirect(struct phl_request *r, const char *path)
 	phl_request_reset_response(r);
 	phl_request_clear_stuff(r);
 
-	r->conf_path = NULL;
+	r->conf_path = r->conf_host->default_path;
 	r->state = PHL_REQUEST_STATE_RECEIVE_HEADERS;
 	r->filter_indexs[0] = r->filter_indexs[1] = r->filter_indexs[2] = 0;
 	r->filter_terminal = NULL;
@@ -369,8 +371,9 @@ static void phl_request_remove_matched_prefix(struct phl_request *r, const char 
 	if (pathname[len-1] != '/') {
 		return;
 	}
-	r->req.uri.path_pos += len-1;
-	r->req.uri.path_len -= len-1;
+	phl_request_log(r, PHL_LOG_DEBUG, "remove matched path: %.*s", len, pathname);
+	r->req.uri.path += len - 1;
+	r->req.uri.is_rewrited = true;
 }
 
 static int phl_request_locate_conf_path(struct phl_request *r)
@@ -453,18 +456,18 @@ static int phl_request_process_body(struct phl_request *r) // TODO!!!
 
 void phl_request_response_internal_error(struct phl_request *r, const char *fmt, ...)
 {
-	char tmpbuf[1024];
+	if (!r->conf_path->response_internal_error) {
+		return;
+	}
+
 	va_list ap;
 	va_start(ap, fmt);
-	int len = vsnprintf(tmpbuf, sizeof(tmpbuf), fmt, ap);
+	r->resp.internal_error = wuy_pool_alloc_align(r->pool, 200, 1);
+	vsnprintf(r->resp.internal_error, 200, fmt, ap);
 	va_end(ap);
-
-	r->resp.easy_string = wuy_pool_strndup(r->pool, tmpbuf, len);
-	r->resp.content_length = len;
 }
 
-static int phl_request_simple_response_body(enum wuy_http_status_code code,
-		char *buf, int len)
+static int phl_request_simple_response_body(struct phl_request *r, char *buf, int len)
 {
 #define PHL_STATUS_CODE_RESPONSE_BODY_FORMAT \
 	"<html>\n" \
@@ -475,8 +478,12 @@ static int phl_request_simple_response_body(enum wuy_http_status_code code,
 	"</body>\n" \
 	"</html>\n"
 
+	enum wuy_http_status_code code = r->resp.status_code;
 	if (code < WUY_HTTP_400) {
 		return 0;
+	}
+	if (r->resp.internal_error != NULL && code == WUY_HTTP_500) {
+		return snprintf(buf, len, "[INTERNAL ERROR] %s\n", r->resp.internal_error);
 	}
 	const char *str = wuy_http_string_status_code(code);
 	return snprintf(buf, len, PHL_STATUS_CODE_RESPONSE_BODY_FORMAT,
@@ -494,7 +501,7 @@ static int phl_request_response_headers_1(struct phl_request *r)
 		ret = r->conf_path->content->content.response_headers(r);
 
 	} else if (r->resp.easy_string == NULL && r->resp.easy_fd == 0) {
-		r->resp.content_length = phl_request_simple_response_body(r->resp.status_code, NULL, 0);
+		r->resp.content_length = phl_request_simple_response_body(r, NULL, 0);
 	}
 
 	r->resp.content_original_length = r->resp.content_length;
@@ -579,7 +586,7 @@ static int phl_request_response_body(struct phl_request *r)
 		body_len = r->conf_path->content->content.response_body(r, buf_pos, buf_len);
 
 	} else {
-		body_len = phl_request_simple_response_body(r->resp.status_code, (char *)buf_pos, buf_len);
+		body_len = phl_request_simple_response_body(r, (char *)buf_pos, buf_len);
 	}
 
 	if (body_len < 0) {
@@ -661,7 +668,7 @@ void phl_request_run(struct phl_request *r, const char *from)
 
 	if (ret == PHL_OK || ret == PHL_BREAK) {
 		r->state++; /* next step */
-		return phl_request_run(r, "again");
+		return phl_request_run(r, "next");
 	}
 
 	if (ret == PHL_AGAIN) {

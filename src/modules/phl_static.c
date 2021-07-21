@@ -10,8 +10,12 @@ struct phl_static_conf {
 	const char	*dir_name;
 	const char	*index;
 	struct phl_log	*log;
-	bool		enable_list_dir;
 	bool		enable_upload;
+
+	enum {
+		PHL_STATIC_LIST_DIR_OFF,
+		PHL_STATIC_LIST_DIR_PLAIN,
+	} list_dir;
 
 	int		dirfd;
 };
@@ -61,6 +65,7 @@ static int phl_static_dir_headers(struct phl_request *r, int fd)
 {
 	char buffer[4096 * 10];
 	char *p = buffer, *end = buffer + sizeof(buffer);
+
 	DIR *dir = fdopendir(fd);
 	struct dirent *entry;
 	while ((entry = readdir(dir)) != NULL){
@@ -156,7 +161,7 @@ static int phl_static_generate_response_headers(struct phl_request *r)
 	/* if directory */
 	mode_t ftype = st_buf.st_mode & S_IFMT;
 	if (ftype == S_IFDIR) {
-		if (conf->enable_list_dir) {
+		if (conf->list_dir != PHL_STATIC_LIST_DIR_OFF) {
 			return phl_static_dir_headers(r, fd);
 		}
 
@@ -237,8 +242,8 @@ static const char *phl_static_conf_post(void *data)
 		return WUY_CFLUA_OK;
 	}
 
-	if (conf->enable_upload && phl_dynamic_in_sandbox()) {
-		return "can not enable_upload in sandbox of dynamic configuration";
+	if (conf->enable_upload && phl_dynamic_in_safe_mode()) {
+		return "can not enable_upload under dynamic safe_mode";
 	}
 
 	conf->dirfd = open(conf->dir_name, O_RDONLY|O_DIRECTORY);
@@ -260,12 +265,12 @@ static struct wuy_cflua_command phl_static_conf_commands[] = {
 		.type = WUY_CFLUA_TYPE_STRING,
 		.offset = offsetof(struct phl_static_conf, index),
 		.default_value.s = "index.html",
-		.description = "Set the index file if directory is queried. Only if enable_list_dir not set.",
+		.description = "Set the index file if directory is queried. Only works if list_dir=off.",
 	},
-	{	.name = "enable_list_dir",
-		.type = WUY_CFLUA_TYPE_BOOLEAN,
-		.offset = offsetof(struct phl_static_conf, enable_list_dir),
-		.description = "List the directory if set.",
+	{	.name = "list_dir",
+		.type = WUY_CFLUA_TYPE_ENUMSTR,
+		.offset = offsetof(struct phl_static_conf, list_dir),
+		.limits.e = (const char *[]) { "off", "plain", NULL },
 	},
 	{	.name = "enable_upload",
 		.type = WUY_CFLUA_TYPE_BOOLEAN,

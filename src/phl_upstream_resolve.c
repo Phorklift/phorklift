@@ -101,7 +101,7 @@ static void phl_upstream_address_add(struct phl_upstream_conf *upstream,
 	}
 
 	char buf[128];
-	wuy_sockaddr_dumps(sockaddr, buf, sizeof(buf));
+	wuy_sockaddr_dumps(&address->sockaddr.s, buf, sizeof(buf));
 	address->name = strdup(buf);
 	_log(PHL_LOG_INFO, "new address %s", address->name);
 
@@ -304,11 +304,6 @@ const char *phl_upstream_conf_resolve_init(struct phl_upstream_conf *conf)
 
 		wuy_list_init(&hostname->address_head);
 
-		hostname->host_len = strlen(hostname->name);
-		if (hostname->host_len > 4096) {
-			return "too long hostname";
-		}
-
 		/* parse weight, marked by # */
 		const char *pweight = strchr(hostname->name, '#');
 		if (pweight != NULL) {
@@ -318,12 +313,21 @@ const char *phl_upstream_conf_resolve_init(struct phl_upstream_conf *conf)
 				return "invalid weight";
 			}
 		} else {
+			hostname->host_len = strlen(hostname->name);
 			hostname->weight = 1.0;
+		}
+
+		const char *zname = hostname->name;
+		char tmpbuf[hostname->host_len + 1];
+		if (pweight != NULL) {
+			memcpy(tmpbuf, hostname->name, hostname->host_len);
+			tmpbuf[hostname->host_len] = '\0';
+			zname = tmpbuf;
 		}
 
 		/* it's static address, no need resolve */
 		struct sockaddr_storage sockaddr;
-		if (wuy_sockaddr_loads(hostname->name, &sockaddr, conf->default_port)) {
+		if (wuy_sockaddr_loads(zname, &sockaddr, conf->default_port)) {
 			hostname->need_resolved = false;
 			hostname->port = 0;
 			phl_upstream_address_add(conf, hostname, (struct sockaddr *)&sockaddr, NULL);

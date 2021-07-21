@@ -49,6 +49,7 @@ struct phl_request {
 
 		size_t			sent_length; /* only for log and stats */
 
+		char			*internal_error;
 		const char		*easy_string;
 		int			easy_fd;
 	} resp;
@@ -135,8 +136,7 @@ void phl_request_response_internal_error(struct phl_request *r, const char *fmt,
 	do { \
 		const char *_uri = (level >= PHL_LOG_ERROR) ? r->req.uri.raw : "-"; \
 		phl_log_level(log, level, "%lu:%u %s " fmt, r->c->id, r->id, _uri, ##__VA_ARGS__); \
-		if (level == PHL_LOG_ERROR && r->conf_path->response_internal_error) \
-			phl_request_response_internal_error(r, "INTERNAL ERROR: " fmt "\n", ##__VA_ARGS__); \
+		if (level == PHL_LOG_ERROR) phl_request_response_internal_error(r, fmt, ##__VA_ARGS__); \
 	} while(0)
 
 #define phl_request_log(r, level, fmt, ...) \

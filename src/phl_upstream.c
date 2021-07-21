@@ -91,6 +91,8 @@ phl_upstream_get_connection(struct phl_upstream_conf *upstream, struct phl_reque
 		return PHL_PTR_ERROR;
 	}
 
+	_log(PHL_LOG_DEBUG, "pick %s", address->name);
+
 	if (!phl_upstream_address_is_pickable(address, r)) {
 		_log(PHL_LOG_ERROR, "all down");
 

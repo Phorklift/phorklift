@@ -38,6 +38,11 @@ static const char *phl_conf_runtime_post(void *data)
 {
 	struct phl_conf_runtime *conf_runtime = data;
 	conf_runtime->error_log->is_line_buffer = true;
+
+	if (conf_runtime->seed_random) {
+		srandom(getpid() ^ time(NULL));
+	}
+
 	return WUY_CFLUA_OK;
 }
 
@@ -75,17 +80,23 @@ static struct wuy_cflua_command phl_conf_runtime_commands[] = {
 		.offset = offsetof(struct phl_conf_runtime, resolver),
 		.u.table = &phl_conf_runtime_resolver_table,
 	},
+	{	.name = "seed_random",
+		.type = WUY_CFLUA_TYPE_BOOLEAN,
+		.offset = offsetof(struct phl_conf_runtime, seed_random),
+		.default_value.b = true,
+		.description = "Disable this if you want to repeat random sequence for debug.",
+	},
 	{	.name = "dynamic_modules",
-		.description = "Dynamic request module list.",
 		.type = WUY_CFLUA_TYPE_TABLE,
 		.offset = offsetof(struct phl_conf_runtime, dynamic_modules),
 		.u.table = &phl_module_dynamic_table,
+		.description = "Dynamic request module list.",
 	},
 	{	.name = "dynamic_upstream_modules",
-		.description = "Dynamic upstream loadbalance module list.",
 		.type = WUY_CFLUA_TYPE_TABLE,
 		.offset = offsetof(struct phl_conf_runtime, dynamic_upstream_modules),
 		.u.table = &phl_module_dynamic_upstream_table,
+		.description = "Dynamic upstream loadbalance module list.",
 	},
 	{	.name = "error_log",
 		.type = WUY_CFLUA_TYPE_TABLE,

@@ -44,7 +44,7 @@ static struct phl_dynamic_conf *phl_dynamic_from_container(void *container,
 	return (void *)(((char *)container) + dynamic->container_offset);
 }
 
-bool phl_dynamic_in_sandbox(void)
+bool phl_dynamic_in_safe_mode(void)
 {
 	return phl_dynamic_sandbox_index != 0;
 }
@@ -171,7 +171,7 @@ static struct phl_dynamic_conf *phl_dynamic_parse_sub_dyn(lua_State *L,
 	}
 
 	/* prepare sandbox ENV. phl_dynamic_sandbox_index!=0 in recursive dynamic */
-	if (dynamic->enable_sandbox && phl_dynamic_sandbox_index == 0) {
+	if (dynamic->safe_mode && phl_dynamic_sandbox_index == 0) {
 		lua_pushnil(L); /* generated lazy */
 		lua_insert(L, -2);
 		phl_dynamic_sandbox_index = lua_gettop(L) - 1;
@@ -315,7 +315,7 @@ get_conf:
 			return PHL_PTR_ERROR;
 
 		default:
-			_log(PHL_LOG_ERROR, "sub %s returns %d", name, lua_tointeger(L, -1));
+			_log(PHL_LOG_ERROR, "sub %s returns %ld", name, lua_tointeger(L, -1));
 			goto fail;
 		}
 	}
@@ -394,8 +394,13 @@ static const char *phl_dynamic_conf_post(void *data)
 	if (!wuy_cflua_is_function_set(dynamic->get_conf)) {
 		return "dynamic get_conf must be set too";
 	}
-	if (dynamic->enable_sandbox && phl_dynamic_in_sandbox()) {
-		return "can not disable sandbox";
+	if (!dynamic->safe_mode && phl_dynamic_in_safe_mode()) {
+		if (dynamic->safe_mode_inherit == 0) {
+			/* set explicitly */
+			return "can not disable safe_mode";
+		}
+		/* not set explicitly, but default value is false, so enable it */
+		dynamic->safe_mode = true;
 	}
 
 	dynamic->sub_dict = wuy_dict_new_type(WUY_DICT_KEY_STRING,
@@ -454,9 +459,10 @@ static struct wuy_cflua_command phl_dynamic_conf_commands[] = {
 		.offset = offsetof(struct phl_dynamic_conf, no_stale),
 		.description = "For debug only.",
 	},
-	{	.name = "enable_sandbox",
+	{	.name = "safe_mode",
 		.type = WUY_CFLUA_TYPE_BOOLEAN,
-		.offset = offsetof(struct phl_dynamic_conf, enable_sandbox),
+		.offset = offsetof(struct phl_dynamic_conf, safe_mode),
+		.inherit_count_offset = offsetof(struct phl_dynamic_conf, safe_mode_inherit),
 	},
 
 	/* sub */

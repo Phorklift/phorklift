@@ -90,7 +90,7 @@ static bool phl_lua_api_subrequest_options(lua_State *L, struct phl_request *sub
 	}
 	lua_pop(L, 1);
 
-	lua_getfield(L, 2, "queries");
+	lua_getfield(L, 2, "args");
 	if (lua_isstring(L, -1)) {
 		size_t len;
 		const char *str = lua_tolstring(L, -1, &len);

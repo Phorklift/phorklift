@@ -3,6 +3,7 @@
 struct phl_proxy_conf {
 	struct phl_upstream_conf	*upstream; /* at top! */
 	bool				x_forwarded_for;
+	bool				replace_host;
 };
 
 struct phl_module phl_proxy_module;
@@ -41,7 +42,9 @@ static int phl_proxy_build_request_headers(struct phl_request *r, char *buffer)
 				r->req.uri.path, r->req.uri.query_pos);
 	}
 
-	if (r->req.host != NULL) {
+	if (conf->replace_host) {
+		pos += sprintf(pos, "Host: %s\r\n", conf->upstream->name);
+	} else if (r->req.host != NULL) {
 		pos += sprintf(pos, "Host: %s\r\n", r->req.host);
 	}
 	if (r->req.content_length != PHL_CONTENT_LENGTH_INIT) {
@@ -220,9 +223,14 @@ static struct wuy_cflua_command phl_proxy_conf_commands[] = {
 		.u.table = &phl_upstream_conf_table,
 	},
 	{	.name = "x_forwarded_for",
-		.description = "Whether to update X-Forwarded-For header.",
 		.type = WUY_CFLUA_TYPE_BOOLEAN,
 		.offset = offsetof(struct phl_proxy_conf, x_forwarded_for),
+		.description = "Whether to update X-Forwarded-For header.",
+	},
+	{	.name = "replace_host",
+		.type = WUY_CFLUA_TYPE_BOOLEAN,
+		.offset = offsetof(struct phl_proxy_conf, replace_host),
+		.description = "Whether to replace Host header by upstream server hostname.",
 	},
 	{ NULL }
 };

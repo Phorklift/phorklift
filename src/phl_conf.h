@@ -163,6 +163,8 @@ struct phl_conf_runtime {
 		int	ai_family;
 	} resolver;
 
+	bool			seed_random;
+
 	struct phl_log		*error_log;
 
 	struct phl_module_dynamic *dynamic_modules;

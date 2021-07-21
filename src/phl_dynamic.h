@@ -10,7 +10,8 @@ struct phl_dynamic_conf {
 	int			idle_timeout;
 	int			error_timeout;
 	int			sub_max;
-	bool			enable_sandbox;
+	bool			safe_mode_inherit;
+	bool			safe_mode;
 	bool			no_stale;
 	struct phl_log		*log;
 
@@ -54,7 +55,7 @@ static inline bool phl_dynamic_is_sub(struct phl_dynamic_conf *dynamic)
 	return dynamic->father != NULL;
 }
 
-bool phl_dynamic_in_sandbox(void);
+bool phl_dynamic_in_safe_mode(void);
 
 void phl_dynamic_init(void);
 

@@ -6,7 +6,7 @@
 
 #define _log(level, fmt, ...) phl_request_log(r, level, "lua: " fmt, ##__VA_ARGS__)
 
-static int phl_req_get_query(lua_State *L, const char *query_str, int query_len)
+static int phl_req_get_arg(lua_State *L, const char *query_str, int query_len)
 {
 	if (query_str == NULL) {
 		return 0;
@@ -29,7 +29,7 @@ static int phl_req_get_query(lua_State *L, const char *query_str, int query_len)
 	return 1;
 }
 
-static void phl_req_queries(lua_State *L, const char *query_str, int query_len)
+static void phl_req_args(lua_State *L, const char *query_str, int query_len)
 {
 	lua_newtable(L);
 
@@ -71,16 +71,16 @@ static int phl_req_set_uri_path(lua_State *L)
 	return 0;
 }
 
-static int phl_req_get_uri_query(lua_State *L)
+static int phl_req_get_uri_arg(lua_State *L)
 {
 	struct phl_request *r = phl_lua_api_current;
-	return phl_req_get_query(L, r->req.uri.query_pos, r->req.uri.query_len);
+	return phl_req_get_arg(L, r->req.uri.query_pos, r->req.uri.query_len);
 }
 
-static int phl_req_get_body_query(lua_State *L)
+static int phl_req_get_body_arg(lua_State *L)
 {
 	struct phl_request *r = phl_lua_api_current;
-	return phl_req_get_query(L, (const char *)r->req.body_buf, r->req.body_len);
+	return phl_req_get_arg(L, (const char *)r->req.body_buf, r->req.body_len);
 }
 
 static int phl_req_get_header(lua_State *L)
@@ -161,7 +161,7 @@ static int phl_req_mm_index(lua_State *L)
 	struct phl_request *r = phl_lua_api_current;
 
 	if (strcmp(key, "method") == 0) {
-		lua_pushinteger(L, r->req.method);
+		lua_pushstring(L, wuy_http_string_method(r->req.method));
 
 	} else if (strcmp(key, "uri_raw") == 0) {
 		lua_pushstring(L, r->req.uri.raw);
@@ -169,8 +169,8 @@ static int phl_req_mm_index(lua_State *L)
 	} else if (strcmp(key, "uri_path") == 0) {
 		lua_pushstring(L, r->req.uri.path);
 
-	} else if (strcmp(key, "uri_queries") == 0) {
-		phl_req_queries(L, r->req.uri.query_pos, r->req.uri.query_len);
+	} else if (strcmp(key, "uri_args") == 0) {
+		phl_req_args(L, r->req.uri.query_pos, r->req.uri.query_len);
 
 	} else if (strcmp(key, "host") == 0) {
 		lua_pushstring(L, r->req.host);
@@ -186,8 +186,8 @@ static int phl_req_mm_index(lua_State *L)
 	} else if (strcmp(key, "body") == 0) {
 		lua_pushlstring(L, (char *)r->req.body_buf, r->req.body_len);
 
-	} else if (strcmp(key, "body_queries") == 0) {
-		phl_req_queries(L, (char *)r->req.body_buf, r->req.body_len);
+	} else if (strcmp(key, "body_args") == 0) {
+		phl_req_args(L, (char *)r->req.body_buf, r->req.body_len);
 
 	} else {
 		lua_pushnil(L);
@@ -197,8 +197,8 @@ static int phl_req_mm_index(lua_State *L)
 
 static const struct phl_lua_api_reg_func phl_req_functions[] = {
 	{ "set_uri_path", phl_req_set_uri_path },
-	{ "get_uri_query", phl_req_get_uri_query },
-	{ "get_body_query", phl_req_get_body_query },
+	{ "get_uri_arg", phl_req_get_uri_arg },
+	{ "get_body_arg", phl_req_get_body_arg },
 	{ "get_header", phl_req_get_header },
 	{ "add_header", phl_req_add_header },
 	{ "delete_header", phl_req_delete_header },
