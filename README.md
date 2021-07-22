@@ -18,6 +18,10 @@ In short, Phorklift targets production-level.
 
 # Key Features
 
+Most of the following is about configuration. Talk is cheap, examples are
+better but not enough. Here is a [playgound](https://play.phorklift.org)
+where you can try the configurations online.
+
 ## Feature: Configuration in Lua.
 
 It's a very natural choice when [Lua](https://lua.org) is embed.
@@ -86,7 +90,7 @@ Going further, different weight can be set for each request:
           local weight = 1 -- default value
 
           -- bigger `limit` argument means bigger weight
-          local limit = phl.req.get_uri_query("limit")
+          local limit = phl.req.get_uri_arg("limit")
           if limit then
               limit = tonumber(limit)
               weight = (limit > 100) and limit/100 or 1
