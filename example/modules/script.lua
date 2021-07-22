@@ -14,7 +14,7 @@ Listen "8080" {
     script = {
         -- process headers filter
         request_headers = function()
-            local name = phl.req.get_uri_query("name")
+            local name = phl.req.get_uri_arg("name")
             if name == 'hacker' then
                 return phl.HTTP_403
             end
@@ -22,7 +22,7 @@ Listen "8080" {
 
         -- content
         function()
-            return "hello, " .. phl.req.get_uri_query("name")
+            return "hello, " .. phl.req.get_uri_arg("name")
         end,
 
         -- reponse headers filter

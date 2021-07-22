@@ -46,6 +46,6 @@ Listen "8080" {
         limit_req = { burst = 2 }
     },
     Path "/key" {
-        limit_req = { key = function() return phl.req.get_uri_query("id") end }
+        limit_req = { key = function() return phl.req.get_uri_arg("id") end }
     },
 }
