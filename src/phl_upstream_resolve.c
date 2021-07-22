@@ -139,6 +139,8 @@ static void phl_upstream_resolve_hostname(struct phl_upstream_conf *upstream)
 			continue;
 		}
 
+		_log(PHL_LOG_DEBUG, "resolve %.*s", hostname->host_len, hostname->name);
+
 		/* picked. send resolve query */
 		struct phl_resolver_query query;
 		query.expire_after = upstream->resolve_interval;
@@ -256,6 +258,10 @@ static int64_t phl_upstream_resolve_timer_handler(int64_t at, void *data)
 		 * We can not initialize this at phl_upstream_conf_post() because
 		 * it is called in master process while we need the worker. */
 		int fd = phl_resolver_connect();
+		if (fd < 0) {
+			_log(PHL_LOG_FATAL, "can not connect resolver, %s", strerror(errno));
+			return 1000;
+		}
 		upstream->resolve_stream = loop_stream_new(phl_loop, fd, &phl_upstream_resolve_ops, false);
 		loop_stream_set_app_data(upstream->resolve_stream, upstream);
 	}

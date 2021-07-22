@@ -204,6 +204,8 @@ void phl_resolver_init(void)
 		exit(PHL_EXIT_RESOLVER);
 	}
 
+	chmod(phl_resolver_address, 0777);
+
 	phl_resolver_init_if_fork();
 }
 

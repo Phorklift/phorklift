@@ -95,6 +95,9 @@ static void phl_worker_entry(void)
 
 	prctl(PR_SET_NAME, (unsigned long)"phorklift-worker", 0, 0, 0);
 
+	/* setuid() disables coredump, we enable it back */
+	prctl(PR_SET_DUMPABLE, 1);
+
 	loop_new_event(phl_loop);
 
 	phl_conf_listen_init_worker();

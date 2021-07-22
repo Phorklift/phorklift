@@ -108,7 +108,7 @@ static int phl_random_cookie_id_response_headers(struct phl_request *r)
 		p += snprintf(p, end - p, ";HttpOnly");
 	}
 
-	phl_header_add_lite(&r->resp.headers, "Set-Cookie", buffer, end - buffer, r->pool);
+	phl_header_add_lite(&r->resp.headers, "Set-Cookie", buffer, p - buffer, r->pool);
 
 	return PHL_OK;
 }
